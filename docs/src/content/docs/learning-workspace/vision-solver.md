@@ -4,7 +4,9 @@ description: Solve one photographed problem in Chat, then keep the question for 
 quadrant: how-to
 ---
 
-Vision Solver is the **Solve** capability working from an image. The same turn can plan steps, run a check, and, for a geometric figure, call GeoGebra.
+Check one worked solution in [Solve a photo](/learn/solve-a-photo/).
+
+Vision Solver is the **Solve** capability working from an image. A capability is the workflow for this turn. The same turn can plan steps, run a check, and, for a geometric figure, call GeoGebra.
 
 ## Solve one photo
 

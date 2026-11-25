@@ -69,7 +69,8 @@ def check_screenshots() -> list[str]:
     for path in CONTENT.rglob("*"):
         if path.suffix not in {".md", ".mdx"}:
             continue
-        referenced.update(re.findall(r"/screenshots/dev/([A-Za-z0-9_.-]+)", path.read_text()))
+        text = re.sub(r"<!--.*?-->", "", path.read_text(), flags=re.DOTALL)
+        referenced.update(re.findall(r"/screenshots/dev/([A-Za-z0-9_.-]+)", text))
     for name in sorted(referenced):
         if not (PUBLIC / name).exists():
             errors.append(f"missing screenshot {name}")

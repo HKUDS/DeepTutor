@@ -1,45 +1,48 @@
 ---
 title: Mastery Path
-description: Turn a learning goal and your own materials into a mastery map with recorded evidence, then study each waypoint with a dedicated tutor.
+description: Follow one topic until the path records that you have shown the skill.
 quadrant: how-to
 ---
 
-Mastery Path turns a broad goal into a route you can actually finish. The route is divided into modules and typed knowledge points, and progress records assessed mastery or an explicit learner declaration, rather than time spent reading.
+Record one waypoint in [Follow a path](/learn/follow-a-path/).
+
+A Mastery Path turns one goal into a route and records whether you have shown the skill. Start with one topic. Modes, evidence types, and the review schedule are further down this page.
+
+## Follow one topic until it is recorded
+
+1. Open **Learning → Mastery Path** and create a **New mastery goal**.
+2. Write the ability you want to show. For example: “Choose and apply substitution or integration by parts on first-year exam problems, and explain why the method works.” The title comes from that goal, and you can rename it later.
+3. Add the materials that should ground the work: a book, a saved notebook or Favorites record, or a knowledge-base file.
+4. Choose the model for the opening conversation, then choose **Design the outline with the tutor**. The tutor reads the materials, asks what you already know and how much time you have, and drafts the map with you. Change the outline in that conversation before you start studying. The outline is no longer a third step on the creation form.
+5. Study one waypoint. Answer the question, then explain the result in your own words.
+
+You are done with this pass when that waypoint shows a recorded result: an assessment, or your own statement that you have it. Those two are stored separately. The progress ring uses that record. It does not measure how long the page was open.
 
 ## Where it is
 
-Open **Learning → Mastery Path** in the left sidebar (or visit `/learning/mastery`). The atlas shows this workspace’s topics, next waypoints and progress. Resources holds reusable materials; Personalization is account level.
+Open **Learning → Mastery Path** in the left sidebar, or visit `/learning/mastery`. The map shows this workspace’s topics, the next waypoint, and the overall progress. Resources holds materials you can reuse. Personalization belongs to the account.
 
 ![Mastery Path library](/screenshots/dev/mastery.png)
 
-## Build a path
+## Study one waypoint
 
-Create a **New mastery goal** in two steps:
+The study screen keeps the current topic, waypoint, progress ring, outline, transcript, and composer together. Three **modes** sit above the transcript: *Outline*, *Study*, and *Review*. The active mode decides which tools the tutor can use. Only Outline may change the map, and reordering a module shows a preview before you confirm. Only Study and Review may examine you. The Activity drawer and the side viewer keep tools, citations, and generated material in view.
 
-1. **Goal** — describe the ability you want to build. The title is derived from the goal and can be renamed later.
-2. **Materials** — choose Books, saved notebook/Favorites records or Knowledge Base files that should ground the learning.
-
-Select the model for the opening conversation, then choose **Design the outline with the tutor**. Creation opens an Outline conversation: the tutor reads your materials, asks about prior knowledge and available time, and designs the map with you. Discuss changes before beginning Study. The outline is no longer a third wizard step.
-
-Each knowledge point is typed as *memory*, *procedure*, *concept*, or *design*. That type changes what evidence counts as mastery and lets the tutor choose an appropriate learning activity.
-
-## Study one waypoint at a time
-
-The study surface keeps the current topic, waypoint, progress ring, outline, transcript, and composer together. Three **modes** sit above the transcript — *Outline*, *Study*, *Review* — and the live one gates the tutor's tools: only Outline may revise the map, with reviewed previews for reordering; only Study and Review may examine you. The Activity drawer and side viewer keep tools, references, and material visible. Questions arrive singly or in groups of two to four; the card ends the turn, and replies are graded independently, including partial submissions. Concept and design cards are practice; their mastery gate still requires your own explanation. The assessed **mastery gate** controls progression; a learner may explicitly mark a point mastered, with that source distinguished from assessment. Completed points return later through **spaced review** when they are due.
+Questions arrive one at a time, or in groups of two to four. The card ends that turn. Each question is graded on its own, including an answer you submit in parts. A concept card and a design card are practice. Showing mastery on those still takes an explanation in your own words. The assessed **mastery gate** decides when you move on. You can also mark a point mastered yourself. That mark is stored apart from an assessment. A finished point comes back through **spaced review** when it is due.
 
 ![Mastery Path topic and study workspace](/screenshots/dev/mastery-detail.png)
 
-After a turn settles, the configured **Task Model** can write a suggested next question against the waypoint and recent transcript. With an empty composer, press **Tab** to accept the suggestion; it is not sent until you choose to send it.
+After a turn settles, the configured **Task Model** can write a suggested next question from the waypoint and the recent transcript. With an empty composer, press **Tab** to accept the suggestion. It stays in the box until you send it.
 
 ## Conversations stay with the topic
 
-A study session is an ordinary DeepTutor conversation bound to a Mastery Path. The sidebar files it under its topic; reopening restores the map and waypoint. In Chat, DeepTutor can offer a hand-off card to resume or start a session, and navigates only when you click.
+A study session is an ordinary conversation bound to a Mastery Path. The sidebar keeps it under the topic. Reopening restores the map and the waypoint. In Chat, DeepTutor can offer a hand-off card to resume or start a session. The card opens that session when you click it.
 
-## A concrete goal and its evidence
+## How a result is recorded
 
-Instead of “Learn calculus,” try “Choose and apply substitution or integration by parts on first-year exam problems, and explain why the method works.” Add the relevant chapters or saved source records, then review the outline before studying. Ask the tutor to stay on one waypoint, attempt the exercise, and explain the result in your own words. Reading an answer alone does not demonstrate a concept or design skill.
+Each knowledge point is marked *memory*, *procedure*, *concept*, or *design*. The type decides what counts as evidence, and it helps the tutor pick an activity. Reading an answer is not enough to show a concept or a design skill.
 
-Paths and their study conversations belong to the current workspace. Reopen the topic to resume its map and sessions; use the due-review entry to revisit older evidence. An explicit learner declaration is recorded differently from an assessed result. Keep this distinction in mind when interpreting the progress ring. Practice gives additional question-level recall; the Learning notebook preserves your own explanations.
+The path and its study conversations belong to the current workspace. Reopen the topic to restore the map and the sessions. Use the due-review entry to look again at older evidence. Read the progress ring with that difference in mind. A statement you made and a result from an assessment are separate records. Practice adds recall for a single question. The Learning notebook keeps the explanation you wrote.
 
 ## See also
 

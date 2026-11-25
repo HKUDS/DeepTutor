@@ -202,13 +202,24 @@ export default defineConfig({
           ],
         },
         {
+          label: "Learn",
+          translations: { "zh-CN": "跟着做" },
+          items: [
+            { label: "Study with your materials", translations: { "zh-CN": "带着材料学习" }, slug: "learn/ask-with-a-source" },
+            { label: "Solve a photo", translations: { "zh-CN": "从照片解题" }, slug: "learn/solve-a-photo" },
+            { label: "Practice a topic", translations: { "zh-CN": "练一个主题" }, slug: "learn/practice-a-topic" },
+            { label: "Research a question", translations: { "zh-CN": "研究一个问题" }, slug: "learn/research-a-question" },
+            { label: "Make a figure", translations: { "zh-CN": "把想法呈现出来" }, slug: "learn/make-a-figure" },
+            { label: "Follow a path", translations: { "zh-CN": "沿着路径学完" }, slug: "learn/follow-a-path" },
+            { label: "A first study session", translations: { "zh-CN": "串起一次完整学习" }, slug: "learning-workspace" },
+          ],
+        },
+        {
           label: "Learning workspace",
           translations: { "zh-CN": "学习工作区" },
           items: [
-            { label: "A first study session", translations: { "zh-CN": "串起一次完整学习" }, slug: "learning-workspace" },
             { label: "Workspaces", translations: { "zh-CN": "工作区" }, slug: "learning-workspace/workspaces" },
             { label: "Chat", translations: { "zh-CN": "对话" }, slug: "learning-workspace/chat" },
-            { label: "How the agent loop works", translations: { "zh-CN": "智能体循环" }, slug: "learning-workspace/agent-loop" },
             { label: "Vision Solver", translations: { "zh-CN": "视觉解题" }, slug: "learning-workspace/vision-solver" },
             { label: "Questions & practice", translations: { "zh-CN": "出题与练习" }, slug: "learning-workspace/questions" },
             { label: "Mastery Path", translations: { "zh-CN": "精通之路" }, slug: "learning-workspace/mastery" },
@@ -221,6 +232,7 @@ export default defineConfig({
             { label: "Resources", translations: { "zh-CN": "资料" }, slug: "learning-workspace/resources" },
             { label: "Task Board", translations: { "zh-CN": "任务看板" }, slug: "learning-workspace/task-board" },
             { label: "Calendar", translations: { "zh-CN": "日历" }, slug: "learning-workspace/calendar" },
+            { label: "How the agent loop works", translations: { "zh-CN": "智能体循环" }, slug: "learning-workspace/agent-loop" },
             { label: "Memory", translations: { "zh-CN": "记忆" }, slug: "learning-workspace/memory" },
           ],
         },
@@ -253,7 +265,6 @@ export default defineConfig({
           translations: { "zh-CN": "渠道" },
           items: [
             { label: "Create a partner", translations: { "zh-CN": "创建一个伙伴" }, slug: "channels" },
-            { label: "Channel schema", translations: { "zh-CN": "渠道 schema" }, slug: "channels/schema" },
             {
               label: "Domestic IM",
               translations: { "zh-CN": "国内 IM" },
@@ -283,6 +294,7 @@ export default defineConfig({
                 { label: "Email", translations: { "zh-CN": "邮件" }, slug: "channels/international/email" },
               ],
             },
+            { label: "Channel schema", translations: { "zh-CN": "渠道 schema" }, slug: "channels/schema" },
           ],
         },
         {
@@ -296,10 +308,10 @@ export default defineConfig({
             { label: "CLI only", translations: { "zh-CN": "纯 CLI" }, slug: "self-hosting/cli-only" },
             { label: "Multi-user", translations: { "zh-CN": "多用户部署" }, slug: "self-hosting/multi-user" },
             { label: "Codex sign-in", translations: { "zh-CN": "Codex 登录" }, slug: "self-hosting/oauth" },
-            { label: "Desktop editions", translations: { "zh-CN": "桌面版本" }, slug: "self-hosting/desktop" },
             { label: "Settings", translations: { "zh-CN": "设置" }, slug: "self-hosting/settings" },
-            { label: "Configuration files", translations: { "zh-CN": "配置文件" }, slug: "self-hosting/configuration" },
             { label: "Troubleshooting", translations: { "zh-CN": "故障排查" }, slug: "self-hosting/troubleshooting" },
+            { label: "Desktop editions", translations: { "zh-CN": "桌面版本" }, slug: "self-hosting/desktop" },
+            { label: "Configuration files", translations: { "zh-CN": "配置文件" }, slug: "self-hosting/configuration" },
           ],
         },
         {

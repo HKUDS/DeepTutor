@@ -14,48 +14,55 @@ The repository root `README.md` is the GitHub project page. It is not the source
 
 ## Design
 
-Organize pages by what the reader is trying to do, then by product area. Diátaxis decides the job of a page. The quadrant name never appears in a folder, a slug, or a sidebar label.
+Diátaxis decides the job of a page. The sidebar follows the reader's path. A quadrant name never appears in a folder, a slug, or a sidebar label.
 
-Every page except the splash homepage sets exactly one `quadrant` in frontmatter:
+Every page except the splash homepage sets exactly one `quadrant` in frontmatter. One page, one job. A first-success lesson and the durable task page are two pages that link to each other. Do not fold the task page's controls, fields, or ratings into the lesson, and do not turn the task page into a lesson.
 
 | Value | Job |
 | --- | --- |
-| `tutorial` | The shortest path to a first success. One path, with no alternate install or feature branches in the body. |
+| `tutorial` | One path to a first success. After each key step, say what the reader should see. One plain sentence of why, then a link. No alternate branches, parameters, or architecture. |
 | `how-to` | Steps for one task. Link out for theory and for parameter lists. |
-| `reference` | Parameters, schemas, and catalogs. Prefer a code source over a second prose copy. |
-| `explanation` | How a design fits together. No procedures. |
+| `reference` | Parameters, schemas, and catalogs. Prefer a code source over a second prose copy. Place it last in its sidebar group. |
+| `explanation` | How a design fits together. No procedures. Use it for an area's front door or a concept page at the end of the group. |
 
-The homepage is `template: splash` and omits `quadrant`. Welcome (`welcome.mdx`) is an explanation page and is the front door of the documentation. Its cards follow one concrete task each: a title, one sentence, and a link to the page that finishes that task.
+Welcome (`welcome.mdx`) is the front door. Each card names the goal the reader can reach: a title, one sentence, and a link. Install cards open the install tutorials. The six study cards open the Learn lessons, not the how-to pages.
 
-### Install paths
+### Sidebar
 
-Desktop is the only default install tutorial (`get-started/desktop/`). Docker is a second, independent tutorial (`get-started/docker/`) and stops at the first successful run. Host folders, reverse proxies, local models, and upgrades live on the self-hosting operations page.
+Add a page under the group that owns the task, with a `zh-CN` label. Inside a group, put the explanation home first, how-tos next, and reference or remaining concept pages last. Keep an existing URL when only the sidebar membership changes.
 
-PyPI, source, CLI-only, multi-user, and troubleshooting are self-hosting how-tos. `get-started/` explains the choice among those paths and links to them. It does not repeat their steps.
+| Group | What belongs here |
+| --- | --- |
+| Get started | Welcome, install choices, Desktop, Docker, providers, changelog |
+| Learn (`learn/`, label 跟着做) | End-user lessons: one connected study session, study with your materials, solve a photo, practice a topic, research a question, make one figure, follow a path |
+| Learning workspace | Workspace how-tos from Workspaces through Calendar. Agent loop and memory stay last. The study-session lesson is listed under Learn; its file can remain `learning-workspace/index.md` |
+| Multimodal studio | Which generator to use, then Visualize, Math Animator, and Video Lesson. The Learn figure lesson uses Visualize only and links here |
+| Customize | Overview, then personas, skills, MCP, CLI apps, EduHub, agents, RAG |
+| Channels | Create a partner, then domestic and international IM. Channel schema last |
+| Self-hosting | Runtime home, then install and operations how-tos, then troubleshooting. Desktop editions and configuration files last |
+| Developers | Architecture; then CLI, REPL, Python SDK, agent handoff, and contributing; then capabilities, commands, turn protocol, and HTTP API |
 
-### Homepage
-
-`src/components/HomeLanding.astro` renders the marketing landing for both locales: navigation, hero, product shot, eight places, and four install tabs in this order: PyPI, Docker, source, CLI. Both `index.mdx` files import that component and do not set Starlight `hero` frontmatter.
-
-The Docs button and the Docs nav item open Welcome (`/welcome/` and `/zh-cn/welcome/`). Eight-place and footer links use the current docs slugs. Community and Collaborate stay on deeptutor.info. `src/styles/landing.css` hides the Starlight header, sidebar, and the splash `<h1 id="_top">`. Hide that heading, not the content panel that contains the landing.
-
-### Product areas
-
-Sidebar groups are product areas. Add a page under the area that owns the task, with a `zh-CN` label.
-
-| Group | Slug | What belongs here |
-| --- | --- | --- |
-| Get started | `welcome/`, `get-started/` | Welcome, install choices, Desktop, Docker, providers, changelog |
-| Learning workspace | `learning-workspace/` | Chat, agent loop, Vision Solver, questions, mastery, knowledge, books, reading, research, notebook, resources, calendar, memory |
-| Multimodal studio | `multimodal-studio/` | Which generator to use, Visualize, Math Animator, Video Lesson |
-| Customize | `customize/` | Personas, skills, MCP, CLI apps, EduHub, agents, RAG |
-| Channels | `channels/` | Create a partner, channel schema, domestic IM, international IM |
-| Self-hosting | `self-hosting/` | Runtime home, PyPI, source, Docker operations, CLI-only, multi-user, Codex sign-in, desktop editions, settings, configuration files, troubleshooting |
-| Developers | `developers/` | Architecture, CLI guides, capabilities, command reference, turn protocol, HTTP API |
+The Python SDK is a tutorial for someone embedding DeepTutor. It stays under Developers. Learn is only for a person using the product.
 
 Home, Learning, and Resources follow the active workspace. Partners and Personalization belong to the account. Say that when a page could mix the two.
 
-Settings in the product are **Settings → Models & services**. Configuration lives in `data/user/settings/*.json`. Process environment variables override only a few startup values. `.env.example` documents Podman host ports, not application settings.
+### Install paths
+
+Desktop (`get-started/desktop/`) is the only default install tutorial. Docker (`get-started/docker/`) is a second tutorial and stops at the first successful run; mark that page `tutorial`. Host folders, reverse proxies, local models, and upgrades stay on `self-hosting/docker/`.
+
+PyPI, source, CLI-only, multi-user, and troubleshooting are self-hosting how-tos. `get-started/` explains the choice and links to them. It does not repeat their steps.
+
+### Tutorial voice
+
+Write tutorials as a person guiding the reader. Use "you", active voice, and short sentences. Match the meaning across English and Chinese. English follows the Google and Microsoft developer style. Chinese should read as written Chinese, not as a translation.
+
+On the first use of a product term such as provider, profile, capability, skill, or MCP, add a short clause that says what it does. Leave code blocks, commands, environment variables, paths, API fields, UI labels, links, images, heading levels, and MDX components unchanged when editing prose.
+
+Do not use "simply", "just", "easy", "easily", or "obviously", or the Chinese 只需, 很容易, 轻松, and 显然.
+
+### Facts that must stay accurate
+
+Settings in the product are **Settings → Models & services** (设置 → 模型与服务). Configuration lives in `data/user/settings/*.json`. Process environment variables override only a few startup values. `.env.example` documents Podman host ports, not application settings.
 
 Desktop data and logs:
 
@@ -64,18 +71,20 @@ Desktop data and logs:
 | Data | `~/Library/Application Support/Open DeepTutor/workspace/data` | `%LOCALAPPDATA%\Open DeepTutor\workspace\data` |
 | Logs | `~/Library/Application Support/Open DeepTutor/logs/runtime.log` | `%LOCALAPPDATA%\Open DeepTutor\logs\runtime.log` |
 
-Public download links use the unversioned files on the latest GitHub Release. Packaging and signing stay in `apps/desktop/README.md`.
-
-The changelog page keeps the five newest user-visible releases. Older notes point at GitHub Releases and `assets/releases/`.
-
-### Reference that follows code
+Public download links use the unversioned files on the latest GitHub Release. Packaging and signing stay in `apps/desktop/README.md`. The changelog keeps the five newest user-visible releases. Older notes point at GitHub Releases and `assets/releases/`.
 
 Hand-write a reference page when the prose is the guide. Generate or check it when the page would drift from code:
 
 - `docs/scripts/generate_reference.py` rewrites the capability table and appends the HTTP route index from `deeptutor/modules/manifests/*.json` and `deeptutor/api/router_index.json`. Run it after those sources change, then commit the generated Markdown.
 - `channels/schema.md` stays hand-written in both locales. `check_docs.py` requires every config field declared under `deeptutor/partners/channels` to appear in the matching section. Channel how-tos describe the platform steps and link here for fields.
 
-Keep one primary job per page. Move content to the successor page before deleting the old one, and add a redirect.
+Move content to the successor page before deleting the old one, and add a redirect.
+
+## Homepage
+
+`src/components/HomeLanding.astro` renders the marketing landing for both locales: navigation, hero, product shot, eight places, and four install tabs in this order: PyPI, Docker, source, CLI. Both `index.mdx` files import that component and do not set Starlight `hero` frontmatter. Desktop install stays on the Welcome cards, not on this landing.
+
+The Docs button and the Docs nav item open Welcome (`/welcome/` and `/zh-cn/welcome/`). Eight-place and footer links use the current docs slugs. Community and Collaborate stay on deeptutor.info. `src/styles/landing.css` hides the Starlight header, sidebar, and the splash `<h1 id="_top">`. Hide that heading, not the content panel that contains the landing.
 
 ## Languages
 

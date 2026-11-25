@@ -4,6 +4,8 @@ description: "Send one useful chat turn: pick the workspace, attach material, an
 quadrant: how-to
 ---
 
+Attach one source and open a citation in [Study with your materials](/learn/ask-with-a-source/).
+
 Home is where a turn runs. This page is how to send a useful one. For how a turn plans, calls tools, and stops, see [How the agent loop works](/learning-workspace/agent-loop/).
 
 ## Where it is
@@ -32,18 +34,18 @@ The top-right icons above the thread let you **save useful content to Favorites*
 4. Follow tool progress in Activity and open cited sources or generated files when you need to inspect the evidence.
 5. Save a useful result to [Favorites](/learning-workspace/favorites/), or develop your own explanation in the [Learning notebook](/learning-workspace/notebook/). Reopen the conversation from Resources → Chat History.
 
-Selecting a connected agent is by default a persistent choice for the session; importing an old agent transcript is a reference. Likewise, an attached file supplies this turn's material by default, while workspace instructions and session preferences shape later turns. Check the visible chips before sending if a reply seems to be using the wrong sources or persona.
+A connected agent stays selected for the session. An imported agent transcript is a reference for this message. An attached file supplies this turn. Workspace instructions and session preferences shape later turns. If a reply uses the wrong source or persona, check the chips on the composer before you send again.
 
 ## Starting points
 
 Under the empty composer, Explain, Solve, Practice, Plan, and Research offer editable starting prompts. A separate personalized suggestion draws on your memory and recent activities; **Suggest something else** replaces it. Choose either to fill the composer, then review before sending. **Customize page → Starting prompts** edits the reusable titles and requests.
 
-**Settings → Conversation** sets how much history feeds them: raise the activity count for suggestions that range wider, lower it to keep them close to what you were just doing.
+**Settings → Conversation** sets how much history feeds them: raise the activity count for suggestions that range wider, lower it to keep them close to your latest work.
 
 
 ## Sticky context vs. one-time references
 
-DeepTutor splits context into two kinds, and the composer keeps them in two different places — this is the single most important idea to learn here.
+The composer keeps two kinds of context in two places.
 
 **Sticky session context** persists across turns until you change it: capability, workspace or course binding, tools, **knowledge bases**, **persona**, **model**, and Reading / Mastery state. The right side exposes the relevant selectors; an agent selected with the Agent chip or `@` stays attached by default, while the microphone only fills the current draft.
 
@@ -64,7 +66,7 @@ Typing **`@`** in the main Chat composer filters the same connected-agent list a
 
 The **database icon** opens the knowledge picker. Untouched conversations inherit ready workspace assignments or the default KB; explicit selections, including none, persist until changed. The agent retrieves from these bases when grounding is needed.
 
-How it retrieves depends on the base's engine, and the difference is worth knowing when an answer surprises you. Most bases — LlamaIndex, GraphRAG, LightRAG, a linked index, a remote LightRAG Server, a Tencent IMA library — are served by the `rag` tool. **PageIndex OSS** and **PageIndex Cloud** are not: their retrieval is agentic, so a reading loop walks the local or hosted document tree instead, and those bases are deliberately absent from `rag`'s list. An **Obsidian** vault has no index at all and is routed to the Obsidian capability, which navigates the live files; a **MarginNote 4** library is the same shape, walked by its own tools.
+How it retrieves depends on the base's engine. Most bases — LlamaIndex, GraphRAG, LightRAG, a linked index, a remote LightRAG Server, a Tencent IMA library — are served by the `rag` tool. **PageIndex OSS** and **PageIndex Cloud** are not: their retrieval is agentic, so a reading loop walks the local or hosted document tree instead, and those bases are deliberately absent from `rag`'s list. An **Obsidian** vault has no index at all and is routed to the Obsidian capability, which navigates the live files; a **MarginNote 4** library is the same shape, walked by its own tools.
 
 
 ### Persona — set the voice and stance
@@ -74,7 +76,7 @@ The **person icon** chooses a persona. `Default` is the plain assistant; built-i
 
 ### Model — switch per turn
 
-The **model chip** picks which model runs this turn. Every model you configured in Settings appears here with its provider and context window, and the default is marked. Switch to a long-context model for big documents, or a cheaper/faster one for quick exchanges — mid-session, without losing your place.
+The **model chip** picks which model runs this turn. Every model you configured in Settings appears here with its provider and context window, and the default is marked. A provider is the service that hosts the model. Switch to a long-context model for a large document, or a cheaper, faster model for a short exchange. You can switch during the session and keep your place.
 
 
 ## The Activity panel
@@ -83,7 +85,7 @@ The panel toggle (top-right) opens **Activity** — a live record of the tools, 
 
 ![Conversation and its activity controls](/screenshots/dev/chat.png)
 
-As a turn runs, each tool call collapses into a compact header (for example, `Done · 21s`) that you can expand to inspect inputs and outputs — so the thread stays readable while the full trace stays auditable.
+As a turn runs, each tool call collapses into a compact header (for example, `Done · 21s`). Expand a header to inspect inputs and outputs. The thread stays short, and the full trace stays available.
 
 ## The content workspace
 
@@ -105,7 +107,7 @@ On Docker and server deployments the deployment folder constrains managed worksp
 
 ## On a phone
 
-Below tablet width the workspace collapses to a single column with a slide-over sidebar, so the same thread is usable on a phone rather than rendering a three-pane desktop layout off the edge of the viewport.
+Below tablet width the workspace collapses to a single column with a slide-over sidebar. The same thread fits a phone.
 
 ## Practical examples
 

@@ -363,6 +363,36 @@ dialog[aria-label="Search"] .dialog-frame {
   }
 }
 
+/* Learn-lesson prerequisites. A plain aside, not Starlight's note, so the
+   default blue background never paints before this stylesheet. Welcome link
+   cards are transparent over --sl-color-bg, with a gray-5 border, 0.5rem
+   radius, and --sl-shadow-sm. */
+.dt-prereq {
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: var(--sl-color-bg);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  box-shadow: var(--sl-shadow-sm);
+  color: var(--sl-color-white);
+}
+
+.dt-prereq-title {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  font-size: var(--sl-text-h5);
+  line-height: var(--sl-line-height-headings);
+  color: var(--sl-color-white);
+}
+
+.dt-prereq p {
+  margin: 0;
+}
+
+.dt-prereq a {
+  color: var(--sl-color-text-accent);
+}
+
 /* Brand icons (channel/provider) embedded in tables and lists: keep them
    inline and vertically centred against the text baseline. */
 .sl-markdown-content img[src^="/channel-icons/"],

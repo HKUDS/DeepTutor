@@ -1,7 +1,7 @@
 ---
 title: Docker
 description: 选项 3 —— 一个容器跑完整 Web 应用，镜像来自 GHCR。
-quadrant: how-to
+quadrant: tutorial
 ---
 
 一个容器跑完整 Web 应用。镜像在 GitHub Container Registry 上：

@@ -4,7 +4,7 @@ description: 安装 Open DeepTutor，接上一个语言模型，发出第一条�
 quadrant: tutorial
 ---
 
-Open DeepTutor 是桌面应用。第一次启动会安装自带的 Python 和 Node 运行时，在本机拉起服务，并打开 DeepTutor 工作区。你不需要单独安装 Python、Node 或源码。
+Open DeepTutor 是桌面应用。第一次打开时，它会解开自带的 Python 和 Node 运行时，在这台电脑上启动服务，然后显示工作区。你不用自己再装 Python、Node 或源码。
 
 ## 1. 下载这台电脑对应的应用
 
@@ -14,20 +14,22 @@ Open DeepTutor 是桌面应用。第一次启动会安装自带的 Python 和 No
 | Intel 芯片的 Mac | [macOS（Intel）版 Open DeepTutor](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg) |
 | Windows | [Windows 版 Open DeepTutor](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe) |
 
-打开刚下载的文件。在 macOS 上把应用拖进“应用程序”。在 Windows 上完成安装向导。Windows 安装包未签名，SmartScreen 会要求确认；选择继续运行。
+打开刚下载的文件。在 Mac 上，把应用拖进“应用程序”。在 Windows 上，把安装向导走完。安装包没有签名，SmartScreen 会让你确认；选择继续运行。完成后，应用程序列表里能看到 **Open DeepTutor**。
 
-Windows 便携 ZIP 在[同一个 Release](https://github.com/HKUDS/DeepTutor/releases/latest) 上。这条路径使用上面的安装包。
+Windows 便携 ZIP 在[同一个 Release](https://github.com/HKUDS/DeepTutor/releases/latest) 上。这篇教程用的是上面的安装包。
 
 ## 2. 等到工作区打开
 
-启动 **Open DeepTutor**。第一次启动会解压自带运行时，然后显示 DeepTutor 窗口。等到工作区出现。如果几分钟后仍停在启动画面，退出再打开一次。
+启动 **Open DeepTutor**。第一次启动会先解开自带运行时，再打开 DeepTutor 窗口。侧栏里能看到主页时，就可以继续。如果过了几分钟还停在启动画面，退出再打开一次。
 
 ## 3. 接上一个语言模型
 
+语言模型负责写回复。提供方是托管这个模型的厂商，或者你本机已经在跑的服务。这一步是让 DeepTutor 有一个能调用的模型。
+
 1. 打开 **设置 → 模型与服务**。
-2. 添加一个语言模型 profile。使用你已有的密钥，或一个已经在运行的本地服务。
-3. 选择 **Test**。测试通过表示这个 profile 能完成一次最小调用。
-4. 选择 **Apply**。
+2. 添加一个语言模型 profile。用你已经有的密钥，或者一个已经在运行的本地服务。profile 就是这份连接：哪个提供方、哪个模型、密钥或地址。
+3. 选择 **Test**。测试通过，说明这个 profile 能完成一次最小调用。
+4. 选择 **Apply**。这个 profile 已保存，下一条消息可以用它。
 
 嵌入、搜索和语音可以以后再加。[提供方与模型](/zh-cn/get-started/providers/) 列出这些服务和提供方目录。
 
@@ -35,11 +37,11 @@ Windows 便携 ZIP 在[同一个 Release](https://github.com/HKUDS/DeepTutor/rel
 
 打开 **主页 → 对话**。提一个具体问题，例如：“用一段话解释采样定理，然后给我两道题。”
 
-线程里出现回复，这条路径就完成了。
+对话里出现回复，这篇教程就完成了。
 
 ## 数据放在哪里
 
-学习数据和设置留在应用自己的工作区目录里。更换应用不会替换这个目录。
+笔记、对话和设置都留在应用自己的工作区目录里。换一个新版本的应用，不会换掉这个目录。
 
 | 系统 | 工作区数据 |
 | --- | --- |

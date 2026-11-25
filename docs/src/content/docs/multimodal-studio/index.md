@@ -4,6 +4,8 @@ description: How Visualize, Math Animator, and Video Lesson divide the work of m
 quadrant: explanation
 ---
 
+Make one figure in [Make a figure](/learn/make-a-figure/). Math Animator and Video Lesson stay on this page.
+
 DeepTutor has three generators. They share the chat thread and a model, and they answer different jobs.
 
 | Generator | You want | What comes back |

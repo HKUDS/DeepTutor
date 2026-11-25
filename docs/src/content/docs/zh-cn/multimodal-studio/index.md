@@ -4,6 +4,8 @@ description: Visualize、Math Animator 和 Video Lesson 分别解决什么样的
 quadrant: explanation
 ---
 
+先做一张图，按[把想法呈现出来](/zh-cn/learn/make-a-figure/)走一遍。Math Animator 和 Video Lesson 仍在这一页里选。
+
 DeepTutor 有三种生成器。它们共用对话线程和模型，回答的是不同的事。
 
 | 生成器 | 你想要 | 得到什么 |

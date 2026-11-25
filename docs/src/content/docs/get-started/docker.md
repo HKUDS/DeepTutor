@@ -1,7 +1,7 @@
 ---
 title: Docker
 description: Option 3 — one container for the full Web app, from the GHCR image.
-quadrant: how-to
+quadrant: tutorial
 ---
 
 One container for the full Web app. Images on GitHub Container Registry:

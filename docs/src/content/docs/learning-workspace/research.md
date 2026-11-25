@@ -4,6 +4,8 @@ description: Run one Deep Research question and file the cited report in your no
 quadrant: how-to
 ---
 
+Produce one cited report in [Research a question](/learn/research-a-question/).
+
 **Research** (`deep_research`) investigates one question and returns a cited report. Use it when a chat answer is too thin and you want the sources kept with the writing.
 
 ## Produce one cited report

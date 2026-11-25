@@ -4,6 +4,8 @@ description: 对一个问题运行 Deep Research，并把带引用的报告放�
 quadrant: how-to
 ---
 
+做出一份带引用的报告，按[研究一个问题](/zh-cn/learn/research-a-question/)走一遍。
+
 **Research**（`deep_research`）调查一个问题并返回带引用的报告。对话回答太薄、又需要把来源和写作留在一起时用它。
 
 ## 做出一份带引用的报告
