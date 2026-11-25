@@ -462,6 +462,7 @@
     'Hiragino Mincho ProN',
     'Yu Mincho',
     'Noto Serif JP',
+    'Source Han Serif JP',
     'MS Mincho',
     'Songti SC',
     'STSong',
@@ -479,11 +480,13 @@
     'Hiragino Sans',
     'Yu Gothic',
     'Noto Sans JP',
+    'Source Han Sans JP',
     'Meiryo',
     'PingFang SC',
     'Hiragino Sans GB',
     'Microsoft YaHei',
     'Noto Sans SC',
+    'Source Han Sans SC',
     system-ui,
     sans-serif;
 }
@@ -495,6 +498,7 @@
     'Nanum Myeongjo',
     'Batang',
     'Noto Serif KR',
+    'Source Han Serif KR',
     'Songti SC',
     'STSong',
     'Noto Serif SC',
@@ -512,10 +516,12 @@
     'Malgun Gothic',
     'Apple SD Gothic Neo',
     'Noto Sans KR',
+    'Source Han Sans KR',
     'PingFang SC',
     'Hiragino Sans GB',
     'Microsoft YaHei',
     'Noto Sans SC',
+    'Source Han Sans SC',
     system-ui,
     sans-serif;
 }
@@ -528,6 +534,7 @@
     var(--font-serif),
     'Songti TC',
     'Noto Serif TC',
+    'Source Han Serif TC',
     'PMingLiU',
     'Songti SC',
     'STSong',
@@ -547,10 +554,12 @@
     'PingFang TC',
     'Microsoft JhengHei',
     'Noto Sans TC',
+    'Source Han Sans TC',
     'PingFang SC',
     'Hiragino Sans GB',
     'Microsoft YaHei',
     'Noto Sans SC',
+    'Source Han Sans SC',
     system-ui,
     sans-serif;
 }

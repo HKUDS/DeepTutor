@@ -39,6 +39,7 @@ module.exports = {
           'Hiragino Sans GB',
           'Microsoft YaHei',
           'Noto Sans SC',
+          'Source Han Sans SC',
           'system-ui',
           'sans-serif',
         ],
