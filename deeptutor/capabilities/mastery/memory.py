@@ -161,8 +161,13 @@ class MasteryContextBuilder(ContextBuilder):
         return summary
 
     def _model_tokens(self, messages, summary="", route=None):
+        # The budget governs the learning history. Runtime snapshots ride along
+        # in the request (so later turns extend the cached prefix, #2922) but are
+        # not counted: a large mastery_status snapshot would otherwise push the
+        # tutor into a memory rewrite, itself a full cache miss, after one or
+        # two turns. Archiving an exchange drops its snapshots with it.
         return _memory_tokens(
-            project_mastery_replay(replay_history(messages, route=route), keep_snapshots=True),
+            project_mastery_replay(replay_history(messages, route=route)),
             summary,
         )
 
@@ -237,7 +242,9 @@ class MasteryContextBuilder(ContextBuilder):
         result.model_history = project_mastery_replay(
             result.model_history or [], keep_snapshots=True
         )
-        result.token_count = _memory_tokens(result.model_history, result.conversation_summary)
+        result.token_count = _memory_tokens(
+            project_mastery_replay(result.model_history), result.conversation_summary
+        )
         result.history_sources = sources
         if result.token_count > result.budget:
             # One complete historical exchange can itself exceed the plan.

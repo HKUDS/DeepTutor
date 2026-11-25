@@ -58,9 +58,7 @@ def test_mastery_accounting_uses_requested_route_without_mutating_records(route)
     original = deepcopy(rows)
     builder = MasteryContextBuilder(MagicMock())
     expected = _count_model_context_tokens(
-        deduplicate_user_images(
-            project_mastery_replay(replay_history(rows, route=route), keep_snapshots=True)
-        )
+        deduplicate_user_images(project_mastery_replay(replay_history(rows, route=route)))
     )
 
     assert builder._model_tokens(rows, route=route) == expected
@@ -71,7 +69,7 @@ def test_route_free_mastery_accounting_keeps_existing_replay_behavior():
     rows = _routed_rows()
     builder = MasteryContextBuilder(MagicMock())
     assert builder._model_tokens(rows) == _count_model_context_tokens(
-        deduplicate_user_images(project_mastery_replay(replay_history(rows), keep_snapshots=True))
+        deduplicate_user_images(project_mastery_replay(replay_history(rows)))
     )
 
 
@@ -183,5 +181,26 @@ async def test_replayed_snapshots_stay_in_place_so_follow_up_turns_extend_the_pr
         None,
     ]
     assert turn_three.token_count == _count_model_context_tokens(
-        deduplicate_user_images(turn_three.model_history)
+        deduplicate_user_images(project_mastery_replay(turn_three.model_history))
     )
+
+
+@pytest.mark.asyncio
+async def test_kept_snapshots_do_not_count_against_the_history_budget():
+    """A large status snapshot must not trigger a memory rewrite on its own.
+
+    The real DeepSeek run hit this: after two mastery turns an 18k-character
+    mastery_status snapshot pushed the replayed history over the 20k budget,
+    and the third turn paid a memory call plus a full prefix miss.
+    """
+    bulky = "status line\n" * 4000
+    rows = _snapshot_turn(1, "Explain the chain rule.", "Outside, then inside.", bulky)
+
+    built = await _build(rows)
+    plain = await _build(
+        _snapshot_turn(1, "Explain the chain rule.", "Outside, then inside.", None)
+    )
+
+    assert built.model_history[0]["_context_snapshot"] == "workspace"
+    assert built.token_count == plain.token_count
+    assert MasteryContextBuilder(MagicMock())._model_tokens(rows) == plain.token_count
