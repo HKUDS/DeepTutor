@@ -651,14 +651,11 @@ def test_entry_patch_rejects_non_finite_verdict_numbers(bank):
     store, _, client = bank
     entry = seed(store)
     # ``json.loads`` accepts these literals; stored, they would break every read.
+    body = '{"ai_verdict": {"result": "correct", "final": true, "awarded_points": N}}'
     for literal in ("Infinity", "NaN", "1e999"):
-        body = (
-            '{"ai_verdict": {"result": "correct", "final": true, '
-            f'"awarded_points": {literal}}}}}'
-        )
         response = client.patch(
             f"/bank/entries/{entry['id']}",
-            content=body,
+            content=body.replace("N", literal),
             headers={"content-type": "application/json"},
         )
         assert response.status_code == 422
