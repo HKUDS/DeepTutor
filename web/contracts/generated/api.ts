@@ -14169,12 +14169,21 @@ export interface components {
     readonly EntryUpdateRequest: {
       /** Ai Judgment */
       readonly ai_judgment?: string | null;
+      /** Ai Verdict */
+      readonly ai_verdict?: {
+        readonly [key: string]: unknown;
+      } | null;
       /** Bookmarked */
       readonly bookmarked?: boolean | null;
       /** Followup Session Id */
       readonly followup_session_id?: string | null;
+      /** Is Correct */
+      readonly is_correct?: boolean | null;
       /** Resolved */
       readonly resolved?: boolean | null;
+      /** Result */
+      readonly result?:
+        ("correct" | "partial" | "incorrect" | "ungraded") | null;
     };
     /** EpubPairingRequest */
     readonly EpubPairingRequest: {
@@ -15814,6 +15823,10 @@ export interface components {
        * @default
        */
       readonly ai_judgment: string;
+      /** Ai Verdict */
+      readonly ai_verdict?: {
+        readonly [key: string]: unknown;
+      } | null;
       /**
        * Assessment Type
        * @default
@@ -16635,6 +16648,9 @@ export interface components {
        * @default
        */
       readonly question_type: string;
+      /** Result */
+      readonly result?:
+        ("correct" | "incorrect" | "partial" | "ungraded" | "voided") | null;
       /**
        * User Answer
        * @default
