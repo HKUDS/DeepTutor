@@ -27,18 +27,61 @@ const transactionFile = path.join(userRoot, 'upgrade.json');
 const interfaceFile = path.join(runtimeHome, 'data/user/settings/interface.json');
 const seed = app.isPackaged ? path.join(process.resourcesPath, 'seed/runtime.json') : path.join(sourceDirectory, '../.local', targetId(), 'seed/runtime.json');
 const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-public.pem'), 'utf8');
-// macOS draws the shell's own title bar under the traffic lights; Windows keeps its native frame and menu bar.
-const HEADER_HEIGHT = WINDOWS ? 0 : 44;
-const BACKGROUND = { light: '#ffffff', dark: '#161618' };
+// macOS draws its 44px bar under the traffic lights; Windows uses a 38px WCO bar matching the sidebar tone.
+const HEADER_HEIGHT = WINDOWS ? 38 : 44;
+// Once loaded, solid themes use the sampled sidebar color. The glass gradient
+// keeps the fallback color for the window chrome.
+const PALETTE_BACKGROUND = WINDOWS
+  ? { snow: '#f7f7f8', light: '#f5f2ea', dark: '#171719', glass: '#0e0d1a' }
+  : { snow: '#ffffff', light: '#faf8f5', dark: '#161618', glass: '#0e0d1a' };
+const OVERLAY_SYMBOL = { light: '#27272a', dark: '#e4e4e7', glass: '#e9e7f5' };
 const CONTENT_LOAD_TIMEOUT_MS = 60000;
+
 let window;
 let view;
 let contentVisible = false;
 let worker;
 let state = { phase: 'starting', step: 'opening' };
-let ui = { language: 'en', theme: 'light' };
+const PRIMARY_LANGUAGES = [
+  { code: 'zh', label: '简体中文' },
+  { code: 'en', label: 'English' },
+];
+
+const MORE_LANGUAGES = [
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'ja', label: '日本語' },
+  { code: 'ko', label: '한국어' },
+  { code: 'uk', label: 'Українська' },
+  { code: 'pl', label: 'Polski' },
+  { code: 'pt', label: 'Português' },
+  { code: 'vi', label: 'Tiếng Việt' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'hu', label: 'Magyar' },
+];
+
+const SUPPORTED_LANGUAGES = new Set([
+  ...PRIMARY_LANGUAGES.map(item => item.code),
+  ...MORE_LANGUAGES.map(item => item.code),
+]);
+
+const THEME_PREFERENCES = ['system', 'snow', 'light', 'dark', 'glass'];
+const VALID_THEME_SET = new Set(THEME_PREFERENCES);
+const VALID_LAYOUT_SET = new Set(['modern', 'classic']);
+
+let ui = {
+  language: 'en',
+  theme: 'light',
+  themePreference: 'system',
+  palette: 'snow',
+  chromeBg: null,
+  uiLayout: 'modern',
+};
+let chromeSyncTimer;
 let interfaceWatcher;
 let interfaceTimer;
+let menuPopups;
 let busy = false;
 let quitting = false;
 let exitAllowed = false;
@@ -61,16 +104,35 @@ function coreVersion() {
   return active?.manifest.coreVersion ?? app.getVersion();
 }
 
+function currentChromeBackground() {
+  if (!WINDOWS) return ui.theme === 'dark' ? '#161618' : '#ffffff';
+  return ui.chromeBg || PALETTE_BACKGROUND[ui.palette] || PALETTE_BACKGROUND.snow;
+}
+
+function titleBarOverlayOptions(theme, color = currentChromeBackground()) {
+  return {
+    color,
+    symbolColor: ui.palette === 'glass' ? OVERLAY_SYMBOL.glass : OVERLAY_SYMBOL[theme],
+    height: HEADER_HEIGHT,
+  };
+}
+
 /** What the shell page shows, already in the user's language. */
 function snapshot() {
   const failed = state.phase === 'error';
   return {
-    phase: state.phase, step: state.step, contentVisible, theme: ui.theme, language: ui.language,
+    phase: state.phase, step: state.step, contentVisible, theme: ui.theme, palette: ui.palette, chromeBg: currentChromeBackground(), language: ui.language,
     title: failed ? t('errorTitle') : state.phase === 'stopped' ? t('stoppedTitle') : '',
     message: failed ? t('errorBody') : state.step ? t(state.step) : '',
     detail: failed ? state.message ?? '' : '',
     tagline: t('tagline'), slowHint: t('slowHint'), retry: t('retry'), logs: t('logs'),
     edition: `${EDITION.full} v${coreVersion()}`,
+    menus: [
+      { id: 'app', label: 'Open DeepTutor' },
+      { id: 'preferences', label: t('preferences') },
+      { id: 'view', label: t('view') },
+      { id: 'core', label: t('core') },
+    ],
   };
 }
 
@@ -84,21 +146,273 @@ function status(next) {
   publish();
 }
 
+function normalizeAppLanguage(value) {
+  const code = String(value ?? '').trim().toLowerCase().replaceAll('_', '-');
+  const base = code.split('-', 1)[0];
+  if (base === 'cn') return 'zh';
+  if (base === 'ua') return 'uk';
+  if (base === 'jp') return 'ja';
+  return SUPPORTED_LANGUAGES.has(base) ? base : resolveLanguage(value);
+}
+
+function normalizeThemePreference(value) {
+  return VALID_THEME_SET.has(value) ? value : 'system';
+}
+
+function resolvePalette(preference) {
+  if (preference === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'snow';
+  return VALID_THEME_SET.has(preference) ? preference : 'snow';
+}
+
+function resolveChromeTheme(preference) {
+  const palette = resolvePalette(preference);
+  return palette === 'dark' || palette === 'glass' ? 'dark' : 'light';
+}
+
 async function readInterface() {
   let saved;
   try { saved = await readJSON(interfaceFile) ?? {}; }
   catch { return ui; } // A half-written or hand-edited file keeps the current choice.
-  const dark = saved.theme === 'dark' || (saved.theme === 'system' && nativeTheme.shouldUseDarkColors);
-  return { language: resolveLanguage(saved.language), theme: dark ? 'dark' : 'light' };
+  if (!WINDOWS) {
+    const dark = saved.theme === 'dark' || (saved.theme === 'system' && nativeTheme.shouldUseDarkColors);
+    return { ...ui, language: resolveLanguage(saved.language), theme: dark ? 'dark' : 'light' };
+  }
+  const language = normalizeAppLanguage(saved.language);
+  const themePreference = normalizeThemePreference(saved.theme);
+  const palette = resolvePalette(themePreference);
+  return {
+    ...ui,
+    language,
+    themePreference,
+    palette,
+    theme: resolveChromeTheme(themePreference),
+    chromeBg: palette === ui.palette ? ui.chromeBg : null,
+  };
+}
+
+function applyThemeChrome() {
+  const bg = currentChromeBackground();
+  if (window && !window.isDestroyed()) {
+    window.setBackgroundColor(bg);
+    if (WINDOWS) window.setTitleBarOverlay(titleBarOverlayOptions(ui.theme, bg));
+  }
+  if (view && !view.webContents.isDestroyed()) {
+    view.setBackgroundColor(bg);
+  }
 }
 
 async function refreshInterface() {
   const next = await readInterface();
-  if (next.language === ui.language && next.theme === ui.theme) return;
+  const paletteChanged = next.palette !== ui.palette;
+  if (
+    next.language === ui.language
+    && next.theme === ui.theme
+    && next.themePreference === ui.themePreference
+    && !paletteChanged
+  ) return;
   ui = next;
   buildMenu();
-  window?.setBackgroundColor(BACKGROUND[ui.theme]);
+  applyThemeChrome();
   publish();
+  if (paletteChanged) scheduleChromeColorSync(120);
+}
+
+/** 采样 WebContentsView 左上角（紧贴标题栏下方侧边栏）的实际合成色，消除顶栏与侧边栏色差。 */
+async function syncChromeColorFromView() {
+  if (!WINDOWS || !webViewReady()) return;
+  try {
+    const hex = await view.webContents.executeJavaScript(`(() => {
+      const parse = value => {
+        const m = /^rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)(?:\\s*,\\s*([\\d.]+))?\\s*\\)/.exec(value || '');
+        if (!m) return null;
+        return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]];
+      };
+      const stack = document.elementsFromPoint(8, 8).reverse();
+      let acc = null;
+      for (const el of stack) {
+        if (el.matches?.('button, a, input, svg, img, span, p')) continue;
+        const style = getComputedStyle(el);
+        if (style.backgroundImage && style.backgroundImage !== 'none' && style.backgroundImage.includes('gradient')) {
+          return null; // 琉璃等渐变背景交给预设色处理，避免取到透明底
+        }
+        const rgba = parse(style.backgroundColor);
+        if (!rgba || rgba[3] <= 0.01) continue;
+        if (!acc || rgba[3] >= 0.99) {
+          acc = [rgba[0], rgba[1], rgba[2]];
+        } else {
+          const a = rgba[3];
+          acc = [
+            Math.round(rgba[0] * a + acc[0] * (1 - a)),
+            Math.round(rgba[1] * a + acc[1] * (1 - a)),
+            Math.round(rgba[2] * a + acc[2] * (1 - a)),
+          ];
+        }
+      }
+      if (!acc) return null;
+      return '#' + acc.map(v => v.toString(16).padStart(2, '0')).join('');
+    })()`);
+    const nextBg = typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex) ? hex : null;
+    if (nextBg === ui.chromeBg) return;
+    ui = { ...ui, chromeBg: nextBg };
+    applyThemeChrome();
+    publish();
+  } catch { /* 页面切换中忽略 */ }
+}
+
+function scheduleChromeColorSync(delay = 80) {
+  clearTimeout(chromeSyncTimer);
+  chromeSyncTimer = setTimeout(() => void syncChromeColorFromView(), delay);
+}
+
+function webViewReady() {
+  return Boolean(view && state.phase === 'ready' && !view.webContents.isDestroyed());
+}
+
+/** 弹出「偏好」菜单前，从页面 localStorage 拉取实时状态，保证勾选态 100% 准确。 */
+async function syncPreferencesFromView() {
+  if (!webViewReady()) return;
+  try {
+    const live = await view.webContents.executeJavaScript(`(() => {
+      try {
+        return {
+          language: localStorage.getItem('deeptutor-language'),
+          theme: localStorage.getItem('deeptutor-theme'),
+          uiLayout: localStorage.getItem('deeptutor.ui-layout'),
+        };
+      } catch {
+        return null;
+      }
+    })()`);
+    if (!live) return;
+    const nextLanguage = live.language ? normalizeAppLanguage(live.language) : ui.language;
+    const nextThemePref = live.theme ? normalizeThemePreference(live.theme) : ui.themePreference;
+    const nextPalette = resolvePalette(nextThemePref);
+    const nextTheme = resolveChromeTheme(nextThemePref);
+    const nextLayout = VALID_LAYOUT_SET.has(live.uiLayout) ? live.uiLayout : ui.uiLayout;
+
+    const paletteChanged = nextPalette !== ui.palette;
+    const shellChanged = nextLanguage !== ui.language || nextTheme !== ui.theme || paletteChanged;
+    const menuChanged = shellChanged || nextThemePref !== ui.themePreference || nextLayout !== ui.uiLayout;
+    if (!menuChanged) return;
+
+    const prevTheme = ui.theme;
+    ui = {
+      language: nextLanguage,
+      theme: nextTheme,
+      themePreference: nextThemePref,
+      palette: nextPalette,
+      chromeBg: paletteChanged ? null : ui.chromeBg,
+      uiLayout: nextLayout,
+    };
+    buildMenu();
+    if (paletteChanged || nextTheme !== prevTheme) applyThemeChrome();
+    if (shellChanged) publish();
+    if (paletteChanged) scheduleChromeColorSync(60);
+  } catch { /* 页面切换中或未就绪时保留现有状态 */ }
+}
+
+/** 优先走后端 /api/settings/ui 持久化，后端未就绪或请求失败时原子写回 interface.json。 */
+let preferenceWrites = Promise.resolve();
+
+function persistInterfacePatch(patch) {
+  preferenceWrites = preferenceWrites.then(() => writeInterfacePreference(patch));
+  return preferenceWrites;
+}
+
+async function writeInterfacePreference(patch) {
+  if (state.backendURL && state.phase === 'ready') {
+    try {
+      const response = await fetch(`${state.backendURL}/api/settings/ui`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (response.ok) return;
+    } catch { /* 回退到直接写文件 */ }
+  }
+  try {
+    const current = await readJSON(interfaceFile) ?? {};
+    await writeJSON(interfaceFile, { ...current, ...patch });
+  } catch (error) {
+    console.error('Failed to persist interface preference:', error);
+  }
+}
+
+async function applyLanguagePreference(nextLanguage) {
+  const language = normalizeAppLanguage(nextLanguage);
+  if (ui.language !== language) {
+    ui = { ...ui, language };
+    buildMenu();
+    publish();
+  }
+  if (webViewReady()) {
+    await view.webContents.executeJavaScript(`(() => {
+      const language = ${JSON.stringify(language)};
+      try { localStorage.setItem('deeptutor-language', language); } catch {}
+      window.dispatchEvent(new CustomEvent('deeptutor:language', { detail: { language, source: 'desktop' } }));
+    })()`).catch(console.error);
+  }
+  await persistInterfacePatch({ language });
+}
+
+async function applyThemePreference(nextPreference) {
+  const themePreference = normalizeThemePreference(nextPreference);
+  const palette = resolvePalette(themePreference);
+  const theme = resolveChromeTheme(themePreference);
+  ui = { ...ui, themePreference, palette, theme, chromeBg: null };
+  buildMenu();
+  applyThemeChrome();
+  publish();
+
+  if (webViewReady()) {
+    // 直接按 web/lib/theme.ts 的规则改 <html> class，即使页面没有事件监听器也 100% 立刻切换。
+    await view.webContents.executeJavaScript(`(() => {
+      const pref = ${JSON.stringify(themePreference)};
+      const resolved = pref === 'system'
+        ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'snow')
+        : pref;
+      const html = document.documentElement;
+      html.classList.remove('dark', 'theme-glass', 'theme-snow');
+      if (resolved === 'dark') html.classList.add('dark');
+      else if (resolved === 'glass') html.classList.add('dark', 'theme-glass');
+      else if (resolved === 'snow') html.classList.add('theme-snow');
+      try { localStorage.setItem('deeptutor-theme', pref); } catch {}
+      window.dispatchEvent(new CustomEvent('deeptutor:theme', { detail: { theme: pref } }));
+    })()`).catch(console.error);
+    // 等页面按新 class 重绘一帧后，同步真实侧边栏颜色到顶部栏
+    scheduleChromeColorSync(80);
+  }
+  await persistInterfacePatch({ theme: themePreference });
+}
+
+async function applyUiLayoutPreference(nextLayout) {
+  if (!VALID_LAYOUT_SET.has(nextLayout) || !webViewReady()) return;
+  if (ui.uiLayout !== nextLayout) {
+    ui = { ...ui, uiLayout: nextLayout };
+    buildMenu();
+  }
+  await view.webContents.executeJavaScript(`(() => {
+    const layout = ${JSON.stringify(nextLayout)};
+    try { localStorage.setItem('deeptutor.ui-layout', layout); } catch {}
+    document.documentElement.setAttribute('data-ui-layout', layout);
+    window.dispatchEvent(new CustomEvent('deeptutor:ui-layout', { detail: { layout } }));
+  })()`).catch(console.error);
+  scheduleChromeColorSync(120);
+}
+
+function openSettingsPage() {
+  if (!webViewReady() || !state.url) return;
+  const target = new URL('/settings', state.url).href;
+  if (!view.webContents.getURL().startsWith(target)) {
+    void view.webContents.loadURL(target).catch(console.error);
+  }
+  view.webContents.focus();
+}
+
+function toggleAlwaysOnTop() {
+  if (!window || window.isDestroyed()) return;
+  window.setAlwaysOnTop(!window.isAlwaysOnTop());
+  buildMenu();
 }
 
 function watchInterface() {
@@ -114,6 +428,7 @@ function watchInterface() {
 }
 
 function hideContent() {
+  clearTimeout(chromeSyncTimer);
   contentVisible = false;
   const current = view;
   view = undefined;
@@ -140,9 +455,13 @@ async function openContent(ready) {
     partition: 'persist:deeptutor',
   } });
   view = nextView;
-  nextView.setBackgroundColor(BACKGROUND[ui.theme]);
+  nextView.setBackgroundColor(currentChromeBackground());
   nextView.setVisible(false);
   const content = nextView.webContents;
+  if (WINDOWS) {
+    content.on('did-finish-load', () => scheduleChromeColorSync(120));
+    content.on('did-navigate-in-page', () => scheduleChromeColorSync(120));
+  }
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -175,6 +494,7 @@ async function openContent(ready) {
     contentVisible = true;
     status(ready);
     content.focus();
+    if (WINDOWS) buildMenu();
   }
 }
 
@@ -356,46 +676,157 @@ async function installUpdate() {
 }
 
 function buildMenu() {
-  const about = { label: t('about'), click: () => dialog.showMessageBox(window, {
-    message: `${EDITION.full} v${coreVersion()}`,
-    detail: t('aboutDetail', { core: active?.manifest.coreVersion ?? '—', runtime: active?.manifest.runtimeId ?? '—' }),
-  }) };
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Open DeepTutor', submenu: WINDOWS ? [about, { type: 'separator' }, { role: 'quit', label: t('quit') }] : [
-      about,
+  const ready = webViewReady();
+  const about = {
+    label: t('about'),
+    click: () => dialog.showMessageBox(window, {
+      message: `${EDITION.full} v${coreVersion()}`,
+      detail: t('aboutDetail', { core: active?.manifest.coreVersion ?? '—', runtime: active?.manifest.runtimeId ?? '—' }),
+    }),
+  };
+
+  const settingsItem = {
+    label: t('settings'),
+    accelerator: 'CmdOrCtrl+,',
+    enabled: ready,
+    click: () => openSettingsPage(),
+  };
+
+  const appSubmenu = WINDOWS
+    ? [
+        settingsItem,
+        { type: 'separator' },
+        about,
+        { type: 'separator' },
+        { role: 'quit', label: t('quit') },
+      ]
+    : [
+        about,
+        { type: 'separator' },
+        { role: 'hide', label: t('hide') }, { role: 'hideOthers', label: t('hideOthers') }, { role: 'unhide', label: t('showAll') },
+        { type: 'separator' },
+        { role: 'quit', label: t('quit') },
+      ];
+
+  const activeMoreLang = MORE_LANGUAGES.find(item => item.code === ui.language);
+  const preferencesSubmenu = [
+    // 常用语言直接平铺在最上方，使用 checkbox 避免与子菜单跨组产生 Win32 radio 冲突
+    ...PRIMARY_LANGUAGES.map(item => ({
+      label: item.label,
+      type: 'checkbox',
+      checked: ui.language === item.code,
+      click: () => void applyLanguagePreference(item.code),
+    })),
+    {
+      label: activeMoreLang ? `${t('moreLanguages')} (${activeMoreLang.label})` : t('moreLanguages'),
+      submenu: MORE_LANGUAGES.map(item => ({
+        label: item.label,
+        type: 'checkbox',
+        checked: ui.language === item.code,
+        click: () => void applyLanguagePreference(item.code),
+      })),
+    },
+    { type: 'separator' },
+    {
+      label: t('theme'),
+      submenu: [
+        { id: 'system', key: 'themeSystem' },
+        { id: 'snow', key: 'themeDefault' },
+        { id: 'light', key: 'themeCream' },
+        { id: 'dark', key: 'themeDark' },
+        { id: 'glass', key: 'themeGlass' },
+      ].map(({ id, key }) => ({
+        label: t(key),
+        type: 'radio',
+        checked: ui.themePreference === id,
+        click: () => void applyThemePreference(id),
+      })),
+    },
+    {
+      label: t('layout'),
+      submenu: [
+        { id: 'modern', key: 'layoutModern' },
+        { id: 'classic', key: 'layoutClassic' },
+      ].map(({ id, key }) => ({
+        label: t(key),
+        type: 'radio',
+        enabled: ready,
+        checked: ui.uiLayout === id,
+        click: () => void applyUiLayoutPreference(id),
+      })),
+    },
+  ];
+
+  const viewSubmenu = [
+    ...(WINDOWS ? [
+      {
+        label: t('alwaysOnTop'),
+        type: 'checkbox',
+        checked: Boolean(window && !window.isDestroyed() && window.isAlwaysOnTop()),
+        click: () => toggleAlwaysOnTop(),
+      },
       { type: 'separator' },
-      { role: 'hide', label: t('hide') }, { role: 'hideOthers', label: t('hideOthers') }, { role: 'unhide', label: t('showAll') },
-      { type: 'separator' },
-      { role: 'quit', label: t('quit') },
-    ] },
-    { label: t('edit'), submenu: [
+    ] : []),
+    { label: t('reload'), accelerator: 'CmdOrCtrl+R', enabled: !WINDOWS || ready, click: () => view?.webContents.reload() },
+    ...(WINDOWS ? [
+      { label: t('forceReload'), accelerator: 'CmdOrCtrl+Shift+R', enabled: ready, click: () => view?.webContents.reloadIgnoringCache() },
+    ] : []),
+    { type: 'separator' },
+    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(0) },
+    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() + 0.5) },
+    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() - 0.5) },
+    { type: 'separator' },
+    { role: 'togglefullscreen', label: t('fullscreen') },
+  ];
+
+  const coreSubmenu = [
+    { label: t('restartCore'), click: async () => {
+      const choice = await dialog.showMessageBox(window, { message: t('restartConfirm'), buttons: [t('cancel'), t('restart')], defaultId: 0, cancelId: 0 });
+      if (choice.response === 1) void boot();
+    } },
+    { label: t('installUpdate'), click: () => void installUpdate() }, { type: 'separator' },
+    { label: t('openData'), click: () => void shell.openPath(runtimeHome) },
+    { label: t('openLogs'), click: () => void shell.openPath(path.dirname(logPath)) },
+  ];
+
+  if (WINDOWS) {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: 'Open DeepTutor', submenu: appSubmenu },
+      { label: t('preferences'), submenu: preferencesSubmenu },
+      { label: t('view'), submenu: viewSubmenu },
+      { label: t('core'), submenu: coreSubmenu },
+    ]));
+
+    menuPopups = new Map([
+      ['app', Menu.buildFromTemplate(appSubmenu)],
+      ['preferences', Menu.buildFromTemplate(preferencesSubmenu)],
+      ['view', Menu.buildFromTemplate(viewSubmenu)],
+      ['core', Menu.buildFromTemplate(coreSubmenu)],
+    ]);
+
+    // Keep native Win32 menu bar permanently hidden while retaining global shortcuts.
+    if (window && !window.isDestroyed()) {
+      window.setAutoHideMenuBar(false);
+      window.setMenuBarVisibility(false);
+    }
+  } else {
+    const editSubmenu = [
       { role: 'undo', label: t('undo') }, { role: 'redo', label: t('redo') }, { type: 'separator' },
       { role: 'cut', label: t('cut') }, { role: 'copy', label: t('copy') }, { role: 'paste', label: t('paste') },
       { role: 'selectAll', label: t('selectAll') },
-    ] },
-    { label: t('view'), submenu: [
-      { label: t('reload'), accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() },
-      { type: 'separator' },
-      { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', click: () => view?.webContents.setZoomLevel(0) },
-      { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() + 0.5) },
-      { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() - 0.5) },
-      { type: 'separator' },
-      { role: 'togglefullscreen', label: t('fullscreen') },
-    ] },
-    { label: t('core'), submenu: [
-      { label: t('restartCore'), click: async () => {
-        const choice = await dialog.showMessageBox(window, { message: t('restartConfirm'), buttons: [t('cancel'), t('restart')], defaultId: 0, cancelId: 0 });
-        if (choice.response === 1) void boot();
-      } },
-      { label: t('installUpdate'), click: () => void installUpdate() }, { type: 'separator' },
-      { label: t('openData'), click: () => void shell.openPath(runtimeHome) },
-      { label: t('openLogs'), click: () => void shell.openPath(path.dirname(logPath)) },
-    ] },
-    { role: 'windowMenu', label: t('window'), submenu: WINDOWS ? [{ role: 'minimize', label: t('minimize') }] : [
+    ];
+    const windowSubmenu = [
       { role: 'minimize', label: t('minimize') }, { role: 'zoom', label: t('zoom') },
       { type: 'separator' }, { role: 'front', label: t('front') },
-    ] },
-  ]));
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: 'Open DeepTutor', submenu: appSubmenu },
+      { label: t('edit'), submenu: editSubmenu },
+      { label: t('view'), submenu: viewSubmenu },
+      { label: t('core'), submenu: coreSubmenu },
+      { role: 'windowMenu', label: t('window'), submenu: windowSubmenu },
+    ]));
+  }
 }
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
@@ -427,8 +858,10 @@ else {
   });
   window = new BrowserWindow({
     title: 'Open DeepTutor', width: 1360, height: 920, minWidth: 900, minHeight: 620,
-    backgroundColor: BACKGROUND[ui.theme],
-    ...(WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
+    backgroundColor: currentChromeBackground(),
+    ...(WINDOWS
+      ? { titleBarStyle: 'hidden', titleBarOverlay: titleBarOverlayOptions(ui.theme) }
+      : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
     webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   window.webContents.on('will-navigate', event => event.preventDefault());
@@ -443,6 +876,17 @@ else {
     status: () => snapshot(),
     restart: () => { void boot(); },
     logs: async () => { await mkdir(path.dirname(logPath), { recursive: true }); await shell.openPath(path.dirname(logPath)); },
+    popupMenu: async (id, position) => {
+      if (!WINDOWS || !menuPopups?.has(id)) return;
+      if (id === 'preferences') await syncPreferencesFromView();
+      return new Promise(resolve => {
+        const menu = menuPopups?.get(id);
+        if (!menu || !window || window.isDestroyed()) return resolve();
+        const x = Number.isFinite(position?.x) ? Math.max(0, Math.round(position.x)) : 8;
+        const y = Number.isFinite(position?.y) ? Math.max(0, Math.round(position.y)) : HEADER_HEIGHT;
+        menu.popup({ window, x, y, callback: resolve });
+      });
+    },
   })) ipcMain.handle(`desktop:${channel}`, (event, ...args) => { trustedShell(event); return handler(...args); });
   buildMenu();
   watchInterface();
