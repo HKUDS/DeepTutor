@@ -23,6 +23,7 @@ _PROVIDER_POOL_MAXSIZE = 2
 @dataclass
 class _ProviderEntry:
     provider: LLMProvider
+    loop: asyncio.AbstractEventLoop
     users: int = 0
     retired: bool = False
 
@@ -177,11 +178,28 @@ def build_isolated_provider(config: LLMConfig) -> LLMProvider:
 
 
 def _schedule_close(provider: LLMProvider, loop: asyncio.AbstractEventLoop) -> None:
+    """Close *provider* on *loop*, the loop whose tasks and sockets it owns.
+
+    A worker thread running its own loop (``asyncio.run``) shares this pool, so
+    the closing caller may be on another thread. A closed loop has nothing left
+    to await on; its client is simply dropped.
+    """
+
     async def _close() -> None:
         with contextlib.suppress(Exception):
             await provider.aclose()
 
-    loop.create_task(_close())
+    if loop.is_closed():
+        return
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is loop:
+        loop.create_task(_close())
+    else:
+        with contextlib.suppress(RuntimeError):  # closed between the check and here
+            asyncio.run_coroutine_threadsafe(_close(), loop)
 
 
 def get_runtime_provider(config: LLMConfig | None = None) -> LLMProvider:
@@ -211,13 +229,18 @@ def _get_runtime_entry(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> _P
         _provider_pool.move_to_end(key)
         return cached
 
-    entry = _ProviderEntry(_build_runtime_provider(config))
+    # Entries of loops that have finished (each ``asyncio.run`` in a worker
+    # thread leaves one) must not push live clients out of the pool.
+    for stale_key in [k for k, item in _provider_pool.items() if item.loop.is_closed()]:
+        _provider_pool.pop(stale_key).retired = True
+
+    entry = _ProviderEntry(_build_runtime_provider(config), loop)
     _provider_pool[key] = entry
     while len(_provider_pool) > _PROVIDER_POOL_MAXSIZE:
         _, evicted = _provider_pool.popitem(last=False)
         evicted.retired = True
         if not evicted.users:
-            _schedule_close(evicted.provider, loop)
+            _schedule_close(evicted.provider, evicted.loop)
     return entry
 
 
