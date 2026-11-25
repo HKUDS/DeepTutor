@@ -446,7 +446,7 @@ async function applyLanguagePreference(nextLanguage) {
     await view.webContents.executeJavaScript(`(() => {
       const language = ${JSON.stringify(language)};
       try { localStorage.setItem('deeptutor-language', language); } catch {}
-      window.dispatchEvent(new CustomEvent('deeptutor:language', { detail: { language } }));
+      window.dispatchEvent(new CustomEvent('deeptutor:language', { detail: { language, source: 'desktop' } }));
     })()`).catch(console.error);
   }
   await persistInterfacePatch({ language });

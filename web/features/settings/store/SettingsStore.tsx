@@ -984,25 +984,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           | Partial<UiSettings>
           | undefined;
         if (pending && "theme" in pending) {
-          pendingRef.current.set("ui", { ...pending, theme: next });
-          syncPendingKeys();
+          void stageUiRef.current({ theme: next });
         }
       }
     };
     const onExternalLanguage = (event: Event) => {
-      const next = (event as CustomEvent<{ language?: unknown }>).detail
-        ?.language;
-      if (typeof next !== "string") return;
-      setLanguage(next as UiSettings["language"]);
+      const detail = (
+        event as CustomEvent<{ language?: unknown; source?: unknown }>
+      ).detail;
+      // The settings load also broadcasts LANGUAGE_EVENT to AppShell.
+      if (detail?.source !== "desktop" || typeof detail.language !== "string") {
+        return;
+      }
+      const language = detail.language as UiSettings["language"];
+      setLanguage(language);
       const pending = pendingRef.current.get("ui") as
         | Partial<UiSettings>
         | undefined;
       if (pending && "language" in pending) {
-        pendingRef.current.set("ui", {
-          ...pending,
-          language: next as UiSettings["language"],
-        });
-        syncPendingKeys();
+        void stageUiRef.current({ language });
       }
     };
     window.addEventListener(THEME_EVENT, onExternalTheme);
@@ -1011,7 +1011,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       window.removeEventListener(THEME_EVENT, onExternalTheme);
       window.removeEventListener(LANGUAGE_EVENT, onExternalLanguage);
     };
-  }, [syncPendingKeys]);
+  }, []);
 
   // A language change recreates loadSettings; it must not close an ongoing test.
   useEffect(() => () => eventSourceRef.current?.close(), []);
