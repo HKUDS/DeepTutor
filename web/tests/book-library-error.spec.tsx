@@ -1,7 +1,7 @@
 import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import BookLibrary from '@/app/(workspace)/learning/books/components/BookLibrary'
+import BookLibrary from '@/app/(shell)/(workspace)/learning/books/components/BookLibrary'
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }))

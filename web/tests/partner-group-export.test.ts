@@ -97,7 +97,7 @@ test("group page exposes a disabled-until-ready Markdown download control", () =
   const pageSource = readFileSync(
     path.resolve(
       process.cwd(),
-      "app/(workspace)/partners/groups/[groupId]/page.tsx",
+      "app/(shell)/(workspace)/partners/groups/[groupId]/page.tsx",
     ),
     "utf8",
   );

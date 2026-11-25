@@ -1,7 +1,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import QuizBlock from "@/app/(workspace)/learning/books/components/blocks/QuizBlock";
+import QuizBlock from "@/app/(shell)/(workspace)/learning/books/components/blocks/QuizBlock";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { initI18n } from "@/i18n/init";
 import type { Block } from "@/lib/book-types";

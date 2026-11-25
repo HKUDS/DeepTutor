@@ -76,7 +76,7 @@ import { useSplitPane } from "@/features/co-writer/hooks/useSplitPane";
 import { useSynchronizedScroll } from "@/features/co-writer/hooks/useSynchronizedScroll";
 import { useDocumentLifecycle } from "@/features/co-writer/hooks/useDocumentLifecycle";
 import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookModal";
-import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
+import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(shell)/(workspace)/co-writer/sampleTemplate";
 import ModelSelector from "@/components/chat/home/ModelSelector";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import Tooltip from "@/shared/ui/Tooltip";

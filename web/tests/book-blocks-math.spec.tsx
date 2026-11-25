@@ -1,9 +1,9 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import CalloutBlock from "@/app/(workspace)/learning/books/components/blocks/CalloutBlock";
-import FlashCardsBlock from "@/app/(workspace)/learning/books/components/blocks/FlashCardsBlock";
-import SectionBlock from "@/app/(workspace)/learning/books/components/blocks/SectionBlock";
+import CalloutBlock from "@/app/(shell)/(workspace)/learning/books/components/blocks/CalloutBlock";
+import FlashCardsBlock from "@/app/(shell)/(workspace)/learning/books/components/blocks/FlashCardsBlock";
+import SectionBlock from "@/app/(shell)/(workspace)/learning/books/components/blocks/SectionBlock";
 import type { Block } from "@/lib/book-types";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));

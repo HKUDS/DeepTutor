@@ -8,8 +8,8 @@ const source = (relative: string) =>
 describe("chat workspace composition", () => {
   it("keeps the route as a small composition boundary", () => {
     const route = [
-      source("app/(workspace)/chat/page.tsx"),
-      source("app/(workspace)/chat/[sessionId]/page.tsx"),
+      source("app/(shell)/(workspace)/chat/page.tsx"),
+      source("app/(shell)/(workspace)/chat/[sessionId]/page.tsx"),
     ].join("\n");
     expect(route).toMatch(/<ChatWorkspace/);
     expect(route).not.toMatch(

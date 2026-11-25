@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import PartnerGroupPage from "@/app/(workspace)/partners/groups/[groupId]/page";
+import PartnerGroupPage from "@/app/(shell)/(workspace)/partners/groups/[groupId]/page";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import type { PartnerGroupMessage } from "@/lib/partner-groups-api";
 import { initI18n } from "@/i18n/init";

@@ -124,7 +124,7 @@ def test_partner_reply_language_picker_follows_the_account_language() -> None:
     assert "RESPONSE_LANGUAGE_OPTIONS.map" in picker
 
     surfaces = [
-        WEB / "app/(workspace)/partners/new/page.tsx",
+        WEB / "app/(shell)/(workspace)/partners/new/page.tsx",
         WEB / "components/partners/PartnerConfigure.tsx",
     ]
     for path in surfaces:

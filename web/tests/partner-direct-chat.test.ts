@@ -8,7 +8,7 @@ const chatSource = readFileSync(
   "utf8",
 );
 const pageSource = readFileSync(
-  path.resolve(process.cwd(), "app/(workspace)/partners/[partnerId]/page.tsx"),
+  path.resolve(process.cwd(), "app/(shell)/(workspace)/partners/[partnerId]/page.tsx"),
   "utf8",
 );
 const archiveSource = readFileSync(
