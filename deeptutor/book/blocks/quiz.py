@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ...core.assessment import (
+    normalize_math_delimiters,
+    validate_quiz_payload,
+)
 from ..models import BlockType, SourceAnchor
 from .base import BlockContext, BlockGenerator, GenerationFailure
 
@@ -71,6 +75,15 @@ class QuizGenerator(BlockGenerator):
         if not questions:
             raise GenerationFailure("no questions generated")
 
+        # The reader's KaTeX renderer only understands `$...$`; catch any text
+        # the extractor could not repair instead of persisting raw source.
+        math_issues = validate_quiz_payload({"questions": questions})
+        if math_issues:
+            logger.warning(
+                "Quiz payload still contains unrenderable math: %s",
+                "; ".join(math_issues),
+            )
+
         return (
             {"questions": questions, "topic": topic},
             [],
@@ -103,14 +116,26 @@ class QuizGenerator(BlockGenerator):
             qa = item.get("qa_pair") or {}
             if not isinstance(qa, dict):
                 continue
+            options = qa.get("options") or {}
             out.append(
                 {
                     "question_id": qa.get("question_id", ""),
-                    "question": qa.get("question", ""),
+                    "question": normalize_math_delimiters(
+                        str(qa.get("question") or "")
+                    ),
                     "question_type": qa.get("question_type", "written"),
-                    "options": qa.get("options") or {},
-                    "correct_answer": qa.get("correct_answer", ""),
-                    "explanation": qa.get("explanation", ""),
+                    "options": {
+                        key: normalize_math_delimiters(str(value or ""))
+                        for key, value in options.items()
+                    }
+                    if isinstance(options, dict)
+                    else {},
+                    "correct_answer": normalize_math_delimiters(
+                        str(qa.get("correct_answer") or "")
+                    ),
+                    "explanation": normalize_math_delimiters(
+                        str(qa.get("explanation") or "")
+                    ),
                     "difficulty": qa.get("difficulty", ""),
                     "concentration": qa.get("concentration", ""),
                 }

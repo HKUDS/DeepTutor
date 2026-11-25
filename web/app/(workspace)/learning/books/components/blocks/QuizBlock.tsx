@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { Block, QuizAttempt } from "@/lib/book-types";
+import { normalizeQuizMathText } from "@/lib/quiz-math";
 import {
   isChoiceQuizQuestion,
   isConceptQuizQuestion,
@@ -222,7 +223,9 @@ function QuizQuestionCard({
           </span>
           <div className="min-w-0 flex-1">
             <MarkdownRenderer
-              content={String(question.question || t("(missing)"))}
+              content={normalizeQuizMathText(
+                String(question.question || t("(missing)")),
+              )}
               variant="compact"
               className="font-sans text-sm font-medium text-[var(--foreground)] [&_ol]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-2"
               enableMath
@@ -292,7 +295,7 @@ function QuizQuestionCard({
                 </span>
                 <div className="min-w-0 flex-1 break-words">
                   <MarkdownRenderer
-                    content={label}
+                    content={normalizeQuizMathText(label)}
                     variant="compact"
                     className="font-sans text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
                     enableMath
@@ -344,7 +347,7 @@ function QuizQuestionCard({
             {t("Answer")}
           </div>
           <MarkdownRenderer
-            content={correct}
+            content={normalizeQuizMathText(correct)}
             variant="compact"
             className="font-sans text-sm text-[var(--foreground)] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-1.5 [&_pre]:my-2"
             enableMath
@@ -379,7 +382,7 @@ function QuizQuestionCard({
       {revealed && question.explanation && (
         <div className="mt-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] p-2">
           <MarkdownRenderer
-            content={String(question.explanation)}
+            content={normalizeQuizMathText(String(question.explanation))}
             variant="compact"
             enableMath
           />
