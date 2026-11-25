@@ -261,7 +261,7 @@ def test_names_this_loader_cannot_serve_are_kept_in_the_session_state(monkeypatc
     written: list[set[str]] = []
     monkeypatch.setattr(
         "deeptutor.services.mcp.session_state.record_loaded_tools",
-        lambda session_id, names: written.append(set(names)),
+        lambda session_id, names, **_: written.append(set(names)),
     )
     registry = _registry(
         _Regular(),
@@ -290,3 +290,30 @@ def test_names_this_loader_cannot_serve_are_kept_in_the_session_state(monkeypatc
     assert restricted.initial_schemas() == [] and restricted.loaded_names == set()
     assert restricted.load(["mcp_partner_tool"])["loaded"] == ["mcp_partner_tool"]
     assert written[-1] == {"mastery_build", "mcp_provider_tool", "mcp_partner_tool"}
+
+
+def test_only_built_in_deferred_tools_go_through_call_tool() -> None:
+    """With ``proxy`` on, a capability tool's definition comes back in the result
+    while a provider (MCP) tool still loads into ``tools[]`` as before."""
+    mcp = _FakeDeferredTool("mcp_gh_search", server="gh")
+    builtin = _FakeDeferredTool("research_lit")
+    builtin.deferred = False  # built-ins are deferred by the turn, not by the tool
+    loader = DeferredToolLoader(
+        registry=_registry(mcp, builtin),
+        session_id="s1",
+        loaded=set(),
+        capability_names={"research_lit"},
+        proxied=set(),
+    )
+    loader.proxy = True
+    live: list[dict] = []
+    loader.bind_live_schemas(live)
+
+    outcome = loader.load(["mcp_gh_search", "research_lit"])
+
+    assert outcome["loaded"] == ["mcp_gh_search", "research_lit"]
+    assert [item["function"]["name"] for item in live] == ["mcp_gh_search"]
+    assert [item["name"] for item in outcome["schemas"]] == ["research_lit"]
+    assert loader.proxied_names == {"research_lit"}
+    assert loader.callable_through_proxy("research_lit")
+    assert not loader.callable_through_proxy("mcp_gh_search")

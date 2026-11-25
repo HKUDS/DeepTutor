@@ -384,7 +384,13 @@ class AgentLoopHost:
                     "a model that reasons less."
                 ),
             )
-        tool_names = tuple(str(call.get("name") or "") for call in result.tool_calls)
+        # ``call_tool`` calls run as the loaded tool they name; the assistant
+        # message below still records what the model emitted.
+        resolve = getattr(self.pipeline, "_resolve_proxied_tool_calls", None)
+        dispatch_calls, proxied_ids = (
+            resolve(result.tool_calls) if callable(resolve) else (result.tool_calls, set())
+        )
+        tool_names = tuple(str(call.get("name") or "") for call in dispatch_calls)
         policy = self.pipeline._capability_tool_round_output_policy(
             self.context, self.loop._clean(result.text), tool_names
         )
@@ -405,12 +411,16 @@ class AgentLoopHost:
             assistant["_provider_response_state"] = provider_state
         self.messages.append(assistant)
         self.dispatch = await self.pipeline._dispatch_tool_calls(
-            tool_calls=result.tool_calls,
+            tool_calls=dispatch_calls,
             context=self.context,
             stream=self.stream,
             iteration_index=self.state.tool_steps,
             stage=self.loop.stage,
         )
+        if proxied_ids:
+            for message in self.dispatch.tool_messages:
+                if message.get("tool_call_id") in proxied_ids and "name" in message:
+                    message["name"] = "call_tool"
         self.state.sources.extend(self.dispatch.sources)
         self.messages.extend(self.dispatch.tool_messages)
         extend_transient_model_messages(

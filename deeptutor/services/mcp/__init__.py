@@ -14,7 +14,11 @@ from deeptutor.services.mcp.manager import (
     wrapped_tool_name,
 )
 from deeptutor.services.mcp.network import validate_mcp_url
-from deeptutor.services.mcp.session_state import load_loaded_tools, record_loaded_tools
+from deeptutor.services.mcp.session_state import (
+    load_loaded_tools,
+    load_proxied_tools,
+    record_loaded_tools,
+)
 
 __all__ = [
     "MCPConfig",
@@ -24,6 +28,7 @@ __all__ = [
     "get_mcp_manager",
     "load_loaded_tools",
     "load_mcp_config",
+    "load_proxied_tools",
     "mcp_config_path",
     "record_loaded_tools",
     "save_mcp_config",

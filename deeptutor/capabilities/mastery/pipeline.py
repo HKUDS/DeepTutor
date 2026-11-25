@@ -313,7 +313,9 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         # the same set the next (outline) turn mounts eagerly. Loading them
         # one by one through ``load_tools`` left the next turn's tools[] with
         # a schema more than the request that preceded it: a full cache miss.
-        context.extension("mastery")[OUTLINE_TOOL_LOADER] = lambda: loader.load(outline_names)
+        context.extension("mastery")[OUTLINE_TOOL_LOADER] = lambda: loader.load(
+            outline_names, native=True
+        )
 
     def _remember_outline_tools(self, context) -> None:
         """Keep outline schemas mounted after this conversation leaves outline.

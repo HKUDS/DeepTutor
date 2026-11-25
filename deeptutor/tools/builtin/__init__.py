@@ -2278,13 +2278,74 @@ class LoadToolsTool(_PromptHintsMixin, BaseTool):
                 + " (use exact names from the Extended Tools section)"
             )
         content = "\n".join(parts)
+        schemas = outcome.get("schemas") or []
+        if schemas:
+            # Proxy mode: the schemas stay out of ``tools[]`` (the start of the
+            # cached prompt) and travel here, at the end of the messages.
+            content = "\n\n".join(
+                [
+                    content,
+                    "The tools defined below are not in your tool list. Call them with `call_tool`: "
+                    '{"name": "<tool name>", "arguments": {<the tool\'s parameters>}}. '
+                    "Their definitions (name, description, JSON-Schema parameters):",
+                    "\n".join(
+                        json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+                        for schema in schemas
+                    ),
+                    "If these definitions are no longer in the conversation, call "
+                    "`load_tools` again to read them.",
+                ]
+            )
         # Usage rules for the loaded tools (e.g. setup's confirm-before-apply
         # protocol) arrive with their schemas, not in the system prompt.
         content = "\n\n".join([content, *(outcome.get("guides") or [])]).strip()
         return ToolResult(
             content=content or "(nothing to load)",
             success=not outcome["unknown"] or bool(outcome["loaded"]),
-            metadata=outcome,
+            metadata={key: value for key, value in outcome.items() if key != "schemas"},
+        )
+
+
+class CallToolTool(_PromptHintsMixin, BaseTool):
+    """Call an Extended Tool that ``load_tools`` returned the definition of.
+
+    The chat loop forwards a ``call_tool`` call to the named tool before
+    dispatch (``AgenticLoopPipeline._resolve_proxied_tool_calls``), so the
+    real tool runs with its own argument checks, injected kwargs and trace.
+    ``tools[]`` therefore never changes when a tool is loaded. This
+    ``execute`` only runs when the call could not be forwarded.
+    """
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="call_tool",
+            description=(
+                "Call an Extended Tool after `load_tools` returned its definition. "
+                "Tools in your tool list are called directly, not through this."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="name",
+                    type="string",
+                    description="Exact name of the loaded Extended Tool.",
+                ),
+                ToolParameter(
+                    name="arguments",
+                    type="object",
+                    description="Arguments for that tool, following its parameters.",
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        name = str(kwargs.get("name") or "").strip() or "(missing)"
+        return ToolResult(
+            content=(
+                f"`{name}` cannot be called through call_tool: only Extended Tools "
+                "loaded with `load_tools` in this conversation can. Load it first, "
+                "or call a tool from your tool list directly."
+            ),
+            success=False,
         )
 
 
@@ -2455,6 +2516,7 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "github",
     "exec",
     "load_tools",
+    "call_tool",
     "cron",
     "ask_user",
     "mastery_topics",
@@ -2513,6 +2575,7 @@ __all__ = [
     "PartnerSearchTool",
     "RAGTool",
     "LoadToolsTool",
+    "CallToolTool",
     "ReadMemoryTool",
     "ReadSkillTool",
     "ReadSourceTool",

@@ -1,0 +1,4 @@
+short_description: "Call an Extended Tool whose definition `load_tools` returned."
+when_to_use: "After `load_tools` said a tool is called through `call_tool`."
+input_format: "`name` — the exact tool name; `arguments` — an object following that tool's parameters."
+phase: "exploration"

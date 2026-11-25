@@ -101,6 +101,7 @@ class _Conversation:
             "system": system,
             "note": note,
             "manifest": pipeline._deferred_tools_manifest(),
+            "tool_manifest": pipeline._tool_manifest(enabled),
         }
 
 
@@ -157,22 +158,141 @@ async def test_one_conversation_keeps_tools_and_system_stable(
 
 
 @pytest.mark.asyncio
-async def test_loaded_tools_join_the_end_and_stay(_isolated_runtime: dict[str, bool]) -> None:
+async def test_loading_a_tool_leaves_tools_unchanged_and_call_tool_reaches_it(
+    _isolated_runtime: dict[str, bool],
+) -> None:
+    """``load_tools`` used to append the schema to ``tools[]`` mid-turn.
+
+    ``tools[]`` comes first in the provider's cache key, so the very next
+    request re-processed the system prompt and the whole history. The schema
+    now arrives in the ``load_tools`` result and ``call_tool`` reaches it.
+    """
+    from deeptutor.tools.builtin import LoadToolsTool
+
     chat = _Conversation(language="en")
     first = await chat.turn("find me an arxiv paper on teaching derivatives")
-    result = first["pipeline"]._deferred_loader.load(["preprint", "inspect_setup"])
-    assert result["loaded"] == ["preprint", "inspect_setup"]
-    # The setup protocol travels with the setup tools, not in the system prompt.
-    assert len(result["guides"]) == 1 and "inspect_setup" in result["guides"][0]
-    first_tools = first["tools"]  # The live list the loader appended to.
-    chat.previous["tools"] = json.loads(json.dumps(first_tools))
-    assert first_tools[-2]["function"]["name"] == "preprint"
+    assert "call_tool" in first["names"]
+    before = json.dumps(first["tools"])
+    loader = first["pipeline"]._deferred_loader
+    result = await LoadToolsTool().execute(names=["preprint", "inspect_setup"], _tool_loader=loader)
+    assert json.dumps(first["tools"]) == before, "loading must not touch tools[]"
+    assert result.metadata["loaded"] == ["preprint", "inspect_setup"]
+    assert "call_tool" in result.content
+    definitions = [
+        json.loads(line) for line in result.content.splitlines() if line.startswith('{"name"')
+    ]
+    assert [item["name"] for item in definitions] == ["preprint", "inspect_setup"]
+    assert all("parameters" in item for item in definitions)
+    # The setup protocol still travels with the setup tools.
+    assert len(result.metadata["guides"]) == 1
+    assert result.metadata["guides"][0] in result.content
+
+    calls, renamed = first["pipeline"]._resolve_proxied_tool_calls(
+        [
+            {
+                "id": "c1",
+                "name": "call_tool",
+                "arguments": json.dumps({"name": "preprint", "arguments": {"query": "x"}}),
+            },
+            # Not loaded: left for ``CallToolTool`` to refuse.
+            {
+                "id": "c2",
+                "name": "call_tool",
+                "arguments": json.dumps({"name": "apply_setting", "arguments": {}}),
+            },
+            {"id": "c3", "name": "web_fetch", "arguments": "{}"},
+        ]
+    )
+    assert [call["name"] for call in calls] == ["preprint", "call_tool", "web_fetch"]
+    assert json.loads(calls[0]["arguments"]) == {"query": "x"}
+    assert renamed == {"c1"}
+
+    # Later turns keep the same tools[] and still reach the loaded tools.
+    second = await chat.turn("thanks")
+    assert json.dumps(second["tools"]) == before
+    assert second["pipeline"]._deferred_loader.callable_through_proxy("preprint")
+    again = second["pipeline"]._deferred_loader.load(["preprint"])
+    assert again["already_loaded"] == ["preprint"]
+    # A model that lost the definition to compaction can read it again.
+    assert [item["name"] for item in again["schemas"]] == ["preprint"]
+    third = await chat.turn("and once more")
+    assert json.dumps(third["tools"]) == before
+    assert third["system"] == first["system"]
+
+
+@pytest.mark.asyncio
+async def test_tools_reached_through_call_tool_stay_out_of_the_text_tool_list(
+    _isolated_runtime: dict[str, bool],
+) -> None:
+    """The text tool list (sent as a runtime snapshot when native schemas are
+    not trusted) used to list proxied tools beside the real ones: that invited
+    a direct call to a tool missing from ``tools[]``, and every load grew the
+    list, so another full copy of it was appended to the history."""
+    from deeptutor.tools.builtin import LoadToolsTool
+
+    chat = _Conversation(language="en")
+    first = await chat.turn("find me an arxiv paper on teaching derivatives")
+    await LoadToolsTool().execute(
+        names=["research_lit"], _tool_loader=first["pipeline"]._deferred_loader
+    )
+    second = await chat.turn("thanks")
+    assert "research_lit" not in second["tool_manifest"]
+    assert second["tool_manifest"] == first["tool_manifest"]
+    # The catalog still names it, so a model that lost the definition to
+    # compaction or snipping knows to call ``load_tools`` again.
+    assert "research_lit" in second["manifest"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_loads_still_land_in_tools(_isolated_runtime: dict[str, bool]) -> None:
+    """A runtime-driven ``native`` load (mastery entering outline) mounts the
+    schemas: the next turn would mount those tools eagerly anyway."""
+    chat = _Conversation(language="en")
+    first = await chat.turn("hello")
+    loader = first["pipeline"]._deferred_loader
+    loader.load(["preprint"])  # proxied first
+    outcome = loader.load(["preprint", "research_lit"], native=True)
+    assert outcome["schemas"] == []
+    names = [item["function"]["name"] for item in first["tools"]]
+    assert names[-2:] == ["preprint", "research_lit"]
+    chat.previous["tools"] = json.loads(json.dumps(first["tools"]))
 
     second = await chat.turn("thanks")
-    assert second["tools"] == first_tools
-    third = await chat.turn("and once more")
-    assert third["tools"] == first_tools
-    assert third["system"] == first["system"]
+    assert second["tools"] == first["tools"]
+
+
+@pytest.mark.asyncio
+async def test_typescript_engine_keeps_loading_into_tools(
+    _isolated_runtime: dict[str, bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEEPTUTOR_CHAT_ENGINE", "typescript-native")
+    chat = _Conversation(language="en")
+    first = await chat.turn("hello")
+    assert "call_tool" not in first["names"]
+    outcome = first["pipeline"]._deferred_loader.load(["preprint"])
+    assert outcome["loaded"] == ["preprint"] and outcome["schemas"] == []
+    assert first["tools"][-1]["function"]["name"] == "preprint"
+
+
+def test_recording_the_loaded_set_keeps_the_proxied_subset(
+    _isolated_runtime: dict[str, bool],
+) -> None:
+    from deeptutor.services.mcp import load_proxied_tools, record_loaded_tools
+
+    record_loaded_tools(SESSION, {"a", "b"}, proxied={"a"})
+    # Writers that only know the loaded set (an eagerly opened mode) keep it.
+    record_loaded_tools(SESSION, {"a", "b", "c"})
+    assert load_proxied_tools(SESSION) == {"a"}
+    record_loaded_tools(SESSION, {"b"})
+    assert load_proxied_tools(SESSION) == set()
+
+
+@pytest.mark.asyncio
+async def test_call_tool_refuses_what_it_cannot_forward() -> None:
+    from deeptutor.tools.builtin import CallToolTool
+
+    result = await CallToolTool().execute(name="apply_setting", arguments={})
+    assert not result.success and "load_tools" in result.content
 
 
 @pytest.mark.asyncio
@@ -211,6 +331,71 @@ async def test_unchanged_toggles_give_byte_identical_tools(
     assert "reason" not in third["names"]
     fourth = await chat.turn("hi again", enabled_tools=["web_search"])
     assert json.dumps(fourth["tools"]) == json.dumps(third["tools"])
+
+
+@pytest.mark.asyncio
+async def test_a_call_tool_round_runs_the_named_tool_and_keeps_the_models_call(
+    _isolated_runtime: dict[str, bool],
+) -> None:
+    from deeptutor.agents.loop.loop_host import AgentLoopHost
+
+    chat = _Conversation(language="en")
+    turn = await chat.turn("hello")
+    pipeline = turn["pipeline"]
+    pipeline._deferred_loader.load(["preprint"])
+    dispatched: list[dict[str, Any]] = []
+
+    async def fake_dispatch(*, tool_calls, **_kwargs):
+        dispatched.extend(tool_calls)
+        return SimpleNamespace(
+            sources=[],
+            tool_messages=[
+                {"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": "ok"}
+                for call in tool_calls
+            ],
+            model_messages=[],
+            pause=None,
+        )
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    pipeline._dispatch_tool_calls = fake_dispatch
+    model_call = {
+        "id": "c1",
+        "name": "call_tool",
+        "arguments": json.dumps({"name": "preprint", "arguments": {"query": "x"}}),
+    }
+    host = AgentLoopHost.__new__(AgentLoopHost)
+    host.pipeline = pipeline
+    host.context = UnifiedContext(session_id=SESSION, user_message="hello", language="en")
+    host.stream = None
+    host.messages = []
+    host.state = SimpleNamespace(tool_steps=0, sources=[])
+    host.loop = SimpleNamespace(
+        _clean=lambda text: text,
+        _discard_deferred_output=no_op,
+        _release_deferred_output=no_op,
+        stage="exploring",
+        _transient_model_messages=[],
+    )
+    host.result = SimpleNamespace(
+        text="",
+        tool_calls=[model_call],
+        reasoning_content="",
+        thinking_blocks=None,
+        finish_reason="tool_calls",
+        response_output_items=None,
+    )
+    await host.dispatch_tools()
+
+    assert [call["name"] for call in dispatched] == ["preprint"]
+    assert json.loads(dispatched[0]["arguments"]) == {"query": "x"}
+    assistant, tool_message = host.messages
+    # The replayed history is what the model emitted, byte for byte.
+    assert assistant["tool_calls"][0]["function"]["name"] == "call_tool"
+    assert assistant["tool_calls"][0]["function"]["arguments"] == model_call["arguments"]
+    assert tool_message["tool_call_id"] == "c1" and tool_message["name"] == "call_tool"
 
 
 @pytest.mark.asyncio

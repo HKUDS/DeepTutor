@@ -100,6 +100,10 @@
       "class_path": "deeptutor.tools.builtin:LoadToolsTool",
       "order": 16
     },
+    "call_tool": {
+      "class_path": "deeptutor.tools.builtin:CallToolTool",
+      "order": 16
+    },
     "web_fetch": {
       "class_path": "deeptutor.tools.builtin:WebFetchTool",
       "order": 17

@@ -23,6 +23,7 @@ silently takes a tool away. A loop that wants a narrower surface overrides
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -478,6 +479,10 @@ class AgenticLoopPipeline:
         """
         tool_schemas = self._build_llm_tool_schemas(enabled_tools, context)
         if self._tool_view is not None:
+            if self._tool_view.loader is not None:
+                # With ``call_tool`` mounted, loading a tool leaves ``tools[]``
+                # as it is; see ``DeferredToolLoader.proxy``.
+                self._tool_view.loader.proxy = "call_tool" in enabled_tools
             self._tool_view.attach(tool_schemas)
         if tool_schemas:
             # Reuse the last admitted order, including deferred tools loaded
@@ -617,8 +622,13 @@ class AgenticLoopPipeline:
 
     def _tool_manifest(self, enabled_tools: list[str]) -> str:
         names = list(enabled_tools)
-        if self._deferred_loader is not None:
-            for name in sorted(self._deferred_loader.loaded_names):
+        loader = self._deferred_loader
+        if loader is not None:
+            # Tools reached through ``call_tool`` are not in ``tools[]``: listing
+            # them here would invite a direct call, and loading one would grow
+            # this manifest and append another copy of it to the history.
+            proxied = loader.proxied_names if loader.proxy else set()
+            for name in sorted(loader.loaded_names - proxied):
                 if name not in names:
                     names.append(name)
         try:
@@ -1033,6 +1043,10 @@ class AgenticLoopPipeline:
             suppressed=_PARTNER_SUPPRESSED_TOOLS if is_partner else (),
         )
         composed = drop_unconfigured_generation_tools(composed)
+        if self._typescript_engine_requested():
+            # The TypeScript engine dispatches calls itself and does not
+            # forward ``call_tool``; it keeps loading schemas into ``tools[]``.
+            composed = [name for name in composed if name != "call_tool"]
         lookup_get = getattr(self.tool_lookup, "get", None)
         if callable(lookup_get) and lookup_get("workspace_export") is not None:
             composed.append("workspace_export")
@@ -1040,6 +1054,59 @@ class AgenticLoopPipeline:
         # through the composed list — even when this turn would have mounted
         # them — so their position and bytes never depend on the message.
         return [name for name in dict.fromkeys(composed) if name not in local_deferred]
+
+    @staticmethod
+    def _typescript_engine_requested() -> bool:
+        return os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native"
+
+    def _resolve_proxied_tool_calls(
+        self, tool_calls: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        """Point each forwardable ``call_tool`` call at the tool it names.
+
+        Returns the calls to dispatch and the ids of the rewritten ones. The
+        assistant message keeps the model's own ``call_tool`` call — only
+        dispatch sees the real name, so the tool runs with its own argument
+        checks, injected kwargs, policies and trace. A call that cannot be
+        forwarded (tool not loaded, arguments not an object) is left alone and
+        ``CallToolTool`` explains why.
+        """
+        loader = getattr(self, "_deferred_loader", None)
+        if loader is None or not any(call.get("name") == "call_tool" for call in tool_calls):
+            return tool_calls, set()
+        resolved: list[dict[str, Any]] = []
+        renamed: set[str] = set()
+        for call in tool_calls:
+            if call.get("name") != "call_tool":
+                resolved.append(call)
+                continue
+            raw = call.get("arguments") or "{}"
+            try:
+                outer = json.loads(raw) if isinstance(raw, str) else raw
+            except (TypeError, ValueError):
+                outer = None
+            target = str((outer or {}).get("name") or "").strip() if isinstance(outer, dict) else ""
+            inner = outer.get("arguments", {}) if isinstance(outer, dict) else None
+            if isinstance(inner, str):
+                try:
+                    inner = json.loads(inner or "{}")
+                except ValueError:
+                    inner = None
+            if inner is None:
+                inner = {}
+            if (
+                not target
+                or target == "call_tool"
+                or not isinstance(inner, dict)
+                or not loader.callable_through_proxy(target)
+            ):
+                resolved.append(call)
+                continue
+            resolved.append(
+                {**call, "name": target, "arguments": json.dumps(inner, ensure_ascii=False)}
+            )
+            renamed.add(str(call.get("id") or ""))
+        return resolved, renamed
 
     @staticmethod
     def _previously_mounted_tools(context: UnifiedContext) -> set[str]:
