@@ -362,6 +362,15 @@ class TestExactVerdictNumeric:
     def test_unsettled_rounding_sign_or_rate_reaches_the_llm(self, answer, expected):
         assert self._verdict(answer, expected) is None
 
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [("1.250.000", "1.250"), ("2.500.000 €", "2,5"), ("1.250", "1.250.000")],
+    )
+    def test_unit_scale_stated_only_in_the_question_reaches_the_llm(self, answer, expected):
+        # "Angaben in TEUR" lives in the question, not in the stored key.
+        assert self._verdict(answer, expected) is None
+        assert self._verdict("1.251.000", "1.250").result == "incorrect"
+
     def test_multi_part_mismatch_keeps_partial_credit_open(self):
         assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
         assert self._verdict("1250", "Goodwill = 1.250; NCI = 300") is None

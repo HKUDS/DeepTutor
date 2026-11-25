@@ -249,6 +249,17 @@ function matches(given: NumberToken, key: NumberToken, markGiven: Mark, markKey:
   ) {
     return 'rounded'
   }
+  // "1.250.000" for "1.250": the question may state the key in TEUR or Mio.
+  if (
+    !(given.percent || key.percent || given.unit || key.unit) &&
+    v[0] !== 0n &&
+    [1, 2, 3].some(
+      e =>
+        cmp(v, scale(keyValue, pow10(3 * e))) === 0 || cmp(keyValue, scale(v, pow10(3 * e))) === 0
+    )
+  ) {
+    return 'rounded'
+  }
   return false
 }
 

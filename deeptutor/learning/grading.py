@@ -291,6 +291,11 @@ def _matches(given: _Number, key: _Number, mark_given: str, mark_key: str):
         )
     ):
         return _ROUNDED
+    # "1.250.000" for "1.250": the question may state the key in TEUR or Mio.
+    if not (given.percent or key.percent or given.unit or key.unit) and any(
+        value and (value == key_value * 1000**k or key_value == value * 1000**k) for k in (1, 2, 3)
+    ):
+        return _ROUNDED
     return False
 
 
@@ -331,8 +336,9 @@ def numeric_equivalent(user_answer: str, expected_answer: str) -> NumericResult:
 
     ``ambiguous`` is set when some other reading would match: a separator, a
     rounding the key cannot settle (``3,48`` for ``3,4833``, ``416,67`` for
-    ``417``), only the sign (``1250`` for ``-1250``), or a rate in the other
-    unit (``0.5`` for ``0.5%``, ``42`` for ``0,42``).
+    ``417``), only the sign (``1250`` for ``-1250``), a rate in the other
+    unit (``0.5`` for ``0.5%``, ``42`` for ``0,42``), or exactly a factor of
+    1000, 1000² or 1000³ (``1.250.000`` for a ``1.250`` key in TEUR).
     """
     keys, given = _numeric_parts(expected_answer), _numeric_parts(user_answer)
     if keys is None or given is None:

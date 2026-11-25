@@ -76,6 +76,7 @@ def test_numeric_text_answers_are_graded(kind, answer, correct):
         ("fill_in_blank", "1234,57", "-1234.57"),
         ("fill_in_blank", "417", "416,67"),
         ("fill_in_blank", "1250", "about 1250"),
+        ("fill_in_blank", "1.250", "1.250.000"),  # the key may be in TEUR
         ("essay", "1250", "1250"),
     ],
 )
