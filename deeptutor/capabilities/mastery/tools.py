@@ -44,6 +44,7 @@ from deeptutor.capabilities.mastery.mode import (
     tool_is_allowed,
     wrong_mode_message,
 )
+from deeptutor.capabilities.mastery.record_tool import MasteryRecordTool
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 
 # ``learning.models`` and ``learning.policy`` only depend on pydantic — safe to
@@ -93,6 +94,7 @@ if TYPE_CHECKING:
 # Tool names the pipeline mounts together when a mastery path is active. Kept
 # here so the mount policy and the registration list can't disagree.
 MASTERY_TOOL_NAMES: tuple[str, ...] = (
+    "mastery_record",
     "mastery_prepare_lesson",
     "mastery_status",
     "mastery_quiz",
@@ -3905,6 +3907,7 @@ def _parse_modules(
 
 
 MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
+    MasteryRecordTool,
     MasteryStatusTool,
     MasteryNoteExplainedTool,
     MasteryQuizTool,
@@ -3924,6 +3927,7 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
 
 
 __all__ = [
+    "MasteryRecordTool",
     "MASTERY_TOOL_NAMES",
     "MASTERY_TOOL_TYPES",
     "MasteryAssessTool",

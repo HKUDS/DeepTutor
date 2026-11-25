@@ -19,6 +19,7 @@ from deeptutor.capabilities.mastery.tools import (
     MasteryPathsTool,
     MasteryProfileTool,
     MasteryQuizTool,
+    MasteryRecordTool,
     MasteryRepairQuestionTool,
     MasteryReviseTool,
     MasterySkipQuestionTool,
@@ -27,6 +28,7 @@ from deeptutor.capabilities.mastery.tools import (
 )
 
 __all__ = [
+    "MasteryRecordTool",
     "MASTERY_TOOL_NAMES",
     "MASTERY_TOOL_TYPES",
     "MasteryAssessTool",
