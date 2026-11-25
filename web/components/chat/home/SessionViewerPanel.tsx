@@ -58,6 +58,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { SessionFilePreview } from "@/components/chat/preview/SessionFilePreview";
 import {
   previewKindFor,
   resolveSourceUrl,
@@ -1406,7 +1407,7 @@ function SessionViewerPanelInner(
       />
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
         {activeTab?.kind === "file" ? (
-          <FileTabBody source={activeTab.source} />
+          <FileTabBody source={activeTab.source} onBack={onClose} />
         ) : activeTab?.kind === "web" ? (
           <WebTabBody key={activeTab.url} url={activeTab.url} />
         ) : activeTab?.kind === "markdown-note" ? (
@@ -1744,12 +1745,14 @@ function FileTabActions({ source }: { source: FilePreviewSource }) {
   );
 }
 
-function FileTabBody({ source }: { source: FilePreviewSource }) {
+function FileTabBody({ source, onBack }: { source: FilePreviewSource; onBack: () => void }) {
   const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
   const kind = previewKindFor(source);
   return (
     <div className="relative h-full overflow-hidden">
-      <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+      <SessionFilePreview key={previewUrl} url={previewUrl} hasExtractedText={!!source.extractedText} onBack={onBack}>
+        <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+      </SessionFilePreview>
     </div>
   );
 }

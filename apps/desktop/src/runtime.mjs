@@ -66,7 +66,7 @@ export class SourceRuntime extends EventEmitter {
 
   update(state) { this.state = { ...this.state, ...state }; this.emit('status', this.state); }
 
-  async start(input, cachePath) {
+  async start(input, cachePath, desktopFileToken) {
     const config = validateConfig(input);
     this.config = config;
     this.update({ phase: 'starting', step: 'checking', mode: config.mode });
@@ -124,7 +124,7 @@ export class SourceRuntime extends EventEmitter {
       this.update({ step: 'startingCore' });
       this.backend = this.group.spawn(config.pythonPath,
         ['-m', 'deeptutor_cli.main', 'serve', '--host', '127.0.0.1', '--port', String(backendPort)],
-        { cwd: config.runtimeHome, env });
+        { cwd: config.runtimeHome, env: desktopFileToken ? { ...env, DEEPTUTOR_DESKTOP_FILE_TOKEN: desktopFileToken } : env });
       await waitReady(`${backendURL}/health/ready`, {
         signal: this.controller.signal, alive: () => this.group.alive(this.backend),
       });

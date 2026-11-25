@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { BookOpenText, Check, Copy, Download, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { SessionFilePreview } from "./SessionFilePreview";
 import { docIconFor, formatBytes } from "@/lib/doc-attachments";
 import { apiUrl } from "@/lib/api";
 import { apiFetch } from "@/lib/api";
@@ -321,11 +322,13 @@ export default function FilePreviewDrawer({
               steal main-thread frames from the chat squeeze. */}
           <div className="relative flex-1 overflow-hidden">
             {bodyMounted && (
-              <PreviewBody
-                source={renderedSource}
-                previewUrl={previewUrl}
-                kind={previewKind}
-              />
+              <SessionFilePreview key={previewUrl} url={previewUrl} hasExtractedText={!!renderedSource.extractedText} onBack={onClose}>
+                <PreviewBody
+                  source={renderedSource}
+                  previewUrl={previewUrl}
+                  kind={previewKind}
+                />
+              </SessionFilePreview>
             )}
           </div>
         </>

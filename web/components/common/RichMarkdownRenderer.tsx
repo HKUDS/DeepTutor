@@ -27,6 +27,7 @@ import {
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
 import type { MarkdownRendererProps } from "./markdown-renderer-types";
+import { sessionFileUrl } from "@/components/chat/SessionFileLink";
 import { rehypeDirAuto } from "@/lib/rehype-dir-auto";
 import {
   extractMarkdownText as extractText,
@@ -584,7 +585,7 @@ export default function RichMarkdownRenderer({
 
       return (
         <a
-          href={href}
+          href={sessionFileUrl(href) ?? href}
           {...(external
             ? { target: "_blank", rel: "noopener noreferrer" }
             : {})}

@@ -315,7 +315,7 @@ async def update_workspace(payload: WorkspacePathPayload) -> dict:
 
 
 def _resolve_partner_item(
-    workspace_id: str, workspace_item_id: str
+    workspace_id: str, workspace_item_id: str, *, original: bool = False
 ) -> tuple[Path, WorkspaceItem] | None:
     """Resolve a presentation one of the caller's partners published.
 
@@ -345,7 +345,7 @@ def _resolve_partner_item(
         with user_context(partner_user(partner_id)):
             try:
                 return get_content_workspace_service().resolve_published_item(
-                    workspace_id, workspace_item_id
+                    workspace_id, workspace_item_id, original=original
                 )
             except WorkspaceError:
                 continue

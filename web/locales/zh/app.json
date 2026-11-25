@@ -1,4 +1,5 @@
 {
+  "File unavailable": "文件不可用",
   "Speech synthesis and transcription models with saved providers.": "使用已配置的提供方管理语音合成与语音识别模型。",
   "Image and video generation models with saved providers.": "使用已配置的提供方管理图片与视频生成模型。",
   "Manage provider names, addresses, credentials, and connectivity.": "管理提供方的名称、地址、密钥并测试连接。",

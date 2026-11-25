@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import nullcontext
+import os
 from pathlib import Path
 import re
+from secrets import compare_digest
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.multi_user.paths import get_current_path_service
@@ -28,7 +30,9 @@ from deeptutor.services.workspace.models import WorkspaceError
 router = APIRouter()
 
 
-def _source_path(source: str, request: Request) -> tuple[Path, str, Path]:
+def _source_path(
+    source: str, request: Request, *, original: bool = False
+) -> tuple[Path, str, Path]:
     """Resolve only local URLs using their existing authorization boundaries."""
     if len(source) > 8192:
         raise HTTPException(status_code=400, detail="Invalid preview source")
@@ -70,16 +74,20 @@ def _source_path(source: str, request: Request) -> tuple[Path, str, Path]:
     else:
         context = nullcontext()
     canonical_path = unquote(parsed.path)
+    if original and not canonical_path.startswith("/files/"):
+        raise HTTPException(status_code=400, detail="Expected a session file URL")
     _assert_surface("reading" if canonical_path.startswith("/api/knowledge-bases/") else "chat")
     try:
         with context:
-            target, filename = _resolve_authorized_file(canonical_path, query)
+            target, filename = _resolve_authorized_file(canonical_path, query, original=original)
             return target, filename, _cache_dir()
     except WorkspaceError as exc:
         raise HTTPException(status_code=404, detail="Preview source not found") from exc
 
 
-def _resolve_authorized_file(path: str, query: dict[str, list[str]]) -> tuple[Path, str]:
+def _resolve_authorized_file(
+    path: str, query: dict[str, list[str]], *, original: bool = False
+) -> tuple[Path, str]:
     if match := re.fullmatch(r"/files/attachments/([^/]+)/([^/]+)/([^/]+)", path):
         from deeptutor.services.storage import LocalDiskAttachmentStore, get_attachment_store
 
@@ -114,9 +122,11 @@ def _resolve_authorized_file(path: str, query: dict[str, list[str]]) -> tuple[Pa
         from deeptutor.services.workspace import get_content_workspace_service
 
         try:
-            target, item = get_content_workspace_service().resolve_published_item(*match.groups())
+            target, item = get_content_workspace_service().resolve_published_item(
+                *match.groups(), original=original
+            )
         except WorkspaceError:
-            resolved = _resolve_partner_item(*match.groups())
+            resolved = _resolve_partner_item(*match.groups(), original=original)
             if resolved is None:
                 raise HTTPException(status_code=404, detail="Preview source not found")
             target, item = resolved
@@ -181,6 +191,25 @@ async def _pdf_response(data: bytes, filename: str, cache_dir: Path) -> Response
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/desktop-file", include_in_schema=False)
+def desktop_file(source: str, request: Request) -> Response:
+    """Give the owning desktop shell the original file behind an authorized session URL."""
+    from deeptutor.multi_user.session_handoff import is_loopback_host
+
+    token = os.environ.get("DEEPTUTOR_DESKTOP_FILE_TOKEN")
+    supplied = request.headers.get("x-deeptutor-desktop-token", "")
+    if not (
+        token
+        and request.client
+        and is_loopback_host(request.client.host)
+        and supplied.isascii()
+        and compare_digest(token, supplied)
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+    path, _, _ = _source_path(source, request, original=True)
+    return JSONResponse({"path": str(path)}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/pdf")

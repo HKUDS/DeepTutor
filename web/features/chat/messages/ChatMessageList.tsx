@@ -53,6 +53,7 @@ import type {
   MessageRequestSnapshot,
 } from "@/features/chat/ChatStateAdapter";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { SessionFileLink } from "@/components/chat/SessionFileLink";
 import { notify } from "@/lib/notifications";
 import { docIconFor } from "@/lib/doc-attachments";
 import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
@@ -619,8 +620,8 @@ export function GeneratedFileCards({
         if (mime.startsWith("image/") && mediaSrc) {
           return (
             <div key={key} className="w-full max-w-[min(520px,90%)]">
-              <button
-                type="button"
+              <SessionFileLink
+                url={a.url}
                 onClick={onOpen ? () => onOpen(a) : undefined}
                 className="group block w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-sm transition hover:border-[var(--border)]"
               >
@@ -646,7 +647,7 @@ export function GeneratedFileCards({
                     {t("Open")}
                   </span>
                 </span>
-              </button>
+              </SessionFileLink>
               {supportsGeneratedOutputActions(a) ? (
                 <GeneratedOutputFileActions url={a.url || ""} />
               ) : null}
@@ -666,8 +667,8 @@ export function GeneratedFileCards({
                 preload="metadata"
                 className="block max-h-[360px] w-full bg-black"
               />
-              <button
-                type="button"
+              <SessionFileLink
+                url={a.url}
                 onClick={onOpen ? () => onOpen(a) : undefined}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-[var(--muted)]/30"
               >
@@ -684,7 +685,7 @@ export function GeneratedFileCards({
                 <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
                   {t("Open")}
                 </span>
-              </button>
+              </SessionFileLink>
               {supportsGeneratedOutputActions(a) ? (
                 <GeneratedOutputFileActions url={a.url || ""} />
               ) : null}
@@ -697,8 +698,8 @@ export function GeneratedFileCards({
         const size = formatFileSize(a.size_bytes);
         return (
           <div key={key} className="w-full max-w-[min(520px,90%)]">
-            <button
-              type="button"
+            <SessionFileLink
+              url={a.url}
               onClick={onOpen ? () => onOpen(a) : undefined}
               className="group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
             >
@@ -717,7 +718,7 @@ export function GeneratedFileCards({
               <span className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--foreground)] transition group-hover:bg-[var(--muted)]/40">
                 {t("Open")}
               </span>
-            </button>
+            </SessionFileLink>
             {supportsGeneratedOutputActions(a) ? (
               <GeneratedOutputFileActions url={a.url || ""} />
             ) : null}
@@ -1659,6 +1660,7 @@ export const UserMessage = memo(function UserMessage({
         kind: spec.label,
         label: filename,
         thumbnailUrl: src ?? undefined,
+        fileUrl: a.url,
         onClick: onPreviewAttachment ? () => onPreviewAttachment(a) : undefined,
       };
     }),

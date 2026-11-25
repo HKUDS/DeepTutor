@@ -1,6 +1,7 @@
 "use client";
 
 import { BOOKS_HOME } from "@/lib/learning-routes";
+import { SessionFileLink } from "@/components/chat/SessionFileLink";
 
 /**
  * The Activity home lists the conversation's tools, references, and files.
@@ -538,8 +539,8 @@ function AttachmentRow({
   return (
     <li className="[&>span]:w-full">
       <Tooltip label={filename} description={diskPath ?? undefined} side="left">
-        <button
-          type="button"
+        <SessionFileLink
+          url={attachment.url}
           onClick={onOpen}
           className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
         >
@@ -564,7 +565,7 @@ function AttachmentRow({
           aria-hidden="true"
           className="shrink-0 text-[var(--muted-foreground)]/65 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
         />
-        </button>
+        </SessionFileLink>
       </Tooltip>
     </li>
   );

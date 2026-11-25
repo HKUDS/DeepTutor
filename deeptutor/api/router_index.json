@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "aeeedadfac304b036917ae14ddf51bd33e5b5ebaa5e881c5bd5c2e5a09e49c68",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -1115,6 +1115,14 @@
       }
     ],
     "deeptutor.api.routers.file_preview:router": [
+      {
+        "path": "/desktop-file",
+        "name": "desktop_file",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
       {
         "path": "/pdf",
         "name": "preview_office_source",
@@ -5837,6 +5845,14 @@
       }
     ],
     "deeptutor.api.routers.attachments:router": [
+      {
+        "path": "/{session_id}/{attachment_id}/{filename:path}",
+        "name": "get_attachment",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
       {
         "path": "/{session_id}/{attachment_id}/{filename:path}",
         "name": "get_attachment",
