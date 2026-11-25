@@ -118,7 +118,8 @@ def exact_verdict(question, answer):
     # ambiguous reading may still be right, and multi-part answers may earn
     # partial credit, so all of those stay semantic.
     first = numeric[0]
-    if question.question_type == "short" and len(first.parts) == 1 and not first.ambiguous:
+    settled = len(first.parts) == 1 and not any(n.ambiguous for n in numeric)
+    if question.question_type == "short" and settled:
         return Verdict(
             result="incorrect",
             confidence=1,

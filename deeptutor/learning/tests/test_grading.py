@@ -391,6 +391,10 @@ class TestExactVerdictNumeric:
         assert self._verdict(answer, expected) is None
         assert self._verdict("1.251.000", "1.250").result == "incorrect"
 
+    def test_ambiguous_accepted_answer_keeps_the_mismatch_open(self):
+        assert self._verdict("416,67", "417,00", accepted=["≈ 417"]) is None
+        assert self._verdict("415,20", "417,00", accepted=["≈ 417"]).result == "incorrect"
+
     def test_multi_part_mismatch_keeps_partial_credit_open(self):
         assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
         assert self._verdict("1250", "Goodwill = 1.250; NCI = 300") is None
