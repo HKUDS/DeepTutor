@@ -571,14 +571,16 @@ test('a remembered conversation the server dropped is forgotten silently', async
   const get = jest.fn(async () => {
     throw new ApiError('http', 'The server returned HTTP 404.', 404);
   });
-  const { runtime } = harness({ get }, memory.store, {
+  const { runtime, sockets } = harness({ get }, memory.store, {
     lastSession: last.store,
   });
 
   runtime.start();
+  sockets[0].open();
   await settle();
 
   expect(runtime.getSnapshot()).toMatchObject({
+    connection: 'connected',
     sessionId: null,
     messages: [],
     history: 'idle',

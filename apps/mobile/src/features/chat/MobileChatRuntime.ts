@@ -620,7 +620,7 @@ export class MobileChatRuntime {
       // A remembered conversation that is now gone is not an incident: forget
       // it and open a fresh chat rather than announcing a deletion.
       this.sessionId = null;
-      this.update(initialState());
+      this.update({ ...initialState(), connection: this.state.connection });
       this.forgetSession();
       return;
     }
