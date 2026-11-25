@@ -10,12 +10,9 @@ import { ReadingProvider } from "@/context/ReadingContext";
 import { WorkspaceRuntimeBoundary } from "@/components/workspaces/WorkspaceRuntimeBoundary";
 
 const ShellFallback = (
-  <div data-desktop-shell className="flex h-dvh overflow-hidden">
-    <div data-desktop-sidebar className="hidden w-[272px] shrink-0 md:block" />
-    <main
-      data-desktop-main
-      className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]"
-    />
+  <div className="flex h-dvh overflow-hidden">
+    <div className="hidden w-[272px] shrink-0 md:block" />
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]" />
   </div>
 );
 
