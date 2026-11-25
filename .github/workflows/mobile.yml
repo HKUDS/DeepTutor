@@ -74,7 +74,7 @@ jobs:
 
   ios:
     name: iOS simulator build
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -91,13 +91,15 @@ jobs:
       - run: npm ci
       - run: bundle exec pod install
         working-directory: apps/mobile/ios
-      - run: >-
+      - env:
+          EXPO_OFFLINE: "1"
+        run: >-
           xcodebuild -workspace ios/DeepTutorMobile.xcworkspace
-          -scheme DeepTutorMobile -configuration Debug
+          -scheme DeepTutorMobile -configuration Release
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath "$RUNNER_TEMP/deeptutor-mobile"
-          CODE_SIGNING_ALLOWED=NO build
-      - name: Launch the iOS development client
+          ARCHS="$(uname -m)" CODE_SIGNING_ALLOWED=NO build
+      - name: Verify the initial screen on an iOS simulator
         shell: bash
         run: |
           set -euo pipefail
@@ -110,30 +112,40 @@ jobs:
             if (!phone) throw new Error("No iPhone simulator found");
             console.log(phone.udid);
           ')"
-          metro_log="$RUNNER_TEMP/deeptutor-mobile-metro.log"
-          EXPO_OFFLINE=1 CI=1 node node_modules/expo/bin/cli start \
-            --dev-client --localhost --port 8081 --max-workers 2 >"$metro_log" 2>&1 &
-          metro_pid=$!
+          app="$RUNNER_TEMP/deeptutor-mobile/Build/Products/Release-iphonesimulator/DeepTutorMobile.app"
+          test -s "$app/main.jsbundle"
+          cat >"$RUNNER_TEMP/recognize-screen.swift" <<'SWIFT'
+          import Foundation
+          import Vision
+
+          let request = VNRecognizeTextRequest()
+          request.recognitionLevel = .accurate
+          try VNImageRequestHandler(url: URL(fileURLWithPath: CommandLine.arguments[1]))
+            .perform([request])
+          for observation in request.results ?? [] {
+            if let text = observation.topCandidates(1).first?.string {
+              print(text)
+            }
+          }
+          SWIFT
+          xcrun swiftc "$RUNNER_TEMP/recognize-screen.swift" -o "$RUNNER_TEMP/recognize-screen"
           cleanup() {
-            kill "$metro_pid" 2>/dev/null || true
             xcrun simctl shutdown "$device" 2>/dev/null || true
           }
           trap cleanup EXIT
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
-          xcrun simctl install "$device" \
-            "$RUNNER_TEMP/deeptutor-mobile/Build/Products/Debug-iphonesimulator/DeepTutorMobile.app"
-          curl --retry 20 --retry-connrefused --retry-delay 1 --max-time 5 \
-            --fail --silent --show-error http://127.0.0.1:8081/status
+          xcrun simctl install "$device" "$app"
           xcrun simctl launch "$device" org.reactjs.native.example.DeepTutorMobile
-          xcrun simctl openurl "$device" \
-            'deeptutor-mobile://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081'
-          for ((attempt = 0; attempt < 60; attempt++)); do
-            if grep -q "iOS Bundled" "$metro_log"; then
-              echo "iOS development client loaded its Metro bundle."
+          screenshot="$RUNNER_TEMP/deeptutor-mobile-screen.png"
+          for ((attempt = 0; attempt < 24; attempt++)); do
+            xcrun simctl io "$device" screenshot "$screenshot"
+            visible="$("$RUNNER_TEMP/recognize-screen" "$screenshot")"
+            if grep -qi 'DeepTutor' <<<"$visible" && grep -qi 'Server address' <<<"$visible"; then
+              echo "The iOS app rendered its server connection screen with the embedded bundle."
               exit 0
             fi
-            sleep 2
+            sleep 5
           done
-          tail -n 30 "$metro_log"
+          printf 'Last visible text:\n%s\n' "$visible"
           exit 1
