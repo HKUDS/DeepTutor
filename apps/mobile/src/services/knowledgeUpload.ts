@@ -1,3 +1,5 @@
+import { fetch as nativeFetch } from 'expo/fetch';
+
 import { ApiError } from './apiClient';
 import type { PickedFile, UploadPolicy } from './knowledgeApi';
 
@@ -12,6 +14,26 @@ import type { PickedFile, UploadPolicy } from './knowledgeApi';
  * a `task_id` and parsing continues there. Cancelling the request therefore
  * cancels *this* transfer, not the server's parsing run, and is reported that
  * way in the UI.
+ *
+ * Redirects are a data-egress risk, not a cosmetic one. React Native's XHR
+ * follows them on both platforms: Android builds its OkHttp client with the
+ * default `followRedirects = true`, and iOS'
+ * `URLSession:task:willPerformHTTPRedirection:` always calls the completion
+ * handler with the new request. A 307/308 therefore re-sends the multipart body
+ * to whatever host the redirect names, and `xhr.status` still reports the final
+ * 200. Two checks keep the file on the configured server:
+ *
+ * 1. Before any bytes move, a `HEAD` of the exact upload URL is issued with
+ *    `redirect: 'manual'` through `expo/fetch`, whose native implementation
+ *    disables following on both platforms. A redirect is refused here.
+ * 2. After the transfer, `xhr.responseURL` — the final URL on both platforms —
+ *    must still be the URL that was asked for; a redirected response is never
+ *    parsed as a success.
+ *
+ * Check 1 cannot cover a redirect that a server only applies to POST, and
+ * check 2 observes the redirect after the body was sent. That residual gap is
+ * documented rather than hidden; both checks still refuse to treat the upload
+ * as landed.
  */
 
 export interface UploadResult {
@@ -29,6 +51,9 @@ export interface UploadHandle {
 
 /** No progress for this long means the connection is dead, not slow. */
 const STALL_TIMEOUT_MS = 60_000;
+
+/** The redirect check is a round trip of its own, so it gets its own deadline. */
+const PROBE_TIMEOUT_MS = 15_000;
 
 export interface UploadRequest {
   origin: string;
@@ -54,6 +79,114 @@ function parseUploadResult(value: unknown): UploadResult {
   };
 }
 
+/**
+ * The server's own explanation of a refusal, as a single short line.
+ *
+ * FastAPI puts it in `detail`; a proxy or a crash may answer with HTML instead,
+ * in which case there is nothing worth showing and the caller falls back to a
+ * status-based sentence.
+ */
+function refusalDetail(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const raw = (parsed as Record<string, unknown>).detail;
+    const text = typeof raw === 'string' ? raw : '';
+    const line = text.replace(/\s+/g, ' ').trim();
+    if (!line) return undefined;
+    return line.length > 300 ? `${line.slice(0, 297)}…` : line;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a response came from the address that was asked for.
+ *
+ * `responseURL` is percent-encoded exactly as the request was, so the cheap
+ * string comparison covers the normal case; parsing the two URLs keeps a
+ * platform that normalises the path (an added trailing slash, for instance)
+ * from being reported as a redirect to a different host.
+ */
+function isSameUploadUrl(actual: string, expected: string): boolean {
+  if (actual === expected) return true;
+  try {
+    const left = new URL(actual);
+    const right = new URL(expected);
+    return (
+      left.protocol === right.protocol &&
+      left.host === right.host &&
+      left.pathname === right.pathname &&
+      left.search === right.search
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Refuse an upload endpoint that redirects before any of the file is sent.
+ *
+ * `expo/fetch` is the only transport in the app that can ask the native layer
+ * not to follow a redirect (`redirect: 'manual'`), so it is used for this
+ * header-only probe. The answer itself is irrelevant — 401, 405 and 200 all
+ * mean "this is the server" — only a 3xx does not.
+ */
+async function assertUploadTargetIsDirect(
+  url: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw new ApiError('aborted', 'The upload was cancelled.');
+  }
+  const probe = new AbortController();
+  const forwardAbort = () => probe.abort();
+  signal?.addEventListener('abort', forwardAbort);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    probe.abort();
+  }, PROBE_TIMEOUT_MS);
+
+  let status = 0;
+  let redirected = false;
+  try {
+    const response = await nativeFetch(url, {
+      method: 'HEAD',
+      credentials: 'include',
+      redirect: 'manual',
+      signal: probe.signal,
+    });
+    status = response.status;
+    redirected = response.redirected;
+  } catch {
+    if (signal?.aborted) {
+      throw new ApiError('aborted', 'The upload was cancelled.');
+    }
+    if (timedOut) {
+      throw new ApiError(
+        'timeout',
+        'The server did not confirm the upload address in time. Try again.',
+      );
+    }
+    throw new ApiError(
+      'network',
+      'Could not check the upload address. Check your connection.',
+    );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', forwardAbort);
+  }
+
+  if (redirected || (status >= 300 && status < 400)) {
+    throw new ApiError(
+      'redirect',
+      'The server redirects uploads to another address. Enter its final address.',
+      status,
+    );
+  }
+}
+
 export function uploadKnowledgeFiles({
   origin,
   ref,
@@ -73,7 +206,9 @@ export function uploadKnowledgeFiles({
     } as unknown as Blob);
   }
 
-  const xhr = new XMLHttpRequest();
+  /** Aborts the redirect probe, so a cancel never leaves it running. */
+  const probe = new AbortController();
+  let xhr: XMLHttpRequest | null = null;
   let settled = false;
   let stall: ReturnType<typeof setTimeout> | undefined;
   let resolveResult: (value: UploadResult) => void = () => {};
@@ -85,21 +220,44 @@ export function uploadKnowledgeFiles({
   });
 
   const cleanup = () => {
-    if (stall) clearTimeout(stall);
-    signal?.removeEventListener('abort', onAbortSignal);
+    if (stall) {
+      clearTimeout(stall);
+      stall = undefined;
+    }
+    probe.abort();
+    signal?.removeEventListener('abort', abortTransfer);
   };
-  const succeed = (value: UploadResult) => {
+  /**
+   * Every outcome — including a stall, an HTTP error and a redirect — closes
+   * the socket. A rejected promise that left the request writing bytes would
+   * keep spending the learner's data, and a retry would race the old transfer
+   * for the same file.
+   */
+  const settle = (action: () => void) => {
     if (settled) return;
     settled = true;
     cleanup();
-    resolveResult(value);
+    const request = xhr;
+    xhr = null;
+    if (request) {
+      try {
+        // A finished request is a no-op here; a live one stops now. `onabort`
+        // may fire, but `settled` is already true, so it cannot rewrite this.
+        request.abort();
+      } catch {
+        // The platform may have torn the request down already.
+      }
+    }
+    action();
   };
-  const fail = (kind: ApiError['kind'], message: string, status?: number) => {
-    if (settled) return;
-    settled = true;
-    cleanup();
-    rejectResult(new ApiError(kind, message, status));
-  };
+  const succeed = (value: UploadResult) => settle(() => resolveResult(value));
+  const fail = (
+    kind: ApiError['kind'],
+    message: string,
+    status?: number,
+    detail?: string,
+  ) =>
+    settle(() => rejectResult(new ApiError(kind, message, status, detail)));
   const armStall = () => {
     if (stall) clearTimeout(stall);
     stall = setTimeout(
@@ -111,73 +269,95 @@ export function uploadKnowledgeFiles({
       STALL_TIMEOUT_MS,
     );
   };
-  const abortTransfer = () => {
-    if (settled) return;
-    // `abort` fires `onabort`, which settles the promise as aborted; settling
-    // here first would race with that handler and mislabel a cancel as success.
-    xhr.abort();
-  };
-  const onAbortSignal = () => abortTransfer();
+  const abortTransfer = () => fail('aborted', 'The upload was cancelled.');
 
   if (signal?.aborted) {
     fail('aborted', 'The upload was cancelled.');
     return { promise, abort: abortTransfer };
   }
-  signal?.addEventListener('abort', onAbortSignal);
+  signal?.addEventListener('abort', abortTransfer);
 
-  xhr.open('POST', url, true);
-  // The session is an HttpOnly cookie; the platform cookie jar supplies it.
-  xhr.withCredentials = true;
-  xhr.setRequestHeader('Accept', 'application/json');
-  // The platform sets the multipart boundary itself.
-  xhr.timeout = 0;
+  const start = async () => {
+    await assertUploadTargetIsDirect(url, probe.signal);
+    // A cancel during the check wins over starting the body.
+    if (settled) return;
 
-  xhr.upload.onprogress = event => {
-    if (!event.lengthComputable) return;
+    const request = new XMLHttpRequest();
+    xhr = request;
+    request.open('POST', url, true);
+    // The session is an HttpOnly cookie; the platform cookie jar supplies it.
+    request.withCredentials = true;
+    request.setRequestHeader('Accept', 'application/json');
+    // The platform sets the multipart boundary itself.
+    request.timeout = 0;
+
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      armStall();
+      onProgress?.(event.loaded, event.total);
+    };
+
+    request.onload = () => {
+      const status = request.status;
+      // A redirect that was followed reports the *target's* status here, so
+      // the final URL has to be checked before anything else is believed.
+      if (request.responseURL && !isSameUploadUrl(request.responseURL, url)) {
+        fail(
+          'redirect',
+          'The upload was redirected to another address and was not accepted.',
+          status,
+        );
+        return;
+      }
+      if (status === 401) {
+        fail('unauthorized', 'Sign-in is required.', 401);
+        return;
+      }
+      if (status >= 300 && status < 400) {
+        fail('redirect', 'Enter the final address of the DeepTutor server.', status);
+        return;
+      }
+      if (status < 200 || status >= 300) {
+        fail(
+          'http',
+          `The server returned HTTP ${status}.`,
+          status,
+          refusalDetail(request.responseText),
+        );
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(request.responseText) as unknown;
+      } catch {
+        fail('invalid-response', 'The server did not accept the upload.');
+        return;
+      }
+      try {
+        succeed(parseUploadResult(parsed));
+      } catch (error) {
+        if (error instanceof ApiError) fail(error.kind, error.message, error.status);
+        else fail('invalid-response', 'The server did not accept the upload.');
+      }
+    };
+    request.onerror = () =>
+      fail('network', 'Could not reach the server. Check your connection.');
+    request.onabort = () => fail('aborted', 'The upload was cancelled.');
+    request.ontimeout = () =>
+      fail('timeout', 'The upload took too long. Try again.');
+
     armStall();
-    onProgress?.(event.loaded, event.total);
-  };
-
-  xhr.onload = () => {
-    const status = xhr.status;
-    if (status === 401) {
-      fail('unauthorized', 'Sign-in is required.', 401);
-      return;
-    }
-    if (status >= 300 && status < 400) {
-      fail('redirect', 'Enter the final address of the DeepTutor server.', status);
-      return;
-    }
-    if (status < 200 || status >= 300) {
-      fail('http', `The server returned HTTP ${status}.`, status);
-      return;
-    }
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(xhr.responseText) as unknown;
+      request.send(form);
     } catch {
-      fail('invalid-response', 'The server did not accept the upload.');
-      return;
-    }
-    try {
-      succeed(parseUploadResult(parsed));
-    } catch (error) {
-      if (error instanceof ApiError) fail(error.kind, error.message, error.status);
-      else fail('invalid-response', 'The server did not accept the upload.');
+      fail('network', 'Could not start the upload.');
     }
   };
-  xhr.onerror = () =>
-    fail('network', 'Could not reach the server. Check your connection.');
-  xhr.onabort = () => fail('aborted', 'The upload was cancelled.');
-  xhr.ontimeout = () =>
-    fail('timeout', 'The upload took too long. Try again.');
 
-  armStall();
-  try {
-    xhr.send(form);
-  } catch {
-    fail('network', 'Could not start the upload.');
-  }
+  start().catch(error => {
+    if (error instanceof ApiError) fail(error.kind, error.message, error.status);
+    else fail('network', 'Could not start the upload.');
+  });
 
   return { promise, abort: abortTransfer };
 }
@@ -185,6 +365,8 @@ export function uploadKnowledgeFiles({
 export interface RejectedFile {
   name: string;
   reason: string;
+  /** The picked copy, so the queue can release it without guessing. */
+  uri: string;
 }
 
 export interface FileValidation {
@@ -227,19 +409,24 @@ export function validatePickedFiles(
   for (const file of files) {
     const name = baseName(file.name);
     if (!name || name === '.' || name === '..') {
-      rejected.push({ name: file.name, reason: 'This file has no usable name.' });
+      rejected.push({
+        name: file.name,
+        reason: 'This file has no usable name.',
+        uri: file.uri,
+      });
       continue;
     }
     // An unknown size is not an error: some providers report none, and the
     // server's own limit still applies.
     if (file.size !== undefined && file.size <= 0) {
-      rejected.push({ name, reason: 'This file is empty.' });
+      rejected.push({ name, reason: 'This file is empty.', uri: file.uri });
       continue;
     }
     if (file.size !== undefined && max > 0 && file.size > max) {
       rejected.push({
         name,
         reason: `Larger than the ${formatBytes(max)} limit on this server.`,
+        uri: file.uri,
       });
       continue;
     }
@@ -250,6 +437,7 @@ export function validatePickedFiles(
         reason: extension
           ? `This server does not accept ${extension} files.`
           : 'This server needs a file extension it recognises.',
+        uri: file.uri,
       });
       continue;
     }

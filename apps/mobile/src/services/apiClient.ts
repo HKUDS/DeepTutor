@@ -14,10 +14,28 @@ export class ApiError extends Error {
     readonly kind: ApiErrorKind,
     message: string,
     readonly status?: number,
+    /**
+     * The server's own `detail` for a refused request, when it sent one.
+     *
+     * The backend explains refusals precisely ("No embedding model is
+     * configured…", "File too large: …"); inventing a cause from the status
+     * code alone would tell the learner something the server never said.
+     */
+    readonly detail?: string,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** A short, single-line rendering of whatever the server called the problem. */
+function serverDetail(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as Record<string, unknown>).detail;
+  const text = typeof raw === 'string' ? raw : '';
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (!line) return undefined;
+  return line.length > 300 ? `${line.slice(0, 297)}…` : line;
 }
 
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -179,10 +197,19 @@ export class ApiClient {
       throw new ApiError('unauthorized', 'Sign-in is required.', 401);
     }
     if (!response.ok) {
+      // Reading the body is best effort: a proxy may answer with HTML, and a
+      // refusal is still a refusal without it.
+      let detail: string | undefined;
+      try {
+        detail = serverDetail(await response.json());
+      } catch {
+        detail = undefined;
+      }
       throw new ApiError(
         'http',
         `The server returned HTTP ${response.status}.`,
         response.status,
+        detail,
       );
     }
     try {

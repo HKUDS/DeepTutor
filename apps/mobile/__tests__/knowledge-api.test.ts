@@ -118,6 +118,39 @@ test('a percentage the server cannot compute is clamped rather than trusted', as
   expect(base.progress?.percent).toBe(100);
 });
 
+test('the run inside a base record is read whether it calls the figure percent or progress_percent', async () => {
+  // The live server answers `GET /api/knowledge-bases` with the run at the top
+  // level and a `percent` key, while `GET …/progress` uses `progress_percent`.
+  // Reading only one of the two leaves the detail screen's bar stuck at 0%.
+  const { api: knowledge } = api(
+    response(200, [
+      {
+        id: 'admin:kb:physics',
+        name: 'physics',
+        status: 'processing',
+        progress: {
+          stage: 'processing_documents',
+          message: 'Indexing',
+          current: 1,
+          total: 4,
+          percent: 25,
+          file_name: '',
+          timestamp: '2026-01-01T00:00:00Z',
+        },
+        statistics: { raw_documents: 4 },
+        metadata: { rag_provider: 'llamaindex' },
+      },
+    ]),
+  );
+  const [base] = await knowledge.list();
+  expect(base.progress).toMatchObject({
+    stage: 'processing_documents',
+    current: 1,
+    total: 4,
+    percent: 25,
+  });
+});
+
 test('an entry with neither a name nor an id is rejected instead of shown blank', async () => {
   const { api: knowledge } = api(response(200, [{}]));
   await expect(knowledge.list()).rejects.toMatchObject({
@@ -295,7 +328,52 @@ test('failures are explained in terms a learner can act on', () => {
   expect(messageFor(new ApiError('http', 'x', 403))).toBe(
     'This knowledge base is read-only for your account.',
   );
+  // A refusal the server explained is repeated verbatim rather than summarised
+  // into a cause this client cannot verify.
+  expect(
+    messageFor(
+      new ApiError(
+        'http',
+        'x',
+        409,
+        'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+      ),
+    ),
+  ).toBe(
+    'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+  );
   expect(messageFor(new Error('boom'))).toBe(
     'The server could not complete that request.',
   );
+});
+
+test('the server’s refusal detail is carried from the response, not invented', async () => {
+  const { api: knowledge } = api(
+    response(409, {
+      detail:
+        'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+    }),
+  );
+  await expect(knowledge.retry('physics')).rejects.toMatchObject({
+    kind: 'http',
+    status: 409,
+    detail:
+      'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+  });
+});
+
+test('a refusal body that is not JSON still fails with its status', async () => {
+  const fetcher = jest.fn().mockResolvedValue({
+    status: 500,
+    ok: false,
+    redirected: false,
+    json: async () => {
+      throw new SyntaxError('Unexpected token <');
+    },
+  });
+  const knowledge = new KnowledgeApi(new ApiClient(origin, fetcher));
+  await expect(knowledge.retry('physics')).rejects.toMatchObject({
+    kind: 'http',
+    status: 500,
+  });
 });

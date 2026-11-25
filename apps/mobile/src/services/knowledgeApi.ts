@@ -139,6 +139,11 @@ function parseProgress(value: unknown): KnowledgeProgress | null {
   if (!stage) return null;
   const total = count(raw.total);
   const current = count(raw.current);
+  // The standalone `/progress` snapshot names this `progress_percent`; the copy
+  // embedded in a knowledge base record just calls it `percent`. Both are read
+  // so the progress bar shows the server's figure on either route.
+  const percent =
+    'progress_percent' in raw ? count(raw.progress_percent) : count(raw.percent);
   return {
     stage,
     message: text(raw.message),
@@ -146,7 +151,7 @@ function parseProgress(value: unknown): KnowledgeProgress | null {
     total,
     // The server already computes this; do not re-derive a percentage the
     // uploader would then have to be trusted for.
-    percent: Math.max(0, Math.min(100, count(raw.progress_percent))),
+    percent: Math.max(0, Math.min(100, percent)),
     fileName: text(raw.file_name),
     error: text(raw.error),
     retryable: raw.retryable === true,
@@ -374,6 +379,10 @@ export function messageFor(error: unknown): string {
     if (error.status === 404) {
       return 'This knowledge base no longer exists on the server.';
     }
+    // The server's own explanation is more specific than anything this client
+    // can infer from a status code — a 409 can mean a missing embedding model,
+    // a read-only base or a run that has already finished.
+    if (error.detail) return error.detail;
     if (error.status === 409) {
       return 'The server refused this change in the base’s current state.';
     }
