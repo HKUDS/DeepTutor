@@ -9,6 +9,7 @@ import { useSettings } from "@/features/settings/store/SettingsStore";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 import {
+  availableChoices,
   fallbackChoices,
   sanitizeChain,
   withoutActive,
@@ -118,7 +119,7 @@ export function FallbackChainEditor() {
             setRows((current) => [...current, emptyRow()]);
             setSaved(null);
           }}
-          disabled={rows.length >= MAX_FALLBACKS}
+          disabled={rows.length >= MAX_FALLBACKS || choices.length <= rows.length}
         >
           <Plus className="mr-1 inline h-3.5 w-3.5" />
           {t("Add fallback")}
@@ -148,7 +149,7 @@ export function FallbackChainEditor() {
                   }}
                 >
                   <option value="">{t("Choose a configured model")}</option>
-                  {choices.map((choice) => (
+                  {availableChoices(choices, rows, index).map((choice) => (
                     <option
                       key={`${choice.profileId}:${choice.modelId}`}
                       value={`${choice.profileId}:${choice.modelId}`}

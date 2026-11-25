@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  availableChoices,
   fallbackChoices,
   chainsEqual,
   sanitizeChain,
@@ -29,6 +30,8 @@ const entry = (profile: string, model: string): FallbackEntry => ({
   profile_id: profile,
   model_id: model,
 });
+
+const emptyRow = (): FallbackEntry => ({ profile_id: "", model_id: "" });
 
 describe("fallbackChoices", () => {
   it("offers every configured model with a readable label", () => {
@@ -77,6 +80,32 @@ describe("sanitizeChain", () => {
     ]);
 
     expect(sanitizeChain(many, padded)).toHaveLength(4);
+  });
+});
+
+describe("availableChoices", () => {
+  const choices = fallbackChoices(PROFILES);
+
+  it("hides pairs already chosen by the other rows", () => {
+    const rows = [entry("deepseek", "ds-chat"), emptyRow()];
+
+    expect(availableChoices(choices, rows, 1)).toEqual([
+      {
+        profileId: "deepseek",
+        modelId: "ds-reasoner",
+        label: "DeepSeek / deepseek-reasoner",
+      },
+      { profileId: "local", modelId: "local-qwen", label: "Local vLLM / qwen3-32b" },
+    ]);
+  });
+
+  it("keeps the row's own value even if another row duplicates it", () => {
+    // Only an older payload can hold a duplicate; the select must still show it.
+    const rows = [entry("deepseek", "ds-chat"), entry("deepseek", "ds-chat")];
+
+    expect(availableChoices(choices, rows, 1).map((choice) => choice.modelId)).toContain(
+      "ds-chat",
+    );
   });
 });
 

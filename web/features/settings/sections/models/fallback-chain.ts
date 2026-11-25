@@ -81,6 +81,34 @@ export function chainsEqual(a: FallbackEntry[], b: FallbackEntry[]): boolean {
 }
 
 /**
+ * Choices a single row may offer: everything except the pairs already taken by
+ * the *other* rows, so the same model cannot be picked twice.
+ *
+ * The row's own current value stays in the list even when it is duplicated
+ * elsewhere (a duplicate can only arrive from an older payload), otherwise the
+ * select would show an empty value the user cannot recognise.
+ */
+export function availableChoices(
+  choices: FallbackChoice[],
+  rows: FallbackEntry[],
+  rowIndex: number,
+): FallbackChoice[] {
+  const own = rows[rowIndex];
+  const ownKey = own ? `${own.profile_id}\u0000${own.model_id}` : "";
+  const taken = new Set(
+    rows
+      .filter((_, index) => index !== rowIndex)
+      .map((row) => choiceKey(row)),
+  );
+  return choices.filter((choice) => {
+    const key = `${choice.profileId}\u0000${choice.modelId}`;
+    // The row's own value stays selectable even when another row duplicates it,
+    // so an older payload renders as a chosen option instead of a blank select.
+    return key === ownKey || !taken.has(key);
+  });
+}
+
+/**
  * The chain with the active model removed: retrying the model that just failed
  * as its own fallback would only waste the cooldown.
  */
