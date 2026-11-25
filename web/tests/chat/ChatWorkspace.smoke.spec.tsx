@@ -68,7 +68,8 @@ const fixture = vi.hoisted(() => ({
   } | null,
   setActiveSessionId: vi.fn(),
   extraCapabilities: [] as Array<Record<string, unknown>>,
-  viewerProps: null as { open?: boolean; configSection?: unknown } | null,
+  /** Called with the viewer panel's props on every render. */
+  viewerRender: vi.fn((_props: { open?: boolean; configSection?: unknown }) => {}),
   viewer: {
     openFileTab: vi.fn(),
     openWebTab: vi.fn(),
@@ -118,7 +119,7 @@ vi.mock('@/components/chat/home/LazySessionViewerPanel', async () => {
       props: { open?: boolean; configSection?: unknown },
       ref
     ) {
-      fixture.viewerProps = props
+      fixture.viewerRender(props)
       useImperativeHandle(ref, () => fixture.viewer as never, [])
       return null
     }),
@@ -341,7 +342,6 @@ describe('ChatWorkspace smoke', () => {
     fixture.listKnowledgeBases.mockResolvedValue([])
     fixture.composerProps = null
     fixture.listProps = null
-    fixture.viewerProps = null
     fixture.extraCapabilities = []
     fixture.adapter.state = emptyChatState()
     window.localStorage.clear()
@@ -680,7 +680,6 @@ describe('ChatWorkspace quiz settings sheet', () => {
     fixture.listKnowledgeBases.mockResolvedValue([])
     fixture.composerProps = null
     fixture.listProps = null
-    fixture.viewerProps = null
     fixture.extraCapabilities = [quizCapability]
     fixture.adapter.state = emptyChatState()
   })
@@ -702,8 +701,12 @@ describe('ChatWorkspace quiz settings sheet', () => {
     return view
   }
 
+  function viewerProps() {
+    return fixture.viewerRender.mock.lastCall?.[0]
+  }
+
   function configuredQuizMode(): string | undefined {
-    const card = fixture.viewerProps?.configSection as
+    const card = viewerProps()?.configSection as
       | { props: { children: { props: { value: { mode: string } } } } }
       | null
       | undefined
@@ -714,7 +717,7 @@ describe('ChatWorkspace quiz settings sheet', () => {
     const view = openStoredQuizSession('quiz-1')
     await waitFor(() => expect(fixture.listProps?.messages).toHaveLength(2))
     expect(fixture.viewer.focusActivityHome).not.toHaveBeenCalled()
-    expect(fixture.viewerProps?.open).toBe(false)
+    expect(viewerProps()?.open).toBe(false)
     expect(window.localStorage.getItem('dt:chat:viewer-panel')).not.toBe('1')
     view.unmount()
   })
@@ -739,7 +742,7 @@ describe('ChatWorkspace quiz settings sheet', () => {
     const view = openStoredQuizSession('quiz-2')
     await waitFor(() => expect(configuredQuizMode()).toBe('mimic'))
     expect(fixture.viewer.focusActivityHome).not.toHaveBeenCalled()
-    expect(fixture.viewerProps?.open).toBe(false)
+    expect(viewerProps()?.open).toBe(false)
     expect(
       JSON.parse(window.localStorage.getItem('dt:chat:capability-config:quiz-2') || '{}')
         .quizConfig.mode
@@ -757,7 +760,7 @@ describe('ChatWorkspace quiz settings sheet', () => {
     })
     expect(fixture.adapter.setCapability).toHaveBeenCalledWith('deep_question')
     expect(fixture.viewer.focusActivityHome).toHaveBeenCalledTimes(1)
-    expect(fixture.viewerProps?.open).toBe(true)
+    expect(viewerProps()?.open).toBe(true)
     view.unmount()
   })
 
