@@ -63,6 +63,26 @@ class TestShortGrading:
     def test_numeric_formats_are_accepted(self, user, expected):
         assert grade_answer(user, expected, "short") is True
 
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [
+            ("1.240,-", "1.250,-"),
+            ("EUR 1.240,-", "EUR 1.250,-"),
+            ("(1.240)", "(1.250)"),
+            ("31.12.2025", "31.12.2026"),
+            ("1.000-1.240", "1.000-1.250"),
+            ("1.250 €/Stk.", "1.260 €/Stk."),
+            ("IFRS 11", "IFRS 10"),
+        ],
+    )
+    def test_keys_with_other_digits_are_never_fuzzy_matched(self, user, expected):
+        # The parser rejects these keys, but a digit change is never a typo.
+        assert grade_answer(user, expected, "short") is False
+
+    def test_fuzzy_match_still_tolerates_typos_around_the_same_digits(self):
+        assert grade_answer("ifrs 10 consolidaton", "IFRS 10 consolidation", "short") is True
+        assert grade_answer("1.250,--", "1.250,-", "short") is True
+
     def test_short_long_expected_no_fuzzy(self):
         long_expected = "a" * 31  # >30 chars, no fuzzy
         assert grade_answer(long_expected, long_expected, "short") is True
