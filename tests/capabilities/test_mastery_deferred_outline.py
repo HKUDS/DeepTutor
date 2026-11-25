@@ -255,3 +255,43 @@ async def test_mode_switches_keep_tools_identical_without_other_deferred_tools(m
     assert {"load_tools", "mastery_build", "mastery_revise"} <= set(names)
     assert json.dumps(study) == json.dumps(outline)
     assert json.dumps(back) == json.dumps(outline)
+
+
+@pytest.mark.asyncio
+async def test_navigation_is_mounted_before_the_first_topic_exists(monkeypatch):
+    """The first mastery turn usually creates the topic.
+
+    Navigation used to mount only once a topic existed, so the second turn's
+    tools[] grew by three schemas and missed the whole cached prefix.
+    """
+    topics = {"exist": False}
+
+    async def providers(self, context):
+        self._tool_view = ProviderToolView.empty(self.registry)
+        self._deferred_loader = None
+        self._deferred_pool = []
+
+    monkeypatch.setattr(AgenticLoopPipeline, "_prepare_deferred_tools", providers)
+    monkeypatch.setattr(
+        "deeptutor.agents.loop.pipeline.user_has_mastery_topics", lambda: topics["exist"]
+    )
+    monkeypatch.setattr("deeptutor.services.mcp.load_loaded_tools", lambda _: set())
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools", lambda *_, **__: None
+    )
+
+    async def names() -> list[str]:
+        pipeline = MasteryLoopPipeline(language="en")
+        context = UnifiedContext(
+            session_id="synthetic",
+            metadata={"mastery_mode": True, "mastery_session_mode": "study"},
+        )
+        await pipeline._prepare_deferred_tools(context)
+        return pipeline._compose_enabled_tools(context)
+
+    first = await names()
+    topics["exist"] = True
+    second = await names()
+
+    assert "mastery_sessions" in first
+    assert first == second
