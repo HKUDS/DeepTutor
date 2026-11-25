@@ -757,6 +757,11 @@ function buildMenu() {
     },
   ];
 
+  const adjustZoom = delta => {
+    if (!view || view.webContents.isDestroyed()) return;
+    view.webContents.setZoomLevel(delta === 0 ? 0 : view.webContents.getZoomLevel() + delta);
+  };
+
   const viewSubmenu = [
     ...(WINDOWS ? [
       {
@@ -772,9 +777,9 @@ function buildMenu() {
       { label: t('forceReload'), accelerator: 'CmdOrCtrl+Shift+R', enabled: ready, click: () => view?.webContents.reloadIgnoringCache() },
     ] : []),
     { type: 'separator' },
-    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(0) },
-    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() + 0.5) },
-    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', enabled: !WINDOWS || ready, click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() - 0.5) },
+    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', enabled: !WINDOWS || ready, click: () => adjustZoom(0) },
+    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', enabled: !WINDOWS || ready, click: () => adjustZoom(0.5) },
+    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', enabled: !WINDOWS || ready, click: () => adjustZoom(-0.5) },
     { type: 'separator' },
     { role: 'togglefullscreen', label: t('fullscreen') },
   ];
