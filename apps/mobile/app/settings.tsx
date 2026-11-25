@@ -1,7 +1,9 @@
+import { useRouter } from 'expo-router';
 import { useAppSession } from '../src/appSession';
 import { SettingsScreen } from '../src/screens/SettingsScreen';
 
 export default function SettingsRoute() {
+  const router = useRouter();
   const session = useAppSession();
   if (session.phase !== 'chat' || !session.origin) return null;
   return (
@@ -13,6 +15,7 @@ export default function SettingsRoute() {
       busy={session.busy}
       error={session.error}
       onChangeServer={session.disconnect}
+      onOpenKnowledge={() => router.push('/knowledge')}
       onSignOut={session.logout}
     />
   );

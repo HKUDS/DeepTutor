@@ -37,6 +37,7 @@ function detail(overrides: Partial<SessionDetail> = {}): SessionDetail {
     activeTurnId: '',
     messages: [],
     activeTurns: [],
+    knowledgeBases: [],
     ...overrides,
   };
 }

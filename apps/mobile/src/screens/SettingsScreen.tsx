@@ -9,6 +9,7 @@ export function SettingsScreen({
   busy = false,
   error,
   onChangeServer,
+  onOpenKnowledge,
   onSignOut,
 }: {
   origin: string;
@@ -16,6 +17,7 @@ export function SettingsScreen({
   busy?: boolean;
   error?: string | null;
   onChangeServer: () => void;
+  onOpenKnowledge: () => void;
   onSignOut: () => void;
 }) {
   const theme = useTheme();
@@ -36,6 +38,14 @@ export function SettingsScreen({
         </Text>
       </View>
       <ErrorNotice message={error} />
+      {authenticated ? (
+        <Action
+          title="Knowledge bases"
+          onPress={onOpenKnowledge}
+          tone="secondary"
+          disabled={busy}
+        />
+      ) : null}
       <Action
         title="Change server"
         onPress={onChangeServer}

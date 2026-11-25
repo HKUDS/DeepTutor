@@ -65,6 +65,14 @@ export interface SessionTurn {
 export interface SessionDetail extends SessionSummary {
   messages: SessionMessage[];
   activeTurns: SessionTurn[];
+  /**
+   * Knowledge bases the conversation was last answered from.
+   *
+   * The server keeps them in the session's `preferences` and a turn that omits
+   * `knowledge_bases` inherits them, so the client reads this only to show the
+   * current selection.
+   */
+  knowledgeBases: string[];
 }
 
 export interface SessionPage {
@@ -202,10 +210,20 @@ function parseDetail(value: unknown): SessionDetail {
   const activeTurns = Array.isArray(raw.active_turns)
     ? raw.active_turns.map(parseTurn)
     : [];
+  const preferences =
+    raw.preferences && typeof raw.preferences === 'object'
+      ? (raw.preferences as Record<string, unknown>)
+      : {};
+  const knowledgeBases = Array.isArray(preferences.knowledge_bases)
+    ? preferences.knowledge_bases.filter(
+        (ref): ref is string => typeof ref === 'string' && ref.trim().length > 0,
+      )
+    : [];
   return {
     ...summary,
     messages: raw.messages.map(parseMessage),
     activeTurns,
+    knowledgeBases,
   };
 }
 

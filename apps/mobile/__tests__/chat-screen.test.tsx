@@ -36,6 +36,10 @@ function chat(overrides: Partial<ChatScreenProps> = {}): ChatScreenProps {
     canLeaveTurn: false,
     recovery: null,
     error: null,
+    knowledgeBases: [],
+    knowledgeOptions: [],
+    knowledgeStatus: 'ready',
+    knowledgeError: null,
     send: jest.fn(() => true),
     reply: jest.fn(async () => true),
     cancel: jest.fn(async () => {}),
@@ -43,6 +47,9 @@ function chat(overrides: Partial<ChatScreenProps> = {}): ChatScreenProps {
     retrySession: jest.fn(async () => true),
     reset: jest.fn(),
     dismissRecovery: jest.fn(),
+    onToggleKnowledge: jest.fn(),
+    onRefreshKnowledge: jest.fn(),
+    onManageKnowledge: jest.fn(),
     onOpenSettings: jest.fn(),
     onOpenSessions: jest.fn(),
     ...overrides,
@@ -93,6 +100,44 @@ test('a stopped response says so and accepts the next question', () => {
   render(<ChatScreen {...chat({ status: 'cancelled' })} />);
   expect(screen.getByText('This response was stopped.')).toBeTruthy();
   expect(button('Send')).toBeTruthy();
+});
+
+test('the knowledge entry names the documents the next question will cite', () => {
+  const physics = {
+    ref: 'user:kb:physics',
+    id: 'user:kb:physics',
+    name: 'physics',
+    description: '',
+    status: 'ready',
+    isDefault: false,
+    documentCount: 2,
+    imageCount: 0,
+    chunkCount: 0,
+    ragInitialized: true,
+    needsReindex: false,
+    provider: '',
+    assigned: false,
+    readOnly: false,
+    available: true,
+    progress: null,
+    lastError: '',
+    updatedAt: '',
+  };
+  const props = chat({
+    knowledgeBases: ['user:kb:physics'],
+    knowledgeOptions: [physics],
+  });
+  render(<ChatScreen {...props} />);
+
+  expect(button('Knowledge · 1')).toBeTruthy();
+  expect(screen.getByText('physics')).toBeTruthy();
+
+  fireEvent.press(button('Knowledge · 1'));
+  fireEvent.press(screen.getByLabelText('physics'));
+  expect(props.onToggleKnowledge).toHaveBeenCalledWith('user:kb:physics');
+
+  fireEvent.press(button('Manage'));
+  expect(props.onManageKnowledge).toHaveBeenCalledTimes(1);
 });
 
 test('a recovered run explains itself and can be dismissed', () => {

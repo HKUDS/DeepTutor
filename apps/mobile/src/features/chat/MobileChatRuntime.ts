@@ -74,6 +74,17 @@ type ChatState = {
   canLeaveTurn: boolean;
   recovery: RecoveryNotice | null;
   error: string | null;
+  /** Knowledge bases the next turn is answered from. */
+  knowledgeBases: string[];
+  /**
+   * Whether the learner changed the selection in this app.
+   *
+   * The server keeps `knowledge_bases` in the session's preferences and falls
+   * back to them when a turn omits the field. So an untouched selection is not
+   * sent at all — sending an empty array would silently clear what the web app
+   * stored for this conversation.
+   */
+  knowledgeBasesTouched: boolean;
 };
 
 type ChatOptions = {
@@ -166,6 +177,8 @@ function initialState(): ChatState {
     canLeaveTurn: false,
     recovery: null,
     error: null,
+    knowledgeBases: [],
+    knowledgeBasesTouched: false,
   };
 }
 
@@ -357,6 +370,37 @@ export class MobileChatRuntime {
   dismissRecovery = () => this.update({ recovery: null });
 
   /**
+   * Replace the knowledge bases the next question is answered from.
+   *
+   * Announcing the change (`knowledgeBasesTouched`) is what makes an *empty*
+   * selection meaningful: it is then sent as `knowledge_bases: []` to clear the
+   * conversation's stored choice, instead of being omitted and quietly falling
+   * back to it.
+   */
+  setKnowledgeBases = (refs: readonly string[]) => {
+    const next = [...new Set(refs.map(ref => ref.trim()).filter(Boolean))];
+    const current = this.state.knowledgeBases;
+    if (
+      next.length === current.length &&
+      next.every((ref, index) => ref === current[index])
+    ) {
+      return;
+    }
+    this.update({ knowledgeBases: next, knowledgeBasesTouched: true });
+  };
+
+  toggleKnowledgeBase = (ref: string) => {
+    const target = ref.trim();
+    if (!target) return;
+    const current = this.state.knowledgeBases;
+    this.setKnowledgeBases(
+      current.includes(target)
+        ? current.filter(item => item !== target)
+        : [...current, target],
+    );
+  };
+
+  /**
    * A send needs a transcript the app can append to. Posting while it is still
    * loading would write into messages the server copy is about to replace;
    * posting after it failed to load would answer with history nobody can see.
@@ -431,6 +475,11 @@ export class MobileChatRuntime {
           content: question,
           client_submission_id: submissionId,
           ...(this.sessionId ? { session_id: this.sessionId } : {}),
+          // Omitted unless the learner changed it, so the conversation keeps
+          // whatever selection the server already stored for it.
+          ...(this.state.knowledgeBasesTouched
+            ? { knowledge_bases: this.state.knowledgeBases }
+            : {}),
         }),
         { durable: false },
       );
@@ -579,6 +628,10 @@ export class MobileChatRuntime {
         status: 'recovering',
         canLeaveTurn: false,
         error: null,
+        // The selection belongs to the conversation, and the server already
+        // stored it; nothing has been "changed" by opening the screen.
+        knowledgeBases: detail.knowledgeBases,
+        knowledgeBasesTouched: false,
         recovery: {
           kind: 'resumed',
           message: 'Reconnected to a response that was still running.',
@@ -603,6 +656,8 @@ export class MobileChatRuntime {
       waitingPrompt: null,
       canLeaveTurn: false,
       error: null,
+      knowledgeBases: detail.knowledgeBases,
+      knowledgeBasesTouched: false,
       recovery: record
         ? {
             kind: 'settled',

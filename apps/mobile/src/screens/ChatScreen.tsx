@@ -14,8 +14,10 @@ import type {
   RecoveryNotice,
 } from '../features/chat/MobileChatRuntime';
 import type { ChatExchange } from '../features/sessions/history';
+import type { KnowledgeBaseSummary } from '../services/knowledgeApi';
 import { Action, ErrorNotice, Field } from '../components/FormControls';
 import { Screen } from '../components/Screen';
+import { KnowledgePicker, displayRef } from './knowledge/KnowledgePicker';
 import { radius, spacing, textSize, useTheme } from '../theme/useTheme';
 
 export type ChatScreenProps = {
@@ -29,6 +31,11 @@ export type ChatScreenProps = {
   canLeaveTurn: boolean;
   recovery: RecoveryNotice | null;
   error: string | null;
+  /** Knowledge bases the next question is answered from. */
+  knowledgeBases: readonly string[];
+  knowledgeOptions: readonly KnowledgeBaseSummary[];
+  knowledgeStatus: 'loading' | 'ready' | 'failed';
+  knowledgeError: string | null;
   send: (text: string) => boolean;
   reply: (text: string) => Promise<boolean>;
   cancel: () => Promise<void>;
@@ -36,6 +43,9 @@ export type ChatScreenProps = {
   retrySession: () => Promise<boolean>;
   reset: () => void;
   dismissRecovery: () => void;
+  onToggleKnowledge: (ref: string) => void;
+  onRefreshKnowledge: () => void;
+  onManageKnowledge: () => void;
   onOpenSettings: () => void;
   onOpenSessions: () => void;
 };
@@ -84,6 +94,10 @@ export function ChatScreen({
   canLeaveTurn,
   recovery,
   error,
+  knowledgeBases,
+  knowledgeOptions,
+  knowledgeStatus,
+  knowledgeError,
   send,
   reply,
   cancel,
@@ -91,6 +105,9 @@ export function ChatScreen({
   retrySession,
   reset,
   dismissRecovery,
+  onToggleKnowledge,
+  onRefreshKnowledge,
+  onManageKnowledge,
   onOpenSettings,
   onOpenSessions,
 }: ChatScreenProps) {
@@ -98,6 +115,7 @@ export function ChatScreen({
   const [draft, setDraft] = useState('');
   const [replying, setReplying] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const list = useRef<FlatList<ChatExchange>>(null);
   const follow = useRef(true);
   const awaitingInput = status === 'waiting_for_input';
@@ -116,6 +134,14 @@ export function ChatScreen({
     !replying &&
     !!draft.trim();
   const progress = progressCopy(status);
+  // The selection stores server refs; the header shows readable names.
+  const knowledgeNames = knowledgeBases
+    .map(
+      ref =>
+        knowledgeOptions.find(option => option.ref === ref)?.name ??
+        displayRef(ref),
+    )
+    .join(', ');
 
   function followLatest() {
     if (follow.current) list.current?.scrollToEnd({ animated: false });
@@ -328,6 +354,25 @@ export function ChatScreen({
             This response was stopped.
           </Text>
         ) : null}
+        <View style={styles.knowledgeRow}>
+          <Action
+            title={
+              knowledgeBases.length
+                ? `Knowledge · ${knowledgeBases.length}`
+                : 'Knowledge'
+            }
+            tone="secondary"
+            onPress={() => setPickerOpen(true)}
+          />
+          {knowledgeBases.length ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.status, { color: theme.muted }]}
+            >
+              {knowledgeNames}
+            </Text>
+          ) : null}
+        </View>
         <View style={styles.composerRow}>
           <Field
             label={awaitingInput ? 'Reply' : 'Message'}
@@ -380,6 +425,21 @@ export function ChatScreen({
           </View>
         ) : null}
       </View>
+
+      <KnowledgePicker
+        visible={pickerOpen}
+        bases={knowledgeOptions}
+        selected={knowledgeBases}
+        status={knowledgeStatus}
+        error={knowledgeError}
+        onToggle={onToggleKnowledge}
+        onClose={() => setPickerOpen(false)}
+        onRefresh={onRefreshKnowledge}
+        onManage={() => {
+          setPickerOpen(false);
+          onManageKnowledge();
+        }}
+      />
     </Screen>
   );
 }
@@ -449,5 +509,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   composerInput: { flex: 1 },
+  knowledgeRow: { gap: spacing.xs },
   secondaryRow: { alignSelf: 'flex-end' },
 });

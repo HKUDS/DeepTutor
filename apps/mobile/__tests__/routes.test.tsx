@@ -7,6 +7,8 @@ import { redirectSystemPath } from '../app/+native-intent';
 import ChatRoute from '../app/chat';
 import SessionsRoute from '../app/sessions';
 import IndexRoute from '../app/index';
+import KnowledgeDetailRoute from '../app/knowledge/detail';
+import KnowledgeListRoute from '../app/knowledge/index';
 import LoginRoute from '../app/login';
 import ServerRoute from '../app/server';
 import SettingsRoute from '../app/settings';
@@ -28,6 +30,8 @@ const routes = {
   chat: ChatRoute,
   sessions: SessionsRoute,
   settings: SettingsRoute,
+  'knowledge/index': KnowledgeListRoute,
+  'knowledge/detail': KnowledgeDetailRoute,
 };
 
 const origin = 'https://tutor.example.test';
@@ -92,6 +96,8 @@ function chatRuntime() {
     canLeaveTurn: false,
     recovery: null,
     error: null,
+    knowledgeBases: [] as string[],
+    knowledgeBasesTouched: false,
   };
   return {
     ...state,
@@ -104,6 +110,8 @@ function chatRuntime() {
     reset: () => {},
     openSession: async () => false,
     dismissRecovery: () => {},
+    setKnowledgeBases: () => {},
+    toggleKnowledgeBase: () => {},
   } as unknown as ReturnType<typeof useChatRuntime>;
 }
 

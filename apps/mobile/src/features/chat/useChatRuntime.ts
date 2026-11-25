@@ -63,8 +63,16 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
   }, [runtime]);
 
   const state = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
-  const { cancel, reply, reset, retryConnection, openSession, retrySession } =
-    runtime;
+  const {
+    cancel,
+    reply,
+    reset,
+    retryConnection,
+    openSession,
+    retrySession,
+    setKnowledgeBases,
+    toggleKnowledgeBase,
+  } = runtime;
 
   return {
     ...state,
@@ -77,6 +85,8 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
     retryConnection,
     openSession,
     retrySession,
+    setKnowledgeBases,
+    toggleKnowledgeBase,
     dismissRecovery: runtime.dismissRecovery,
   };
 }

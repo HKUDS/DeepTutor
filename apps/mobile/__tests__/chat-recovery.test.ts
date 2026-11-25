@@ -90,6 +90,7 @@ function detail(overrides: Partial<SessionDetail> = {}): SessionDetail {
     activeTurnId: '',
     messages: [message(1, 'user', 'What is a half?')],
     activeTurns: [],
+    knowledgeBases: [],
     ...overrides,
   };
 }
