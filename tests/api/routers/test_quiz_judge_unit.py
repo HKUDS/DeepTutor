@@ -1215,7 +1215,7 @@ class TestRobustTrailer:
         assert verdict["result"] == "partial"
         assert verdict["steps"] == [{"label": "c", "ok": False, "comment": ""}]
 
-    @pytest.mark.parametrize("constant", ["Infinity", "NaN", "-Infinity"])
+    @pytest.mark.parametrize("constant", ["Infinity", "NaN", "-Infinity", "1e999"])
     def test_non_finite_numbers_never_reach_the_frame(self, constant):
         raw = (
             '{"result": "correct", "confidence": 0.9, '

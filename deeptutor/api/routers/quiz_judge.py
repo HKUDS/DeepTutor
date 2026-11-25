@@ -254,7 +254,9 @@ class _JudgeStep(BaseModel):
 class _JudgeVerdict(Verdict):
     """The learning-path ``Verdict`` plus quiz-only points and step feedback."""
 
-    model_config = ConfigDict(extra="ignore")
+    # Non-finite numbers (``NaN``, ``Infinity``, overflowing ``1e999``) would
+    # serialise into a frame browsers cannot parse.
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
     # The prose above the trailer is the feedback; the summary is optional.
     feedback: str = Field(default="", max_length=2000)
     awarded_points: float | None = Field(default=None, ge=0)
@@ -297,12 +299,7 @@ class _JudgeVerdict(Verdict):
         return steps[:12]
 
 
-def _reject_non_finite(constant: str) -> None:
-    # ``Infinity``/``NaN`` would serialise into a frame browsers cannot parse.
-    raise ValueError(f"non-finite number in verdict: {constant}")
-
-
-_VERDICT_DECODER = json.JSONDecoder(parse_constant=_reject_non_finite)
+_VERDICT_DECODER = json.JSONDecoder()
 
 
 def _ungraded(reason: str) -> dict[str, Any]:
