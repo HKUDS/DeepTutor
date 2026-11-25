@@ -39,9 +39,7 @@ quadrant: tutorial
 
 图留在这段对话里，不用另开页面。
 
-<!-- TODO(screenshot): learn-visualize-figure.png
-用合成演示数据截取 DeepTutor 里的一段对话（不要个人历史、账户名或私人路径）。能力要是 Visualize。对话里要有一张已经画出来的图，例如一条正弦波。不要截 Manim 视频，也不要截视频课。稍后把文件存为 docs/public/screenshots/dev/learn-visualize-figure.png，再用图片替换这条注释。
--->
+![对话里画出的一条正弦波](/screenshots/dev/learn-visualize-figure.png)
 
 ## 了解更多
 

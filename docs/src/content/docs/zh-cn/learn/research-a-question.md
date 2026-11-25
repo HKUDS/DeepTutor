@@ -51,9 +51,7 @@ quadrant: tutorial
 
 材料会打开。报告留在对话里，其中一处来源你已经看过。
 
-<!-- TODO(screenshot): learn-research-report.png
-用合成演示数据截取 DeepTutor 里的一段对话（不要个人历史、账户名或私人路径）。能力要是 Research。对话里要有一份已经写完的报告，并且至少有一处引用。主题用合成内容。稍后把文件存为 docs/public/screenshots/dev/learn-research-report.png，再用图片替换这条注释。
--->
+![一份写完的研究报告，带有一处引用](/screenshots/dev/learn-research-report.png)
 
 ## 了解更多
 

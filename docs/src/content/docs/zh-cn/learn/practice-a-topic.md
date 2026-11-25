@@ -45,9 +45,7 @@ quadrant: tutorial
 
 这一题答过了，参考答案也看到了。这套题留在题库里，以后还可以从那里再打开。
 
-<!-- TODO(screenshot): learn-practice-answer.png
-用合成演示数据截取 DeepTutor 里的一道练习（不要个人历史、账户名或私人路径）。参考答案要已经展开，评级控件要看得见。稍后把文件存为 docs/public/screenshots/dev/learn-practice-answer.png，再用图片替换这条注释。
--->
+![参考答案已经展开，评级按钮也在](/screenshots/dev/learn-practice-answer.png)
 
 ## 了解更多
 

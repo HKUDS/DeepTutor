@@ -45,9 +45,7 @@ quadrant: tutorial
 
 原文会打开，可以和那句话对上。对话里这时既有回复，也有你看过的那一处原文。
 
-<!-- TODO(screenshot): learn-ask-with-source.png
-用合成演示数据截取 DeepTutor 里的一段对话（不要个人历史、账户名或私人路径）。用户消息上要有一份讲义或 PDF 附件。回复里至少有一处可以打开的引用。稍后把文件存为 docs/public/screenshots/dev/learn-ask-with-source.png，再用图片替换这条注释。
--->
+![回复引用了附上的讲义](/screenshots/dev/learn-ask-with-source.png)
 
 ## 了解更多
 

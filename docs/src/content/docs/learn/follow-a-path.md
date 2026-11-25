@@ -51,9 +51,7 @@ Study one waypoint. Answer the question, then explain the result in your own wor
 
 The waypoint shows a recorded result, and the progress ring is no longer empty. The result can be an assessment, or your own statement that you have it. This lesson ends when that record is on the waypoint.
 
-<!-- TODO(screenshot): learn-mastery-waypoint.png
-Capture a mastery topic in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). One waypoint must show a recorded result, so progress is not 0. Save the file later at docs/public/screenshots/dev/learn-mastery-waypoint.png and replace this comment with the image.
--->
+![A waypoint marked known, with progress at 100%](/screenshots/dev/learn-mastery-waypoint.png)
 
 ## Learn more
 

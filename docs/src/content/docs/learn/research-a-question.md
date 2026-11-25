@@ -51,9 +51,7 @@ Open one cited item before you rely on a claim.
 
 The source opens. This lesson ends when the report is in the thread and you have opened one of its sources.
 
-<!-- TODO(screenshot): learn-research-report.png
-Capture a chat thread in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). The capability must be Research. The thread must show a finished report with at least one citation. Use a synthetic topic. Save the file later at docs/public/screenshots/dev/learn-research-report.png and replace this comment with the image.
--->
+![A finished Research report with a citation](/screenshots/dev/learn-research-report.png)
 
 ## Learn more
 

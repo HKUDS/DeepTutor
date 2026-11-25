@@ -45,9 +45,7 @@ Open the reference answer. The rating controls are on the same card.
 
 This lesson ends when you have answered one item and seen that answer. The set stays in the bank, so you can open it again from there.
 
-<!-- TODO(screenshot): learn-practice-answer.png
-Capture one practice item in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). The reference answer must be revealed, and the rating controls must be visible. Save the file later at docs/public/screenshots/dev/learn-practice-answer.png and replace this comment with the image.
--->
+![A revealed answer with the rating controls](/screenshots/dev/learn-practice-answer.png)
 
 ## Learn more
 

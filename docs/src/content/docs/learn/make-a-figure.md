@@ -39,9 +39,7 @@ Wait until the figure renders in the thread. It may be SVG, Mermaid, Chart.js, o
 
 This lesson ends when that figure is in the thread. You can read it without leaving the chat.
 
-<!-- TODO(screenshot): learn-visualize-figure.png
-Capture a chat thread in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). The capability must be Visualize. The thread must show one rendered figure, for example a sine wave. Do not capture a Manim video or a video lesson. Save the file later at docs/public/screenshots/dev/learn-visualize-figure.png and replace this comment with the image.
--->
+![A sine wave rendered in the thread](/screenshots/dev/learn-visualize-figure.png)
 
 ## Learn more
 

@@ -51,9 +51,7 @@ quadrant: tutorial
 
 这个路标上有了记录，进度环不再是空的。记录可以是一次评估，也可以是你自己写下已经掌握。
 
-<!-- TODO(screenshot): learn-mastery-waypoint.png
-用合成演示数据截取 DeepTutor 里的一个精通主题（不要个人历史、账户名或私人路径）。要有一个路标已经记下结果，进度不能是 0。稍后把文件存为 docs/public/screenshots/dev/learn-mastery-waypoint.png，再用图片替换这条注释。
--->
+![一个路标已记为掌握，进度是 100%](/screenshots/dev/learn-mastery-waypoint.png)
 
 ## 了解更多
 

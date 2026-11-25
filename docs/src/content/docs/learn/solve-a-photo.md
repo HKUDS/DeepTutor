@@ -45,9 +45,7 @@ Read each step next to the photo.
 
 You can see which step matches the picture and which step does not. This lesson ends there.
 
-<!-- TODO(screenshot): learn-solve-photo.png
-Capture a chat thread in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). The capability must be Solve, with one cropped problem photo attached. The reply must show numbered steps and a final answer. Use a synthetic problem, not a real exam. Save the file later at docs/public/screenshots/dev/learn-solve-photo.png and replace this comment with the image.
--->
+![Numbered steps beside the cropped problem](/screenshots/dev/learn-solve-photo.png)
 
 ## Learn more
 

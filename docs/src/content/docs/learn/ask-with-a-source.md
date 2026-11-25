@@ -45,9 +45,7 @@ Open that citation and compare it with the sentence that used it.
 
 The passage opens. This lesson ends when the reply is in the thread and you have checked one source yourself.
 
-<!-- TODO(screenshot): learn-ask-with-source.png
-Capture a chat thread in the DeepTutor app using synthetic demo data only (no personal history, account names, or private paths). The user message must show an attached primer or PDF chip. The reply must show at least one citation that can be opened. Save the file later at docs/public/screenshots/dev/learn-ask-with-source.png and replace this comment with the image.
--->
+![A reply that cites the attached primer](/screenshots/dev/learn-ask-with-source.png)
 
 ## Learn more
 

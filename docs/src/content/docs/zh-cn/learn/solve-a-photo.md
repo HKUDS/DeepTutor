@@ -45,9 +45,7 @@ quadrant: tutorial
 
 哪一步和照片一致、哪一步对不上，这里都能看出来。
 
-<!-- TODO(screenshot): learn-solve-photo.png
-用合成演示数据截取 DeepTutor 里的一段对话（不要个人历史、账户名或私人路径）。能力要是 Solve，并附上一张裁好的题目照片。回复里要有编号步骤和最终答案。用编造的题目，不要用真实试卷。稍后把文件存为 docs/public/screenshots/dev/learn-solve-photo.png，再用图片替换这条注释。
--->
+![编号步骤旁边是裁好的题目](/screenshots/dev/learn-solve-photo.png)
 
 ## 了解更多
 
