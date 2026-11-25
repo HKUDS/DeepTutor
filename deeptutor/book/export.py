@@ -225,12 +225,19 @@ def _render_timeline(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _fenced_code(code: str, language: str) -> str:
+    """Keep literal backtick runs inside the exported code block."""
+    longest = max((len(run) for run in re.findall(r"`+", code)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{language}\n{code}\n{fence}"
+
+
 def _render_code(payload: dict[str, Any]) -> str:
     code = _payload_text(payload, "code")
     if not code:
         return ""
     language = _payload_text(payload, "language")
-    parts = [f"```{language}\n{code}\n```"]
+    parts = [_fenced_code(code, language)]
     explanation = _payload_text(payload, "explanation")
     if explanation:
         parts.append(explanation)
@@ -249,9 +256,9 @@ def _render_visual(payload: dict[str, Any], kind: str, labels: dict[str, str]) -
         content = _payload_text(code, "content")
         language = _payload_text(code, "language")
         if content:
-            parts.append(f"```{language}\n{content}\n```")
+            parts.append(_fenced_code(content, language))
     elif _payload_text(payload, "mermaid"):
-        parts.append(f"```mermaid\n{_payload_text(payload, 'mermaid')}\n```")
+        parts.append(_fenced_code(_payload_text(payload, "mermaid"), "mermaid"))
 
     video = _payload_text(payload, "video_url")
     if video:
