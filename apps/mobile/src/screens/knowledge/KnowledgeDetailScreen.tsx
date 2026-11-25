@@ -16,6 +16,7 @@ import { Screen } from '../../components/Screen';
 import {
   documentState,
   failureReason,
+  fileState,
   isBusy,
   type DocumentState,
 } from '../../features/knowledge/refs';
@@ -395,6 +396,11 @@ export function KnowledgeDetailScreen({
               <Text style={[styles.sectionTitle, { color: theme.text }]}>
                 Documents
               </Text>
+              <Text style={[styles.hint, { color: theme.muted }]}>
+                The server reports processing per run, not per document. “Run
+                done” means the last run finished, not that this file was
+                verified on its own.
+              </Text>
             </View>
           }
           ListEmptyComponent={
@@ -405,7 +411,7 @@ export function KnowledgeDetailScreen({
             </View>
           }
           renderItem={({ item }) => {
-            const fileState = kb ? documentState(kb, item.name) : 'unknown';
+            const fileStateValue = kb ? fileState(kb, item.name) : 'unknown';
             const isFolder = item.type === 'folder';
             return (
               <View
@@ -427,7 +433,7 @@ export function KnowledgeDetailScreen({
                       : `${formatBytes(item.size)}${item.modified ? ` · ${formatModified(item.modified)}` : ''}`}
                   </Text>
                 </View>
-                {isFolder ? null : <StateBadge state={fileState} />}
+                {isFolder ? null : <StateBadge state={fileStateValue} />}
                 {filesReadable && !isFolder ? (
                   <Pressable
                     accessibilityRole="button"

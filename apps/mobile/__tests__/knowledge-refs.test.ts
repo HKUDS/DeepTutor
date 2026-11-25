@@ -1,6 +1,7 @@
 import {
   documentState,
   failureReason,
+  fileState,
   isBusy,
   isSelectable,
   knowledgeRef,
@@ -133,6 +134,38 @@ test('a failure explains itself, preferring the run’s own message', () => {
     'Embedding model missing',
   );
   expect(failureReason(null, '')).toBe('The server did not say why it failed.');
+});
+
+test('a file row never claims a readiness the run cannot prove', () => {
+  const running = base({
+    status: 'processing',
+    progress: progress({ stage: 'processing_file', fileName: 'chapter 1.pdf' }),
+  });
+  // The parser names the file it is reading; only that one is parsing.
+  expect(fileState(running, 'chapter 1.pdf')).toBe('parsing');
+  expect(fileState(running, 'chapter 2.pdf')).toBe('in_progress');
+
+  // "The run finished" is not "this document was indexed".
+  const finished = base({
+    status: 'ready',
+    progress: progress({ stage: 'completed' }),
+  });
+  expect(fileState(finished, 'chapter 1.pdf')).toBe('run_done');
+  expect(fileState(finished, 'chapter 1.pdf')).not.toBe('ready');
+  expect(stateLabel('run_done')).toBe('Run done');
+
+  // A failed run names the file it gave up on; the others are unknown.
+  const failed = base({
+    status: 'error',
+    progress: progress({ stage: 'error', fileName: 'bad.pdf' }),
+  });
+  expect(fileState(failed, 'bad.pdf')).toBe('failed');
+  expect(fileState(failed, 'other.pdf')).toBe('unknown');
+
+  expect(fileState(base({ status: 'needs_reindex' }), 'a.pdf')).toBe('stale');
+  expect(stateLabel('stale')).toBe('Re-index needed');
+  // A revoked base yields nothing to say about its files.
+  expect(fileState(base({ available: false }), 'a.pdf')).toBe('unknown');
 });
 
 test('labels are stable copy rather than raw protocol strings', () => {

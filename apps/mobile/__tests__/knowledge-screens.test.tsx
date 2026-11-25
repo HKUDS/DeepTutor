@@ -292,6 +292,27 @@ test('an index older than its documents says so instead of claiming work', () =>
   ).toBeTruthy();
 });
 
+test('a document row says the run finished instead of claiming the file is ready', () => {
+  detail({
+    kb: base({ status: 'ready', progress: progress({ stage: 'completed' }) }),
+  });
+  // The base itself is ready…
+  expect(screen.getByText('Ready')).toBeTruthy();
+  // …but the server reports per run, so the file row says exactly that.
+  expect(screen.getByText('Run done')).toBeTruthy();
+  expect(screen.getByText(/last run finished/)).toBeTruthy();
+});
+
+test('only the file the parser names is shown as parsing', () => {
+  detail({
+    kb: base({ status: 'processing', progress: progress({ message: '' }) }),
+    files: [file('a.pdf'), file('b.pdf')],
+  });
+  expect(screen.getByText('Parsing')).toBeTruthy();
+  // The other file is part of the run but is not being read right now.
+  expect(screen.getByText('In progress')).toBeTruthy();
+});
+
 test('upload rows describe their own progress, cancel and retry', async () => {
   const items: UploadItem[] = [
     {

@@ -1,23 +1,33 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { isBusy, stateLabel, type DocumentState } from '../../features/knowledge/refs';
+import {
+  isActiveState,
+  stateLabel,
+  type DocumentState,
+  type FileState,
+} from '../../features/knowledge/refs';
 import { radius, spacing, textSize, useTheme } from '../../theme/useTheme';
 
 /** A small pill naming a knowledge base's or a document's processing state. */
-export function StateBadge({ state }: { state: DocumentState }) {
+export function StateBadge({
+  state,
+}: {
+  state: DocumentState | FileState;
+}) {
   const theme = useTheme();
+  const active = isActiveState(state);
   const color =
     state === 'ready'
       ? theme.primary
       : state === 'failed'
         ? theme.error
-        : isBusy(state)
+        : active
           ? theme.text
           : theme.muted;
   const background =
     state === 'failed'
       ? theme.errorSurface
-      : isBusy(state)
+      : active
         ? theme.secondary
         : theme.surface;
 
