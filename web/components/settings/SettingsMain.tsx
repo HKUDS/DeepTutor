@@ -146,7 +146,10 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
             <PageContainer
               ref={content}
               tabIndex={-1}
-              className="max-w-[780px] pb-16 pt-5 outline-none md:px-8 md:pt-7"
+              spacing="none"
+              maxWidth="max-w-[780px]"
+              gutter="px-6 md:px-8"
+              className="pb-16 pt-5 outline-none md:pt-7"
             >
               <SettingsLoadStatusBanner />
               {children}
