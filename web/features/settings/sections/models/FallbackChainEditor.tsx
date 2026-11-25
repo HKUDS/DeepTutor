@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -54,10 +54,22 @@ export function FallbackChainEditor() {
     [llm.fallbacks],
   );
 
-  const [rows, setRows] = useState<FallbackEntry[]>(stored.length ? stored : []);
+  const [rows, setRows] = useState<FallbackEntry[]>(stored);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+
+  // The settings store loads asynchronously (and reloads after a save), so the
+  // chain arrives *after* the first render. Without this sync a refresh shows an
+  // empty editor even though the catalog holds a chain — and the next save would
+  // then write that empty list back (#2693).
+  const appliedSignature = useRef<string | null>(null);
+  const storedSignature = useMemo(() => JSON.stringify(stored), [stored]);
+  useEffect(() => {
+    if (appliedSignature.current === storedSignature) return;
+    appliedSignature.current = storedSignature;
+    setRows(stored);
+  }, [stored, storedSignature]);
 
   const dirty = useMemo(() => {
     const next = sanitizeChain(rows, choices, MAX_FALLBACKS);
