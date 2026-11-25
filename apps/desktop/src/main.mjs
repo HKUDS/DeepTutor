@@ -9,6 +9,7 @@ import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
+import { minWindowSize, restoreWindowBounds } from './window-bounds.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -31,8 +32,8 @@ const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-p
 
 // macOS draws its 44px bar under the traffic lights; Windows uses a 38px WCO bar matching the sidebar tone.
 const HEADER_HEIGHT = WINDOWS ? 38 : 44;
-// 页面侧边栏的实际渲染色（temp/seam-check.cjs 实测）。页面就绪后 solid 底色会被
-// syncChromeColorFromView 采样的实时色覆盖；琉璃是渐变底不参与采样，此兜底色即最终色。
+// Once loaded, solid themes use the sampled sidebar color. The glass gradient
+// keeps the fallback color for the window chrome.
 const PALETTE_BACKGROUND = WINDOWS
   ? { snow: '#f7f7f8', light: '#f5f2ea', dark: '#171719', glass: '#0e0d1a' }
   : { snow: '#ffffff', light: '#faf8f5', dark: '#161618', glass: '#0e0d1a' };
@@ -162,14 +163,6 @@ function resetContentZoom() {
   applyContentZoom(1);
 }
 
-function minWindowSize(workArea) {
-  // Keep desktop sidebar + usable content area intact while never exceeding small/high-DPI screens.
-  return {
-    minWidth: Math.min(820, Math.max(480, workArea.width)),
-    minHeight: Math.min(560, Math.max(400, workArea.height)),
-  };
-}
-
 function defaultWindowBounds() {
   const { workArea } = screen.getPrimaryDisplay();
   const { minWidth, minHeight } = minWindowSize(workArea);
@@ -190,20 +183,9 @@ function resolveWindowBounds(saved) {
   if (!saved || ![saved.x, saved.y, saved.width, saved.height].every(Number.isFinite)) {
     return { ...defaultWindowBounds(), zoomFactor: savedZoom };
   }
-  const displays = screen.getAllDisplays();
-  const matched = displays.find(({ workArea }) => {
-    const overlapX = Math.min(saved.x + saved.width, workArea.x + workArea.width) - Math.max(saved.x, workArea.x);
-    const titleVisibleY = saved.y >= workArea.y - 8 && saved.y <= workArea.y + workArea.height - 60;
-    return overlapX >= 120 && titleVisibleY;
-  });
-  if (!matched) return { ...defaultWindowBounds(), zoomFactor: savedZoom };
-  const { workArea } = matched;
-  const { minWidth, minHeight } = minWindowSize(workArea);
-  const width = Math.min(workArea.width, Math.max(minWidth, Math.round(saved.width)));
-  const height = Math.min(workArea.height, Math.max(minHeight, Math.round(saved.height)));
-  const x = Math.min(Math.max(Math.round(saved.x), workArea.x), workArea.x + workArea.width - width);
-  const y = Math.min(Math.max(Math.round(saved.y), workArea.y), workArea.y + workArea.height - height);
-  return { x, y, width, height, maximized: Boolean(saved.maximized), zoomFactor: savedZoom };
+  const restored = restoreWindowBounds(saved, screen.getAllDisplays());
+  if (!restored) return { ...defaultWindowBounds(), zoomFactor: savedZoom };
+  return { ...restored, maximized: Boolean(saved.maximized), zoomFactor: savedZoom };
 }
 
 function persistWindowState(immediate = false) {
