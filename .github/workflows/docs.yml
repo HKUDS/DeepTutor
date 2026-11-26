@@ -23,6 +23,7 @@ on:
       - gh-pages
     paths:
       - "docs/**"
+      - "scripts/export_docs_surface.py"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
       - "deeptutor/partners/channels/**"
@@ -33,6 +34,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "docs/**"
+      - "scripts/export_docs_surface.py"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
       - "deeptutor/partners/channels/**"
