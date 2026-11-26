@@ -14,15 +14,48 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 import doc_facts
+import pytest
 
 # ── CLI commands ────────────────────────────────────────────────────────────
 
 # ``deeptutor <group> <sub>``. The group is required; the subcommand is
 # optional because the CLI has bare commands such as ``deeptutor doctor``.
-COMMAND = re.compile(r"\bdeeptutor\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?")
+# Whitespace is ``[ \t]`` rather than ``\s`` so a match cannot span a line
+# break and pair the last word of one line with the first word of the next
+# (``Run deeptutor`` / ``kb list`` must not read as ``deeptutor kb``). The
+# trailing lookahead ends the match at the end of the token, so ``deep`` in
+# ``deeptutor run deep_solve`` is not read as a subcommand, and the token class
+# includes ``_`` because capability names such as ``deep_question`` are words
+# rather than subcommands.
+COMMAND = re.compile(
+    r"\bdeeptutor[ \t]+([a-z][a-z0-9_-]*)(?:[ \t]+([a-z][a-z0-9_-]*))?(?![a-z0-9_-])"
+)
+
+# Commands inside fenced examples are checked too — that is where readers copy
+# them from, and it is most of the mentions on the site. Only lines that
+# actually *invoke* the CLI count, so a path or a container name does not:
+#
+#   deeptutor kb list                    → invocation (line start)
+#   $ deeptutor kb list                  → invocation (shell prompt)
+#   DEEPTUTOR_HOME=/opt/deeptutor deeptutor start → invocation (env prefix)
+#   SESSION_ID=$(deeptutor run chat ...)  → invocation (command substitution)
+#   docker exec deeptutor python ...      → NOT an invocation: `deeptutor` is
+#                                           the container name, `python` the
+#                                           command, so this would otherwise
+#                                           look like `deeptutor python`.
+FENCED_COMMAND = re.compile(
+    r"""
+    (?:
+        ^[ \t]*(?:\$[ \t]+)?                     # line start, optional prompt
+        (?:[A-Z][A-Z0-9_]*=[^\s(]+[ \t]+)*       # optional env assignments
+      | \$\( | `                                # command substitution / backtick
+      | &&[ \t]* | ;[ \t]* | \|[ \t]*            # chained or piped command
+    )
+    deeptutor[ \t]+([a-z][a-z0-9_-]*)(?:[ \t]+([a-z][a-z0-9_-]*))?(?![a-z0-9_-])
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
 
 # Subcommand slots that are values, not command names: ``deeptutor run chat``
 # takes a capability, ``deeptutor kb create my-kb`` takes a name.
@@ -46,7 +79,14 @@ NOT_A_SUBCOMMAND = {
 
 
 def _documented_commands() -> list[tuple[str, str, str]]:
-    """Yield ``(page, group, subcommand)`` for every command in prose.
+    """Yield ``(page, group, subcommand)`` for every command the docs show.
+
+    Two sources, because they answer slightly different questions:
+
+    * prose (fences stripped) — a sentence that names a command is a claim that
+      the command exists;
+    * fenced blocks — scanned for lines that *invoke* the CLI, since a code
+      sample is what readers copy and most mentions on the site live there.
 
     Mentions that describe a *retired* command are skipped. The migration table
     in ``partners/index.md`` deliberately names ``deeptutor bot ...`` to explain
@@ -56,9 +96,14 @@ def _documented_commands() -> list[tuple[str, str, str]]:
     found = []
     for page in doc_facts.documentation_pages():
         relative = page.relative_to(doc_facts.REPO_ROOT).as_posix()
-        text = doc_facts.page_text(page)
-        for match in COMMAND.finditer(text):
-            if _describes_retired_command(text, match.start()):
+        prose = doc_facts.page_text(page)
+        for match in COMMAND.finditer(prose):
+            if _describes_retired_mention(prose, match.start()):
+                continue
+            found.append((relative, match.group(1), match.group(2) or ""))
+        fenced = page.read_text(encoding="utf-8")
+        for match in FENCED_COMMAND.finditer(fenced):
+            if _describes_retired_mention(fenced, match.start()):
                 continue
             found.append((relative, match.group(1), match.group(2) or ""))
     return found
@@ -82,8 +127,8 @@ RETIRED_MARKERS = (
 )
 
 
-def _describes_retired_command(text: str, position: int, window: int = 90) -> bool:
-    """Whether the match sits in a sentence about a retired command."""
+def _describes_retired_mention(text: str, position: int, window: int = 90) -> bool:
+    """Whether the match sits in a sentence about a retired command or endpoint."""
     start = max(0, position - window)
     context = text[start : position + window].lower()
     return any(marker in context for marker in RETIRED_MARKERS)
@@ -158,34 +203,84 @@ API_PATH = re.compile(r"/api/[A-Za-z0-9_{}/.-]+")
 # /api/v1/ is foreign" rule would silently skip the exact mistake this test was
 # written for: docs telling readers to POST to our own endpoint under /api/v1,
 # which DeepTutor does not mount.
+#
+# Entry semantics keep the table from turning into a page-wide exemption: an
+# entry ending in ``/`` is a prefix, any other entry matches only that exact
+# path. So ``/api/v1`` on the providers page exempts the OpenRouter/Lemonade
+# base URL but still reports ``/api/v1/chat`` there, which is the mistake this
+# test exists to catch.
 FOREIGN_API_PAGES = {
-    # page: third-party product whose API prefixes are legitimate there. The
-    # Mattermost channel drives Mattermost's own v4 API, so ``/api/v4/users/me``
-    # is a real endpoint this repository does not mount.
+    # page: third-party product whose API paths are legitimate there.
     #
     # Both the current and the reorganized path are listed: the docs tree moved
     # from ``partners/`` to ``channels/international/``, and the test has to be
     # correct against whichever layout it runs on.
-    "docs/src/content/docs/channels/international/mattermost.md": ("/api/v4/",),
-    "docs/src/content/docs/zh-cn/channels/international/mattermost.md": ("/api/v4/",),
-    "docs/src/content/docs/partners/mattermost.md": ("/api/v4/",),
-    "docs/src/content/docs/zh-cn/partners/mattermost.md": ("/api/v4/",),
+    # Mattermost needs both forms: the prose warns readers *not* to append
+    # ``/api/v4`` to a base URL, and the channel also drives deeper endpoints
+    # such as ``/api/v4/users/me``.
+    "docs/src/content/docs/channels/international/mattermost.md": ("/api/v4", "/api/v4/"),
+    "docs/src/content/docs/zh-cn/channels/international/mattermost.md": ("/api/v4", "/api/v4/"),
+    "docs/src/content/docs/partners/mattermost.md": ("/api/v4", "/api/v4/"),
+    "docs/src/content/docs/zh-cn/partners/mattermost.md": ("/api/v4", "/api/v4/"),
+    # Provider base URLs users paste into settings (BytePlus, Zhipu, VolcEngine,
+    # OpenRouter, Lemonade), plus the Ollama embedding profile; third-party
+    # routes, not DeepTutor routes.
+    "docs/src/content/docs/get-started/providers.md": (
+        "/api/v3",
+        "/api/paas/v4",
+        "/api/coding/v3",
+        "/api/v1",
+        "/api/embed",
+    ),
+    "docs/src/content/docs/zh-cn/get-started/providers.md": (
+        "/api/v3",
+        "/api/paas/v4",
+        "/api/coding/v3",
+        "/api/v1",
+        "/api/embed",
+    ),
+    # Ollama's endpoint on the host: http://host.docker.internal:11434/api/embed.
+    "docs/src/content/docs/get-started/docker.md": ("/api/embed",),
+    "docs/src/content/docs/zh-cn/get-started/docker.md": ("/api/embed",),
+    # The msteams channel runs its own built-in HTTP server on :3978 (Bot
+    # Framework adapter), separate from the FastAPI app.
+    "docs/src/content/docs/partners/msteams.md": ("/api/messages",),
+    "docs/src/content/docs/zh-cn/partners/msteams.md": ("/api/messages",),
 }
 
 
 def _is_foreign_api_path(page: str, path: str) -> bool:
-    """Whether the path is a third-party endpoint documented on this page."""
-    prefixes = FOREIGN_API_PAGES.get(page)
-    if not prefixes:
-        return False
-    return path.startswith(prefixes)
+    """Whether the path is a third-party endpoint documented on this page.
+
+    An entry ending in ``/`` is a prefix; anything else matches that exact path
+    only. The asymmetry is deliberate: a third-party API *family* is a prefix,
+    while a bare base URL such as ``/api/v1`` must not exempt every path that
+    happens to start with it.
+    """
+    for entry in FOREIGN_API_PAGES.get(page, ()):
+        if path == entry:
+            return True
+        if entry.endswith("/") and path.startswith(entry):
+            return True
+    return False
 
 
 def _documented_api_paths() -> list[tuple[str, str]]:
+    """Every ``/api/...`` path the docs show, prose and examples alike.
+
+    Examples are included because that is where a reader actually sends the
+    request: a ``curl`` block pointing at a route the backend does not mount is
+    a worse failure than a prose mention. Frontmatter stays excluded.
+    """
     found = []
     for page in doc_facts.documentation_pages():
         relative = page.relative_to(doc_facts.REPO_ROOT).as_posix()
-        for match in API_PATH.finditer(doc_facts.page_text(page)):
+        text = doc_facts.page_body(page)
+        for match in API_PATH.finditer(text):
+            # A sentence that says the endpoint was removed is history, not a
+            # claim that it is callable — the same exemption CLI commands get.
+            if _describes_retired_mention(text, match.start()):
+                continue
             path = match.group(0).rstrip(".,;:)`'\"")
             # A path may end in a template parameter (``/api/x/{a}/{b}``); strip
             # trailing punctuation must not eat the closing braces.
@@ -248,19 +343,14 @@ def _pinned_versions() -> list[tuple[str, str]]:
 def test_version_pins_match_project_version() -> None:
     """Install commands pin the version the source tree actually declares."""
     current = doc_facts.project_version()
-    stale = [
-        (page, version)
-        for page, version in _pinned_versions()
-        if version != current
-    ]
+    stale = [(page, version) for page, version in _pinned_versions() if version != current]
 
     assert not stale, _format_stale_pins(stale, current)
 
 
 def _format_stale_pins(stale: list[tuple[str, str]], current: str) -> str:
     lines = [
-        f"Documentation pins a version other than {current} "
-        f"(deeptutor/__version__.py):",
+        f"Documentation pins a version other than {current} (deeptutor/__version__.py):",
         "",
     ]
     for page, version in stale:
