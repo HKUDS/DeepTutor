@@ -7,7 +7,7 @@ import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor } from "@/lib/doc-attachments";
 import { isChatFileLink } from "@/lib/chat-file-link";
 import { ChatFileLink } from "./ChatFileLink";
-import { previewKindFor } from "@/components/chat/preview/previewerFor";
+import { langForFilename } from "@/lib/code-languages";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /**
@@ -512,14 +512,14 @@ export function ChatFileReference({
   if (
     !serveFile &&
     (/^(?:[a-z][a-z\d+.-]*:|\/|[?#])/i.test(href) ||
-      previewKindFor({ filename }) === "fallback")
+      (!/\.[a-z\d][a-z\d_-]*$/i.test(filename) && !langForFilename(filename)))
   ) {
     return fallback;
   }
   return (
     <ChatFileLink
-      attachment={{
-        filename,
+      attachment={(serveFile && context.files.find((file) => file.url === href)) || {
+        filename: serveFile && href.startsWith("/files/workspace-items/") ? undefined : filename,
         type: "file",
         url: serveFile ? href : undefined,
         id: serveFile ? undefined : `unavailable:${href}`,

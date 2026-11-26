@@ -16,15 +16,34 @@ export function mediaType(headers) {
   return (headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
 }
 
+function hasAmbiguousTypeScriptMime(mime, extension) {
+  return mime === 'video/vnd.dlna.mpeg-tts' && extension === '.ts';
+}
+
 export function canCopyFileText(headers, filename) {
   const mime = mediaType(headers);
   const extension = path.extname(filename).toLowerCase();
   return Number(headers.get('content-length')) <= MAX_TEXT_BYTES && (
     mime.startsWith('text/') || TEXT_MIME.has(mime) ||
     (mime === 'application/vnd.ms-excel' && extension === '.csv') ||
+    hasAmbiguousTypeScriptMime(mime, extension) ||
     ((!mime || mime === 'application/octet-stream') &&
       TEXT_EXTENSIONS.has(extension))
   );
+}
+
+export function mayOpenInBrowser(headers, filename) {
+  const mime = mediaType(headers);
+  if (hasAmbiguousTypeScriptMime(mime, path.extname(filename).toLowerCase())) return false;
+  const activeType = ['text/html', 'application/xhtml+xml', 'image/svg+xml'].includes(mime);
+  if (activeType) {
+    const sandbox = headers.get('content-security-policy')?.split(';')
+      .map(directive => directive.trim().toLowerCase())
+      .find(directive => /^sandbox(?:\s|$)/.test(directive));
+    return Boolean(sandbox && !sandbox.split(/\s+/).includes('allow-same-origin'));
+  }
+  return mime.startsWith('text/') || mime.startsWith('image/') ||
+    mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf';
 }
 
 export async function readFileText(response, filename) {

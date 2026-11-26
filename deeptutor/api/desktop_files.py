@@ -30,9 +30,11 @@ def desktop_file_headers(path: Path | None) -> dict[str, str]:
 
 
 def browser_file_media_type(
-    request: Request, path: Path, media_type: str | None = None
+    request: Request, filename: str, media_type: str | None = None
 ) -> str | None:
+    media_type = media_type or guess_type(filename)[0]
     if request.query_params.get("view") == "browser":
-        if (media_type or guess_type(path.name)[0]) == "text/markdown":
+        mime = (media_type or "").partition(";")[0].strip().lower()
+        if mime in {"text/markdown", "text/x-markdown"}:
             return "text/plain"
     return media_type

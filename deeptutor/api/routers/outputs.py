@@ -101,4 +101,6 @@ async def read_output(
     headers = desktop_file_headers(path) if desktop_file_request(request) else {}
     if path.suffix.lower() == ".html" and "video_lesson" in path.parts:
         headers["Content-Security-Policy"] = _SANDBOXED_PAGE_CSP
-    return FileResponse(path, media_type=browser_file_media_type(request, path), headers=headers)
+    return FileResponse(
+        path, media_type=browser_file_media_type(request, path.name), headers=headers
+    )

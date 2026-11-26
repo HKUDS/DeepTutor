@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { canCopyFileText, mediaType, readFileText } from './file-content.mjs';
+import { canCopyFileText, mayOpenInBrowser, readFileText } from './file-content.mjs';
 
 const runFile = promisify(execFile);
 const openWithScript = fileURLToPath(new URL('./windows_open_with.py', import.meta.url));
@@ -70,19 +70,6 @@ async function readMetadata(session, url, key) {
   const filename = decodeHeader(/filename\*=utf-8''([^;]+)/i.exec(disposition)?.[1]) ||
     /filename="([^"]+)"/i.exec(disposition)?.[1] || decodeHeader(url.pathname.split('/').pop());
   return { headers, original, filename };
-}
-
-function mayOpenInBrowser(file) {
-  const mime = mediaType(file.headers);
-  const activeType = ['text/html', 'application/xhtml+xml', 'image/svg+xml'].includes(mime);
-  if (activeType) {
-    const sandbox = file.headers.get('content-security-policy')?.split(';')
-      .map(directive => directive.trim().toLowerCase())
-      .find(directive => /^sandbox(?:\s|$)/.test(directive));
-    return Boolean(sandbox && !sandbox.split(/\s+/).includes('allow-same-origin'));
-  }
-  return mime.startsWith('text/') || mime.startsWith('image/') ||
-    mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf';
 }
 
 async function openInBrowser(session, url) {
@@ -208,9 +195,9 @@ export function mountFileMenu(window, content, origin, key, t, pythonPath) {
     if (canOpenWith) {
       submenu.push(pathAction(t('fileChooseApp'), (original) => openWith(pythonPath, 'picker', original)));
     }
-    if (file && mayOpenInBrowser(file)) {
+    if (file && mayOpenInBrowser(file.headers, file.filename)) {
       submenu.push(readAction(t('fileOpenBrowser'), (current) => {
-        if (!mayOpenInBrowser(current)) throw new Error('File has no safe browser preview');
+        if (!mayOpenInBrowser(current.headers, current.filename)) throw new Error('File has no safe browser preview');
         return openInBrowser(session, target.url);
       }, true));
     }

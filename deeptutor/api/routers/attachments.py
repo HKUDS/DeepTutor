@@ -18,7 +18,6 @@ trust). Once multi-user auth lands we should swap this for signed URLs.
 from __future__ import annotations
 
 import logging
-from mimetypes import guess_type
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -68,7 +67,7 @@ async def get_attachment(
     if target is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
 
-    media_type = browser_file_media_type(request, target, guess_type(target.name)[0])
+    media_type = browser_file_media_type(request, target.name)
 
     # ``inline`` lets the browser preview the file when possible while still
     # honouring the suggested filename for the drawer's download action.

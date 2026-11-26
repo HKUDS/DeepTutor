@@ -389,7 +389,7 @@ async def read_workspace_item(
             original = resolved_original[0] if resolved_original else None
     return FileResponse(
         path,
-        media_type=browser_file_media_type(request, path, item.mime_type),
+        media_type=browser_file_media_type(request, item.filename, item.mime_type),
         filename=item.filename,
         content_disposition_type="inline",
         headers={

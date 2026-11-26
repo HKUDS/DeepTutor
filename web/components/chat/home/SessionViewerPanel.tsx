@@ -82,6 +82,7 @@ import {
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { isChatFileLink, isChatVideoLessonLink } from "@/lib/chat-file-link";
+import { filenameFromDisposition } from "@/lib/content-disposition";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import Tooltip from "@/shared/ui/Tooltip";
@@ -1346,6 +1347,57 @@ function SessionViewerPanelInner(
   // paste a URL or pick a local file to open as the first tab.
   const visible = open && entered;
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const fileTab = activeTab?.kind === "file" ? activeTab : null;
+  const fileSource = fileTab?.source;
+  const sourceUrl = fileSource?.url;
+  const previewUrl = fileSource ? resolveSourceUrl(fileSource, apiUrl) : null;
+  const probeUrl = sourceUrl && isChatFileLink(sourceUrl) ? previewUrl : null;
+  const fileTabId = fileTab?.id;
+  const [fileCheck, setFileCheck] = useState<{
+    tabId: string;
+    url: string;
+    available: boolean;
+  }>();
+  useEffect(() => {
+    setFileCheck(undefined);
+    if (!fileTabId || !probeUrl) return;
+    const controller = new AbortController();
+    void apiFetch(probeUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+      skipAuthRedirect: true,
+    }).then(
+      (response) => {
+        if (controller.signal.aborted) return;
+        if (response.ok) {
+          const filename = filenameFromDisposition(response.headers.get("content-disposition"), "");
+          const mimeType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+          setTabs((current) => current.map((tab) => {
+            if (tab.kind !== "file" || tab.id !== fileTabId || tab.source.url !== sourceUrl) return tab;
+            const name = tab.source.filename || filename;
+            const mime = tab.source.mimeType || mimeType;
+            if (name === tab.source.filename && mime === tab.source.mimeType) return tab;
+            return {
+              ...tab,
+              label: tab.source.filename ? tab.label : name || tab.label,
+              source: { ...tab.source, filename: name, mimeType: mime },
+            };
+          }));
+        }
+        setFileCheck({ tabId: fileTabId, url: probeUrl, available: response.ok || response.status === 405 });
+      },
+      () => {
+        if (!controller.signal.aborted) {
+          setFileCheck({ tabId: fileTabId, url: probeUrl, available: false });
+        }
+      },
+    );
+    return () => controller.abort();
+  }, [fileTabId, probeUrl, sourceUrl]);
+
+  const checkingFile = Boolean(probeUrl && (fileCheck?.tabId !== fileTabId || fileCheck?.url !== probeUrl));
+  const fileAvailable = probeUrl ? !checkingFile && fileCheck?.available === true : Boolean(previewUrl);
+  const fileUnavailable = !fileAvailable && (Boolean(probeUrl) || fileSource?.extractedText === undefined);
 
   const openLocalFile = useCallback(
     (file: File) => {
@@ -1403,8 +1455,8 @@ function SessionViewerPanelInner(
         onClosePanel={onClose}
         agents={agents}
         actions={
-          activeTab?.kind === "file" ? (
-            <FileTabActions source={activeTab.source} />
+          fileSource && previewUrl && fileAvailable ? (
+            <FileTabActions fileUrl={previewUrl} filename={fileSource.filename} />
           ) : null
         }
       />
@@ -1413,6 +1465,9 @@ function SessionViewerPanelInner(
           <FileTabBody
             key={activeTab.id}
             source={activeTab.source}
+            previewUrl={previewUrl}
+            checking={checkingFile}
+            unavailable={fileUnavailable}
             onBack={() => {
               closeTab(activeTab.id, { remember: false });
               onClose();
@@ -1705,46 +1760,26 @@ function ActivityHome({
 /*  File tab body                                                      */
 /* ------------------------------------------------------------------ */
 
-/** Where a file tab's bytes can be fetched: the served URL, or a data URL
- *  for a pending (un-sent) base64 attachment so download / open-in-browser
- *  still work before it is uploaded. */
-function fileUrlFor(source: FilePreviewSource): string | null {
-  const previewUrl = resolveSourceUrl(source, apiUrl);
-  if (previewUrl) return previewUrl;
-  if (source.base64) {
-    const mime = source.mimeType || "application/octet-stream";
-    return `data:${mime};base64,${source.base64}`;
-  }
-  return null;
-}
-
 /** Download + open-in-browser for the focused file tab, shown in the tab
  *  bar. The tab already names the file, so these are bare icons. */
-function FileTabActions({ source }: { source: FilePreviewSource }) {
+function FileTabActions({ fileUrl, filename }: { fileUrl: string; filename: string }) {
   const { t } = useTranslation();
-  const fileUrl = useMemo(() => fileUrlFor(source), [source]);
-  const filename = source.filename || t("Attachment");
   return (
     <>
-      {fileUrl ? (
-        <Tooltip label={t("Download")} side="bottom">
-          <a
-            href={fileUrl}
-            download={filename}
-            className={HEADER_ICON}
-            aria-label={t("Download")}
-          >
-            <Download size={15} strokeWidth={1.8} />
-          </a>
-        </Tooltip>
-      ) : null}
+      <Tooltip label={t("Download")} side="bottom">
+        <a
+          href={fileUrl}
+          download={filename || t("Attachment")}
+          className={HEADER_ICON}
+          aria-label={t("Download")}
+        >
+          <Download size={15} strokeWidth={1.8} />
+        </a>
+      </Tooltip>
       <Tooltip label={t("Open in browser")} side="bottom">
         <button
           type="button"
-          onClick={() => {
-            if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
-          }}
-          disabled={!fileUrl}
+          onClick={() => window.open(fileUrl, "_blank", "noopener,noreferrer")}
           className={HEADER_ICON}
           aria-label={t("Open in browser")}
         >
@@ -1757,46 +1792,26 @@ function FileTabActions({ source }: { source: FilePreviewSource }) {
 
 function FileTabBody({
   source,
+  previewUrl,
+  checking,
+  unavailable,
   onBack,
 }: {
   source: FilePreviewSource;
+  previewUrl: string | null;
+  checking: boolean;
+  unavailable: boolean;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
-  const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
-  const fileUrl = source.url && isChatFileLink(source.url) ? previewUrl : null;
-  const [checkedFile, setCheckedFile] = useState<{ url: string; unavailable: boolean }>();
-  useEffect(() => {
-    if (!fileUrl) return;
-    const controller = new AbortController();
-    void apiFetch(fileUrl, {
-      method: "HEAD",
-      signal: controller.signal,
-      skipAuthRedirect: true,
-    }).then(
-      (response) => {
-        if (!controller.signal.aborted) {
-          setCheckedFile({ url: fileUrl, unavailable: !response.ok && response.status !== 405 });
-        }
-      },
-      () => {
-        if (!controller.signal.aborted) setCheckedFile({ url: fileUrl, unavailable: true });
-      },
-    );
-    return () => controller.abort();
-  }, [fileUrl]);
-
-  if (fileUrl && checkedFile?.url !== fileUrl) {
+  if (checking) {
     return (
       <div role="status" aria-label={t("Loading")} className="grid h-full place-items-center">
         <Loader2 aria-hidden="true" className="size-5 animate-spin text-[var(--muted-foreground)]" />
       </div>
     );
   }
-  if (
-    (!previewUrl && source.extractedText === undefined) ||
-    (fileUrl && checkedFile?.unavailable)
-  ) {
+  if (unavailable) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <p role="status" className="text-sm text-[var(--muted-foreground)]">{t("This file is unavailable.")}</p>
@@ -1814,7 +1829,7 @@ function FileTabBody({
   const kind = previewKindFor(source);
   return (
     <div className="flex h-full flex-col">
-      {fileUrl && source.url?.startsWith("/files/workspace-items/") ? (
+      {source.url?.startsWith("/files/workspace-items/") && isChatFileLink(source.url) ? (
         <div className="shrink-0 border-b border-[var(--border)]/60 px-4 py-1.5 text-xs text-[var(--muted-foreground)]">
           {t("Conversation snapshot")}
         </div>
