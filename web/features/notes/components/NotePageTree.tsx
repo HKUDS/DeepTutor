@@ -8,7 +8,6 @@ import { ChevronRight, FileText, MoreHorizontal, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import type { NoteSummary } from '@/lib/notes-api'
-import type { PageAction } from './NotePageActions'
 
 const TreeMenu = dynamic(() => import('./NotePageActions').then(module => module.TreeMenu), {
   ssr: false,
@@ -21,7 +20,7 @@ export default function NotePageTree({
   embedded = false,
   onNavigate,
   onCreate,
-  onAction,
+  onDelete,
 }: {
   pages: NoteSummary[]
   currentId: string
@@ -30,7 +29,7 @@ export default function NotePageTree({
   onNavigate: (event: MouseEvent<HTMLAnchorElement>, id: string) => void
   onClose?: () => void
   onCreate: (parentId: string | null) => void
-  onAction: (page: NoteSummary, action: PageAction) => void
+  onDelete: (page: NoteSummary) => void
 }) {
   const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -42,14 +41,14 @@ export default function NotePageTree({
   const closeMenu = useCallback(() => setMenu(null), [])
   const rows = (parent: string | null, depth: number, ancestors = new Set<string>()): React.ReactNode => {
     const children = pages
-      .filter(p => !p.archived && p.parent_id === parent && !ancestors.has(p.id))
+      .filter(p => p.parent_id === parent && !ancestors.has(p.id))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned))
     if (!children.length) return null
     return (
       <ul className={parent ? 'dt-note-tree-children' : 'dt-note-tree-roots'}>
         {children.map(page => {
           const title = page.title || t('Untitled')
-          const hasChildren = pages.some(p => !p.archived && p.parent_id === page.id)
+          const hasChildren = pages.some(p => p.parent_id === page.id)
           const expanded = !collapsed.has(page.id)
           return (
             <li key={page.id}>
@@ -137,10 +136,10 @@ export default function NotePageTree({
                   trigger={menu.trigger}
                   onClose={closeMenu}
                   page={page}
-                  hasChildren={pages.some(p => p.parent_id === page.id)}
-                  onAction={action => {
+                  hasChildren={hasChildren}
+                  onDelete={() => {
                     closeMenu()
-                    onAction(page, action)
+                    onDelete(page)
                   }}
                 />
               )}

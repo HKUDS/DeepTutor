@@ -4,37 +4,27 @@ import { useEffect, useState, type ComponentProps } from 'react'
 import { createPortal } from 'react-dom'
 import { useMenuPopover } from '@/shared/ui/useMenuPopover'
 import { placeMenu } from '@/lib/floating-menu'
-import { Archive, ArchiveRestore, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import './note-page-actions.css'
-
-export type PageAction = 'archive' | 'restore' | 'delete'
 
 export default function NotePageActions({
   page,
   hasChildren,
   current = false,
   compact = false,
-  onAction,
+  onDelete,
 }: {
-  page: { title: string; archived?: boolean }
+  page: { title: string }
   hasChildren: boolean
   current?: boolean
   compact?: boolean
-  onAction: (action: PageAction) => void
+  onDelete: () => void
 }) {
   const { t } = useTranslation()
   const [confirming, setConfirming] = useState(false)
   return (
     <>
-      <button
-        role="menuitem"
-        className="dt-menu-item"
-        onClick={() => onAction(page.archived ? 'restore' : 'archive')}
-      >
-        {page.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-        {t(page.archived ? 'Restore' : current ? 'Archive current page' : 'Archive')}
-      </button>
       {confirming && (!compact || hasChildren) && (
         <p className="dt-notes-confirm" role="status">
           {!compact && <strong title={page.title}>{page.title || t('Untitled')}</strong>}
@@ -48,7 +38,7 @@ export default function NotePageActions({
       <button
         role="menuitem"
         className="dt-menu-item is-danger"
-        onClick={() => (confirming ? onAction('delete') : setConfirming(true))}
+        onClick={() => (confirming ? onDelete() : setConfirming(true))}
       >
         <Trash2 size={14} />
         {t(

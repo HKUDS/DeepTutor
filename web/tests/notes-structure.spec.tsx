@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import NotePageTree from '@/features/notes/components/NotePageTree'
 import NotePageActions from '@/features/notes/components/NotePageActions'
-import { activePages, pageDescendants } from '@/features/notes/model/page-tree'
+import { pageDescendants } from '@/features/notes/model/page-tree'
 import { moveNoteBlock } from '@/features/notes/model/move-block'
 import type { NoteBlock, NoteSummary } from '@/lib/notes-api'
 
@@ -28,7 +28,7 @@ it('moves nested subtrees without losing IDs or siblings and prevents self-nesti
 })
 it('allows folding page branches and identifies the current page', () => {
   const onNavigate = vi.fn((event: React.MouseEvent) => event.preventDefault())
-  render(<NotePageTree pages={pages} currentId="child" busy={false} onNavigate={onNavigate} onClose={vi.fn()} onCreate={vi.fn()} onAction={vi.fn()} />)
+  render(<NotePageTree pages={pages} currentId="child" busy={false} onNavigate={onNavigate} onClose={vi.fn()} onCreate={vi.fn()} onDelete={vi.fn()} />)
   const current = screen.getByRole('link', {name: 'Long child page title'})
   expect(current).toHaveAttribute('aria-current', 'page')
   fireEvent.click(screen.getByRole('button', {name: 'Collapse Root'}))
@@ -40,43 +40,37 @@ it('allows folding page branches and identifies the current page', () => {
 })
 
 it('applies right-click and keyboard menu actions to their row while another page is open', async () => {
-  const onAction = vi.fn()
+  const onDelete = vi.fn()
   const onNavigate = vi.fn()
-  render(<NotePageTree pages={pages} currentId="root" busy={false} onNavigate={onNavigate} onCreate={vi.fn()} onAction={onAction} />)
+  render(<NotePageTree pages={pages} currentId="root" busy={false} onNavigate={onNavigate} onCreate={vi.fn()} onDelete={onDelete} />)
   fireEvent.contextMenu(screen.getByRole('link', { name: 'Long child page title' }))
   expect((await screen.findByRole('menu')).parentElement).toBe(document.body)
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
   expect(screen.getByRole('status')).toHaveTextContent('Long child page title')
   expect(screen.getByRole('status')).toHaveTextContent('subpages move up')
-  expect(onAction).not.toHaveBeenCalled()
+  expect(onDelete).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }))
-  expect(onAction).toHaveBeenCalledWith(pages[1], 'delete')
+  expect(onDelete).toHaveBeenCalledWith(pages[1])
   fireEvent.click(screen.getByRole('button', { name: 'Page actions for Leaf' }))
-  expect(screen.getByRole('menuitem', { name: 'Archive' })).toHaveFocus()
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toHaveFocus()
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
   expect(screen.queryByRole('menu')).toBeNull()
   expect(screen.getByRole('button', { name: 'Page actions for Leaf' })).toHaveFocus()
   fireEvent.click(screen.getByRole('button', { name: 'Page actions for Leaf' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
-  expect(onAction).toHaveBeenCalledWith(pages[2], 'archive')
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }))
+  expect(onDelete).toHaveBeenCalledWith(pages[2])
   expect(onNavigate).not.toHaveBeenCalled()
-})
-
-it('reveals descendants after restoring their ancestor, except independently archived pages', () => {
-  const archived = pages.map(page => ({ ...page, archived: page.id !== 'child' }))
-  expect(activePages(archived)).toEqual([])
-  archived[0].archived = false
-  expect(activePages(archived).map(page => page.id)).toEqual(['root', 'child'])
 })
 
 it.each([true, false])('keeps card confirmation compact (has children: %s)', hasChildren => {
   const title = 'Long page title '.repeat(20)
-  const onAction = vi.fn()
-  render(<NotePageActions compact page={{ title }} hasChildren={hasChildren} onAction={onAction} />)
+  const onDelete = vi.fn()
+  render(<NotePageActions compact page={{ title }} hasChildren={hasChildren} onDelete={onDelete} />)
   fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
   expect(screen.queryByText(title.trim())).toBeNull()
   expect(!!screen.queryByText(/subpages move up/)).toBe(hasChildren)
-  expect(onAction).not.toHaveBeenCalled()
+  expect(onDelete).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
-  expect(onAction).toHaveBeenCalledWith('delete')
+  expect(onDelete).toHaveBeenCalledTimes(1)
 })

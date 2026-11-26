@@ -61,7 +61,7 @@ function openMenu(blocks: NoteBlock[] | null) {
       onMetadata={vi.fn()}
       onInsertFavorite={vi.fn()}
       onExport={onExport}
-      onAction={vi.fn()}
+      onDelete={vi.fn()}
       onImport={vi.fn()}
       hasChildren={false}
     />,

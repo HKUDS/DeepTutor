@@ -25,7 +25,6 @@ import { FeatureCrumb, InstanceCrumb } from '@/components/layout/LocationCrumbs'
 import { useShelfFeature } from '@/components/sidebar/PageBar'
 import type { NotePage, NoteSummary } from '@/lib/notes-api'
 import { pageHasFlashcards } from '../model/flashcards'
-import type { PageAction } from './NotePageActions'
 
 const NotePageActions = dynamic(() => import('./NotePageActions'), { ssr: false })
 
@@ -69,7 +68,7 @@ export default function NoteTopBar({
   onInsertFavorite,
   onExport,
   onImport,
-  onAction,
+  onDelete,
   hasChildren,
 }: {
   page: NotePage | null
@@ -90,7 +89,7 @@ export default function NoteTopBar({
   onInsertFavorite: () => void
   onExport: (format: 'md' | 'docx' | 'anki') => void
   onImport: () => void
-  onAction: (page: NotePage, action: PageAction) => void
+  onDelete: (page: NotePage) => void
   hasChildren: boolean
 }) {
   const { t } = useTranslation()
@@ -350,9 +349,9 @@ export default function NoteTopBar({
                   current
                   page={page}
                   hasChildren={hasChildren}
-                  onAction={action => {
+                  onDelete={() => {
                     setOpen(false)
-                    onAction(page, action)
+                    onDelete(page)
                   }}
                 />
               </>

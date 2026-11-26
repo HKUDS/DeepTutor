@@ -1,9 +1,6 @@
 {
-  "Archive current page": "現在のページをアーカイブ",
   "Delete current page": "現在のページを削除",
   "Import document": "ドキュメントをインポート",
-  "No archived pages": "アーカイブ済みのページはありません",
-  "No active pages": "未アーカイブのページはありません",
   "The Markdown file is empty.": "Markdown ファイルが空です。",
   "Choose a Word, Markdown or PDF document.": "Word、Markdown、PDF のいずれかのファイルを選択してください。",
   "No text was found in this PDF. For a scan, run OCR first.": "この PDF からテキストを抽出できませんでした。スキャンした文書は先に OCR で文字を認識してください。",

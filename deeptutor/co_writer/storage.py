@@ -48,7 +48,6 @@ class CoWriterDocument(BaseModel):
     icon: str = ""
     cover: str = ""
     pinned: bool = False
-    archived: bool = False
     applied_suggestion_ids: list[str] = Field(default_factory=list)
     created_at: float = Field(default_factory=lambda: time.time())
     updated_at: float = Field(default_factory=lambda: time.time())
@@ -66,7 +65,6 @@ class CoWriterDocumentSummary(BaseModel):
     icon: str = ""
     cover: str = ""
     pinned: bool = False
-    archived: bool = False
     revision: int = 0
 
 
@@ -221,7 +219,6 @@ class CoWriterStorage:
                     icon=doc.icon,
                     cover=doc.cover,
                     pinned=doc.pinned,
-                    archived=doc.archived,
                     revision=doc.revision,
                 )
             )
@@ -351,7 +348,7 @@ class CoWriterStorage:
                         raise ValueError("Parent page does not exist")
                     cursor = ancestor.parent_id
                 document.parent_id = parent
-            for key in ("icon", "cover", "pinned", "archived"):
+            for key in ("icon", "cover", "pinned"):
                 if key in metadata:
                     setattr(document, key, metadata[key])
             document.revision += 1

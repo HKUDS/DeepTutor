@@ -1,9 +1,6 @@
 {
-  "Archive current page": "Jelenlegi oldal archiválása",
   "Delete current page": "Jelenlegi oldal törlése",
   "Import document": "Dokumentum importálása",
-  "No archived pages": "Nincsenek archivált oldalak",
-  "No active pages": "Nincsenek aktív oldalak",
   "The Markdown file is empty.": "A Markdown-fájl üres.",
   "Choose a Word, Markdown or PDF document.": "Válassz Word-, Markdown- vagy PDF-dokumentumot.",
   "No text was found in this PDF. For a scan, run OCR first.": "A PDF nem tartalmaz kinyerhető szöveget. Szkennelt dokumentum esetén előbb futtass szövegfelismerést (OCR).",

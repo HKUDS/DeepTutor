@@ -1,9 +1,6 @@
 {
-  "Archive current page": "Archiver la page actuelle",
   "Delete current page": "Supprimer la page actuelle",
   "Import document": "Importer un document",
-  "No archived pages": "Aucune page archivée",
-  "No active pages": "Aucune page active",
   "The Markdown file is empty.": "Le fichier Markdown est vide.",
   "Choose a Word, Markdown or PDF document.": "Choisissez un document Word, Markdown ou PDF.",
   "No text was found in this PDF. For a scan, run OCR first.": "Aucun texte trouvé dans ce PDF. Pour un document numérisé, utilisez d’abord la reconnaissance de caractères (OCR).",

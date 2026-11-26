@@ -4416,11 +4416,6 @@
             "title": "Applied Suggestion Ids",
             "type": "array"
           },
-          "archived": {
-            "default": false,
-            "title": "Archived",
-            "type": "boolean"
-          },
           "blocks": {
             "anyOf": [
               {
@@ -4503,11 +4498,6 @@
       },
       "DocumentSummaryResponse": {
         "properties": {
-          "archived": {
-            "default": false,
-            "title": "Archived",
-            "type": "boolean"
-          },
           "cover": {
             "default": "",
             "title": "Cover",
@@ -13973,11 +13963,6 @@
       },
       "UpdateDocumentRequest": {
         "properties": {
-          "archived": {
-            "default": false,
-            "title": "Archived",
-            "type": "boolean"
-          },
           "blocks": {
             "anyOf": [
               {

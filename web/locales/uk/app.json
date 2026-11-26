@@ -1,9 +1,6 @@
 {
-  "Archive current page": "Архівувати поточну сторінку",
   "Delete current page": "Видалити поточну сторінку",
   "Import document": "Імпортувати документ",
-  "No archived pages": "Немає архівованих сторінок",
-  "No active pages": "Немає активних сторінок",
   "The Markdown file is empty.": "Файл Markdown порожній.",
   "Choose a Word, Markdown or PDF document.": "Виберіть документ Word, Markdown або PDF.",
   "No text was found in this PDF. For a scan, run OCR first.": "У цьому PDF не знайдено тексту. Для сканованого документа спочатку виконайте розпізнавання тексту (OCR).",

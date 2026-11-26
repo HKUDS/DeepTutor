@@ -13992,11 +13992,6 @@ export interface components {
     readonly DocumentResponse: {
       /** Applied Suggestion Ids */
       readonly applied_suggestion_ids?: readonly string[];
-      /**
-       * Archived
-       * @default false
-       */
-      readonly archived: boolean;
       /** Blocks */
       readonly blocks?:
         | readonly {
@@ -14049,11 +14044,6 @@ export interface components {
     };
     /** DocumentSummaryResponse */
     readonly DocumentSummaryResponse: {
-      /**
-       * Archived
-       * @default false
-       */
-      readonly archived: boolean;
       /**
        * Cover
        * @default
@@ -18326,11 +18316,6 @@ export interface components {
     };
     /** UpdateDocumentRequest */
     readonly UpdateDocumentRequest: {
-      /**
-       * Archived
-       * @default false
-       */
-      readonly archived: boolean;
       /** Blocks */
       readonly blocks?:
         | readonly {

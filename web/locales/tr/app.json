@@ -1,9 +1,6 @@
 {
-  "Archive current page": "Geçerli sayfayı arşivle",
   "Delete current page": "Geçerli sayfayı sil",
   "Import document": "Belge içe aktar",
-  "No archived pages": "Arşivlenmiş sayfa yok",
-  "No active pages": "Etkin sayfa yok",
   "The Markdown file is empty.": "Markdown dosyası boş.",
   "Choose a Word, Markdown or PDF document.": "Bir Word, Markdown veya PDF belgesi seçin.",
   "No text was found in this PDF. For a scan, run OCR first.": "Bu PDF içinde metin bulunamadı. Taranmış bir belgeyse önce OCR uygulayın.",

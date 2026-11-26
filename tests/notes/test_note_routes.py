@@ -37,22 +37,6 @@ def test_invalid_blocks_and_parent_are_client_errors(client):
     assert client.post("/api/documents", json={"blocks": [bad]}).status_code == 400
 
 
-def test_archive_and_restore_keep_page_hierarchy_and_content(client):
-    root = client.post("/api/documents", json={"blocks": [block()]}).json()
-    child = client.post("/api/documents", json={"parent_id": root["id"]}).json()
-    url = f"/api/documents/{root['id']}"
-    for archived in (True, False):
-        result = client.put(url, json={"archived": archived, "expected_revision": root["revision"]})
-        assert result.status_code == 200
-        root = result.json()
-        assert root["archived"] is archived
-        assert root["blocks"] == [block()]
-        summaries = {p["id"]: p for p in client.get("/api/documents").json()["documents"]}
-        assert summaries[root["id"]]["archived"] is archived
-        assert summaries[child["id"]]["parent_id"] == root["id"]
-        assert not summaries[child["id"]]["archived"]
-
-
 def test_atomic_review_and_stale_editor_api(client):
     page = client.post("/api/documents", json={"blocks": [block()]}).json()
     root = "/api/documents/" + page["id"]

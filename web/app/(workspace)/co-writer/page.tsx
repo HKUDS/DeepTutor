@@ -22,10 +22,8 @@ import {
   pageActionClass,
 } from "@/components/layout/FeaturePage";
 import { deleteCoWriterDocument } from "@/lib/co-writer-api";
-import type { PageAction } from "@/features/notes/components/NotePageActions";
 import { noteDocumentTypes, useNoteImport } from "@/features/notes/components/useNoteImport";
 import { useNoteDestination } from "@/features/notes/components/useNoteNavigation";
-import { activePages } from "@/features/notes/model/page-tree";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
 import { createNote, listNotes, saveNote, type NoteSummary } from "@/lib/notes-api";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -45,7 +43,7 @@ function PageCard({
   locale,
   busy,
   onPin,
-  onAction,
+  onDelete,
 }: {
   page: NoteSummary;
   parent?: NoteSummary;
@@ -53,7 +51,7 @@ function PageCard({
   locale: string;
   busy: boolean;
   onPin: () => void;
-  onAction: (action: PageAction) => void;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -108,9 +106,9 @@ function PageCard({
               {t(page.pinned ? "Unpin" : "Pin to top")}
             </button>
             <div className="dt-menu-divider" />
-            <NotePageActions compact page={page} hasChildren={childCount > 0} onAction={action => {
+            <NotePageActions compact page={page} hasChildren={childCount > 0} onDelete={() => {
               setOpen(false);
-              onAction(action);
+              onDelete();
             }} />
           </div>
         )}
@@ -128,7 +126,6 @@ export default function CoWriterHomePage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
   const { openFile, importing, dialog } = useNoteImport(pages, setError);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -175,11 +172,10 @@ export default function CoWriterHomePage() {
     }
   };
 
-  const handleAction = async (page: NoteSummary, action: PageAction) => {
+  const handleDelete = async (page: NoteSummary) => {
     setBusyId(page.id);
     try {
-      if (action === "delete") await deleteCoWriterDocument(page.id);
-      else await saveNote(page.id, { archived: action === "archive", expected_revision: page.revision });
+      await deleteCoWriterDocument(page.id);
       notifyCoWriterChanged();
       await refresh();
     } catch (err) {
@@ -197,13 +193,12 @@ export default function CoWriterHomePage() {
     return counts;
   }, [pages]);
   const needle = query.trim().toLocaleLowerCase();
-  const scope = showArchived ? pages.filter(page => page.archived) : activePages(pages);
   // Browsing shows the notebook's top level; a search reaches every page.
   const visible = needle
-    ? scope.filter((page) =>
+    ? pages.filter((page) =>
         `${page.title} ${page.preview}`.toLocaleLowerCase().includes(needle),
       )
-    : scope.filter((page) => showArchived || !page.parent_id || !byId.has(page.parent_id));
+    : pages.filter((page) => !page.parent_id || !byId.has(page.parent_id));
   const pinned = visible.filter((page) => page.pinned);
   const rest = visible.filter((page) => !page.pinned);
 
@@ -216,7 +211,7 @@ export default function CoWriterHomePage() {
       locale={i18n.language}
       busy={busyId === page.id}
       onPin={() => void handlePin(page)}
-      onAction={action => void handleAction(page, action)}
+      onDelete={() => void handleDelete(page)}
     />
   );
 
@@ -300,10 +295,6 @@ export default function CoWriterHomePage() {
       ) : (
         <>
           <div className="dt-notes-toolbar">
-            <button type="button" className={pageActionClass("secondary")} aria-pressed={showArchived}
-              onClick={() => setShowArchived(!showArchived)}>
-              {t("Archived")}
-            </button>
             <label className="dt-notes-search">
               <Search size={14} strokeWidth={1.8} aria-hidden />
               <input
@@ -315,12 +306,11 @@ export default function CoWriterHomePage() {
               />
             </label>
             <span className="dt-notes-count">
-              {t("{{count}} pages", { count: scope.length })}
+              {t("{{count}} pages", { count: pages.length })}
             </span>
           </div>
           {!visible.length && (
-            <p className="dt-notes-none">{needle ? t("No pages match “{{query}}”.", { query: query.trim() })
-              : t(showArchived ? "No archived pages" : "No active pages")}</p>
+            <p className="dt-notes-none">{t("No pages match “{{query}}”.", { query: query.trim() })}</p>
           )}
           {!!pinned.length && (
             <section className="dt-notes-section" aria-label={t("Pinned pages")}>

@@ -676,7 +676,6 @@ class UpdateDocumentRequest(BaseModel):
     icon: str = Field(default="", max_length=100)
     cover: str = Field(default="", max_length=2000)
     pinned: bool = False
-    archived: bool = False
     title: str | None = None
     content: str | None = None
 

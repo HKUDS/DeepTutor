@@ -1,9 +1,6 @@
 {
-  "Archive current page": "현재 페이지 보관",
   "Delete current page": "현재 페이지 삭제",
   "Import document": "문서 가져오기",
-  "No archived pages": "보관된 페이지가 없습니다",
-  "No active pages": "활성 페이지가 없습니다",
   "The Markdown file is empty.": "Markdown 파일이 비어 있습니다.",
   "Choose a Word, Markdown or PDF document.": "Word, Markdown 또는 PDF 문서를 선택하세요.",
   "No text was found in this PDF. For a scan, run OCR first.": "이 PDF에서 텍스트를 찾을 수 없습니다. 스캔한 문서라면 먼저 OCR을 실행하세요.",
