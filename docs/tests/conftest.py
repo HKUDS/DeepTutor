@@ -6,7 +6,7 @@ no runtime dependencies — only the standard library and pytest. Running from
 the application container and would require the full dependency set.
 """
 
-import sys
 from pathlib import Path
+import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
