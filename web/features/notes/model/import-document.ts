@@ -4,8 +4,6 @@ import { noteRequest, type NoteBlock, type NotePage } from '@/lib/notes-api'
 import { loadPdfjs, pdfjsCMapUrl, pdfjsWasmUrl } from '@/lib/pdfjs-loader'
 import { activeWorkspaceId } from '@/lib/workspace-scope'
 
-export const noteDocumentTypes = '.docx,.md,.markdown,.pdf'
-
 export type ImportProgress = { label: string; page?: number; pages?: number }
 type ReportProgress = (progress: ImportProgress) => void
 

@@ -39,13 +39,13 @@ it('allows folding page branches and identifies the current page', () => {
   expect(pageDescendants(pages, 'root')).toEqual(new Set(['root', 'child', 'leaf']))
 })
 
-it('applies right-click and keyboard menu actions to their row while another page is open', () => {
+it('applies right-click and keyboard menu actions to their row while another page is open', async () => {
   const onAction = vi.fn()
   const onNavigate = vi.fn()
   render(<NotePageTree pages={pages} currentId="root" busy={false} onNavigate={onNavigate} onCreate={vi.fn()} onAction={onAction} />)
   fireEvent.contextMenu(screen.getByRole('link', { name: 'Long child page title' }))
-  expect(screen.getByRole('menu').parentElement).toBe(document.body)
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  expect((await screen.findByRole('menu')).parentElement).toBe(document.body)
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
   expect(screen.getByRole('status')).toHaveTextContent('Long child page title')
   expect(screen.getByRole('status')).toHaveTextContent('subpages move up')
   expect(onAction).not.toHaveBeenCalled()

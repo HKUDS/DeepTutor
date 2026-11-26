@@ -1,17 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useState, type MouseEvent } from 'react'
-import { createPortal } from 'react-dom'
+import dynamic from 'next/dynamic'
+
+import { useCallback, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import { ChevronRight, FileText, MoreHorizontal, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import type { NoteSummary } from '@/lib/notes-api'
-import { useMenuPopover } from '@/shared/ui/useMenuPopover'
-import { placeMenu, type FloatingMenuPosition } from '@/lib/floating-menu'
-import NotePageActions, { type PageAction } from './NotePageActions'
+import type { PageAction } from './NotePageActions'
 
-const menuWidth = 200
+const TreeMenu = dynamic(() => import('./NotePageActions').then(module => module.TreeMenu), {
+  ssr: false,
+})
 
 export default function NotePageTree({
   pages,
@@ -36,15 +37,9 @@ export default function NotePageTree({
   const [menu, setMenu] = useState<{
     id: string
     trigger: HTMLButtonElement
-    position: FloatingMenuPosition
+    anchor: DOMRect
   } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
-  const panel = useMenuPopover<HTMLDivElement>(!!menu, closeMenu, menu?.trigger)
-  useEffect(() => {
-    if (!menu) return
-    window.addEventListener('resize', closeMenu)
-    return () => window.removeEventListener('resize', closeMenu)
-  }, [menu, closeMenu])
   const rows = (parent: string | null, depth: number, ancestors = new Set<string>()): React.ReactNode => {
     const children = pages
       .filter(p => !p.archived && p.parent_id === parent && !ancestors.has(p.id))
@@ -64,17 +59,21 @@ export default function NotePageTree({
                 onContextMenu={event => {
                   event.preventDefault()
                   if (busy) return
-                  const trigger = event.currentTarget.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
-                  const anchor = event.clientX || event.clientY
-                    ? new DOMRect(event.clientX, event.clientY, 0, 0)
-                    : trigger.getBoundingClientRect()
-                  setMenu({ id: page.id, trigger, position: placeMenu(anchor, menuWidth) })
+                  const trigger =
+                    event.currentTarget.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
+                  const anchor =
+                    event.clientX || event.clientY
+                      ? new DOMRect(event.clientX, event.clientY, 0, 0)
+                      : trigger.getBoundingClientRect()
+                  setMenu({ id: page.id, trigger, anchor })
                 }}
               >
                 {hasChildren ? (
                   <button
                     className="dt-note-tree-toggle"
-                    aria-label={t(expanded ? 'Collapse {{page}}' : 'Expand {{page}}', { page: title })}
+                    aria-label={t(expanded ? 'Collapse {{page}}' : 'Expand {{page}}', {
+                      page: title,
+                    })}
                     aria-expanded={expanded}
                     onClick={() =>
                       setCollapsed(previous => {
@@ -118,34 +117,32 @@ export default function NotePageTree({
                   disabled={busy}
                   onClick={event => {
                     const trigger = event.currentTarget
-                    setMenu(menu?.id === page.id ? null : {
-                      id: page.id, trigger, position: placeMenu(trigger.getBoundingClientRect(), menuWidth),
-                    })
+                    setMenu(
+                      menu?.id === page.id
+                        ? null
+                        : {
+                            id: page.id,
+                            trigger,
+                            anchor: trigger.getBoundingClientRect(),
+                          }
+                    )
                   }}
                 >
                   <MoreHorizontal size={14} />
                 </button>
               </div>
-              {menu?.id === page.id && createPortal(
-                <div ref={panel} className="dt-popover dt-note-tree-menu" role="menu" aria-label={title}
-                  style={{
-                    width: menuWidth,
-                    left: menu.position.left,
-                    top: menu.position.top,
-                    maxHeight: menu.position.maxHeight,
-                    translate: menu.position.openUpward ? '0 -100%' : undefined,
+              {menu?.id === page.id && (
+                <TreeMenu
+                  anchor={menu.anchor}
+                  trigger={menu.trigger}
+                  onClose={closeMenu}
+                  page={page}
+                  hasChildren={pages.some(p => p.parent_id === page.id)}
+                  onAction={action => {
+                    closeMenu()
+                    onAction(page, action)
                   }}
-                >
-                  <NotePageActions
-                    page={page}
-                    hasChildren={pages.some(p => p.parent_id === page.id)}
-                    onAction={action => {
-                      closeMenu()
-                      onAction(page, action)
-                    }}
-                  />
-                </div>,
-                document.body
+                />
               )}
               {expanded && rows(page.id, depth + 1, new Set([...ancestors, page.id]))}
             </li>
@@ -173,7 +170,9 @@ export default function NotePageTree({
           </button>
         </Tooltip>
       </div>
-      <div className="dt-note-tree-scroll" onScroll={closeMenu}>{rows(null, 0)}</div>
+      <div className="dt-note-tree-scroll" onScroll={closeMenu}>
+        {rows(null, 0)}
+      </div>
     </nav>
   )
 }

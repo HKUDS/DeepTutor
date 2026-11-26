@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState, type ComponentProps } from 'react'
+import { createPortal } from 'react-dom'
+import { useMenuPopover } from '@/shared/ui/useMenuPopover'
+import { placeMenu } from '@/lib/floating-menu'
 import { Archive, ArchiveRestore, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import './note-page-actions.css'
@@ -59,5 +62,43 @@ export default function NotePageActions({
         )}
       </button>
     </>
+  )
+}
+
+export function TreeMenu({
+  anchor,
+  trigger,
+  onClose,
+  ...actions
+}: ComponentProps<typeof NotePageActions> & {
+  anchor: DOMRect
+  trigger: HTMLButtonElement
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const panel = useMenuPopover<HTMLDivElement>(true, onClose, trigger)
+  const width = 200
+  const position = placeMenu(anchor, width)
+  useEffect(() => {
+    window.addEventListener('resize', onClose)
+    return () => window.removeEventListener('resize', onClose)
+  }, [onClose])
+  return createPortal(
+    <div
+      ref={panel}
+      className="dt-popover dt-note-tree-menu"
+      role="menu"
+      aria-label={actions.page.title || t('Untitled')}
+      style={{
+        width,
+        left: position.left,
+        top: position.top,
+        maxHeight: position.maxHeight,
+        translate: position.openUpward ? '0 -100%' : undefined,
+      }}
+    >
+      <NotePageActions {...actions} />
+    </div>,
+    document.body
   )
 }

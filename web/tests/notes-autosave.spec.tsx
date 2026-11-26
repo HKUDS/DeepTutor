@@ -130,7 +130,7 @@ it('deletes the selected child while preserving unsaved edits on its same-named 
   const row = screen.getAllByRole('link', { name: parent.title })
     .find(link => link.getAttribute('href') === `/co-writer/${child.id}`)!
   fireEvent.contextMenu(row)
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }))
   await waitFor(() => expect(remove).toHaveBeenCalledWith(child.id))
   expect(saveNote).toHaveBeenCalledWith(parent.id, expect.objectContaining({ expected_revision: 1 }))

@@ -17,5 +17,5 @@
   // a test that imports lib/chat-import/* pulls in code calling
   // FileSystemDirectoryHandle.values(), which the DOM lib alone does not
   // declare at this TS version.
-  "include": ["tests/**/*.test.ts", "types/**/*.d.ts"]
+  "include": ["tests/**/*.ts", "types/**/*.d.ts"]
 }

@@ -19,7 +19,7 @@ import {
   type NoteSummary,
   type NoteSuggestion,
 } from '@/lib/notes-api'
-import { deleteCoWriterDocument, exportCoWriterDocx } from '@/lib/co-writer-api'
+import { exportCoWriterDocx } from '@/lib/co-writer-api'
 import { notifyCoWriterChanged } from '@/lib/co-writer-events'
 import { browserStorage } from '@/shared/storage'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
@@ -34,8 +34,7 @@ import { blockLineCenter } from './NoteThreadMarkers'
 import { foldIntoOrb } from '../model/fold-motion'
 import { useNoteThreads } from './useNoteThreads'
 import { activePages, pageDescendants } from '../model/page-tree'
-import { noteDocumentTypes } from '../model/import-document'
-import { useNoteImport } from './useNoteImport'
+import { noteDocumentTypes, useNoteImport } from './useNoteImport'
 import { prepareNoteDestination, useNoteDestination } from './useNoteNavigation'
 import { activeWorkspaceId, scopedUrl } from '@/lib/workspace-scope'
 import type { PageAction } from './NotePageActions'
@@ -526,37 +525,19 @@ export default function NoteWorkspace({
     let navigating = false
     try {
       await flush()
+      const { applyPageAction, loadDestination } = await import('./note-page-mutations')
       if (!root.current?.isConnected || activeWorkspaceId() !== workspace) return
-      const current = latest.current!
-      if (action === 'delete') {
-        await deleteCoWriterDocument(target.id)
-        if (current.parent_id === target.id) {
-          // Deleting the parent promotes this page and advances its revision once.
-          latest.current = { ...current, parent_id: target.parent_id, revision: current.revision + 1 }
-          setPage(latest.current)
-        }
-      } else {
-        const result = await saveNote(target.id, {
-          archived: action === 'archive',
-          expected_revision: target.id === docId ? current.revision : target.revision,
-        })
-        if (target.id === docId) {
-          latest.current = result
-          setPage(result)
-        }
+      const updated = await applyPageAction(target, action, latest.current!)
+      if (updated) {
+        latest.current = updated
+        setPage(updated)
       }
       notifyCoWriterChanged()
       if (leaving) {
-        // Keep the current view painted while the destination is being prepared.
-        const remaining = action === 'archive'
-          ? pages.map(p => p.id === target.id ? { ...p, archived: true } : p)
-          : pages.filter(p => p.id !== target.id).map(p => p.parent_id === target.id
-              ? { ...p, parent_id: target.parent_id, revision: p.revision + 1 } : p)
-        const parent = target.parent_id ? await getNote(target.parent_id).catch(() => null) : null
-        const loaded = parent ? (await import('./NoteEditor')).default : undefined
+        const destination = await loadDestination(target, action, pages, tree, workspace)
         if (!root.current?.isConnected || activeWorkspaceId() !== workspace) return
-        prepareNoteDestination({ pages: remaining, workspace, doc: parent ?? undefined, Editor: loaded, treeOpen: tree })
-        router.replace(scopedUrl(parent ? `/co-writer/${parent.id}` : '/co-writer', workspace))
+        prepareNoteDestination(destination)
+        router.replace(scopedUrl(destination.doc ? `/co-writer/${destination.doc.id}` : '/co-writer', workspace))
         navigating = true
       } else {
         refreshPages()

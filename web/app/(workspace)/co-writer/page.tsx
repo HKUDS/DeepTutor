@@ -22,9 +22,8 @@ import {
   pageActionClass,
 } from "@/components/layout/FeaturePage";
 import { deleteCoWriterDocument } from "@/lib/co-writer-api";
-import NotePageActions, { type PageAction } from "@/features/notes/components/NotePageActions";
-import { noteDocumentTypes } from "@/features/notes/model/import-document";
-import { useNoteImport } from "@/features/notes/components/useNoteImport";
+import type { PageAction } from "@/features/notes/components/NotePageActions";
+import { noteDocumentTypes, useNoteImport } from "@/features/notes/components/useNoteImport";
 import { useNoteDestination } from "@/features/notes/components/useNoteNavigation";
 import { activePages } from "@/features/notes/model/page-tree";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
@@ -32,6 +31,8 @@ import { createNote, listNotes, saveNote, type NoteSummary } from "@/lib/notes-a
 import { formatRelativeTime } from "@/lib/relative-time";
 import { useMenuPopover } from "@/shared/ui/useMenuPopover";
 import "@/features/notes/components/note-library.css";
+
+const NotePageActions = dynamic(() => import("@/features/notes/components/NotePageActions"), { ssr: false })
 
 const NoteReview = dynamic(() => import("@/features/notes/components/NoteReview"), {
   ssr: false,

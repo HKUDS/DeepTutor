@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
@@ -24,7 +25,9 @@ import { FeatureCrumb, InstanceCrumb } from '@/components/layout/LocationCrumbs'
 import { useShelfFeature } from '@/components/sidebar/PageBar'
 import type { NotePage, NoteSummary } from '@/lib/notes-api'
 import { pageHasFlashcards } from '../model/flashcards'
-import NotePageActions, { type PageAction } from './NotePageActions'
+import type { PageAction } from './NotePageActions'
+
+const NotePageActions = dynamic(() => import('./NotePageActions'), { ssr: false })
 
 export type NoteSaveStatus = 'Saved' | 'Saving…' | 'Unsaved changes' | 'Save failed'
 
