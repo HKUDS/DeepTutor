@@ -49,6 +49,12 @@ def route_index(locale: str) -> str:
         if mount is None:
             missing.append(reference)
             continue
+        # A router can be mounted with socket routes only (question:router owns
+        # none of the HTTP endpoints its module serves). Emitting a heading for
+        # it advertises a prefix that answers nothing over HTTP, which the doc
+        # contract tests then report as a documented path that is not served.
+        if not patterns:
+            continue
         groups.append((mount["module"], mount["prefix"], mount["auth"], reference, patterns))
     groups.sort(key=lambda row: (row[0], row[1], row[3]))
 
