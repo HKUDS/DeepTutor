@@ -1,6 +1,8 @@
 import { deleteCoWriterDocument } from '@/lib/co-writer-api'
 import { getNote, type NotePage, type NoteSummary } from '@/lib/notes-api'
 
+import { noteDraftKey, restoreNoteDraft } from './useNoteNavigation'
+
 type Target = NotePage | NoteSummary
 
 export async function deleteNotePage(target: Target, current: NotePage) {
@@ -15,7 +17,8 @@ export async function loadDestination(
   target: Target,
   pages: NoteSummary[],
   treeOpen: boolean,
-  workspace: string
+  workspace: string,
+  owner: string | null
 ) {
   const remaining = pages.filter(p => p.id !== target.id).map(p =>
     p.parent_id === target.id ? { ...p, parent_id: target.parent_id, revision: p.revision + 1 } : p
@@ -25,7 +28,7 @@ export async function loadDestination(
   return {
     pages: remaining,
     workspace,
-    doc: parent ?? undefined,
+    ...(parent && owner ? { ...restoreNoteDraft(parent, noteDraftKey(owner, parent.id)), owner } : { doc: parent ?? undefined }),
     Editor,
     treeOpen,
   }

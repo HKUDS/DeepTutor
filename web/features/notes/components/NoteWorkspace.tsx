@@ -35,7 +35,7 @@ import { foldIntoOrb } from '../model/fold-motion'
 import { useNoteThreads } from './useNoteThreads'
 import { pageDescendants } from '../model/page-tree'
 import { noteDocumentTypes, useNoteImport } from './useNoteImport'
-import { prepareNoteDestination, useNoteDestination } from './useNoteNavigation'
+import { noteDraftKey, prepareNoteDestination, restoreNoteDraft, useNoteDestination } from './useNoteNavigation'
 import { activeWorkspaceId, scopedUrl } from '@/lib/workspace-scope'
 import { inlineText } from '../model/threads'
 import { learningKind } from '../model/learning-kinds'
@@ -57,11 +57,11 @@ export default function NoteWorkspace({
 }) {
   const { t } = useTranslation()
   const router = useRouter()
+  const initial = useNoteDestination(docId)
   const auth = useAuthStatus()
   const owner =
-    auth.statusAvailable && !auth.loading ? (auth.enabled ? auth.userId : 'local') : null
+    auth.loading ? (initial?.owner ?? null) : auth.statusAvailable ? (auth.enabled ? auth.userId : 'local') : null
   const [mutating, setMutating] = useState(false)
-  const initial = useNoteDestination(docId)
   const [deletePageBusy, setDeletePageBusy] = useState(false)
   const [holdDocument, setHoldDocument] = useState(false)
   const Editor = initial?.Editor ?? LazyEditor
@@ -91,15 +91,15 @@ export default function NoteWorkspace({
   const [favorites, setFavorites] = useState(false)
   const [suggestions, setSuggestions] = useState<NoteSuggestion[]>([])
   const [backlinks, setBacklinks] = useState<NoteSummary[]>([])
-  const [recovery, setRecovery] = useState<{ title: string; blocks: NoteBlock[] } | null>(null)
+  const [recovery, setRecovery] = useState<{ title: string; blocks: NoteBlock[] } | null>(initial?.conflict ?? null)
   const editor = useRef<NoteEditorHandle | null>(null)
   const latest = useRef<NotePage | null>(initial?.doc ?? null)
-  const version = useRef(0)
+  const version = useRef(initial?.restored ? 1 : 0)
   const savedVersion = useRef(0)
   const inflight = useRef<Promise<void> | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const root = useRef<HTMLDivElement>(null)
-  const draftKey = owner ? `deeptutor.notes.draft:${owner}:${docId}` : null
+  const draftKey = owner ? noteDraftKey(owner, docId) : null
   const refreshSuggestions = useCallback(() => {
     void getSuggestions(docId)
       .then(r => {
@@ -196,22 +196,13 @@ export default function NoteWorkspace({
     void load
       .then(doc => {
         if (cancelled) return
-        const raw = browserStorage.readRaw('local', draftKey)
-        if (raw) {
-          try {
-            const draft = JSON.parse(raw)
-            if (Array.isArray(draft.blocks)) {
-              if (draft.revision === doc.revision) {
-                doc = { ...doc, title: draft.title, blocks: draft.blocks }
-                version.current++
-              } else setRecovery(draft)
-            }
-          } catch {
-            /* Ignore invalid recovery data, never overwrite the server page. */
-          }
+        if (!initial?.owner || initial.owner !== owner) {
+          const recovered = restoreNoteDraft(doc, draftKey)
+          if (recovered.restored) version.current++
+          if (recovered.conflict) setRecovery(recovered.conflict)
+          latest.current = recovered.doc
+          setPage(recovered.doc)
         }
-        latest.current = doc
-        setPage(doc)
         setTreeOpen(browserStorage.readRaw('local', `deeptutor.notes.tree:${owner}`) === 'true')
         setOutlineOpenState(
           browserStorage.readRaw('local', `deeptutor.notes.outline:${owner}`) !== 'false'
@@ -531,7 +522,7 @@ export default function NoteWorkspace({
       }
       notifyCoWriterChanged()
       if (leaving) {
-        const destination = await loadDestination(target, pages, tree, workspace)
+        const destination = await loadDestination(target, pages, tree, workspace, owner)
         if (!root.current?.isConnected || activeWorkspaceId() !== workspace) return
         prepareNoteDestination(destination)
         router.replace(scopedUrl(destination.doc ? `/co-writer/${destination.doc.id}` : '/co-writer', workspace))

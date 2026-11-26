@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import NoteWorkspace from '@/features/notes/components/NoteWorkspace'
+import { loadDestination } from '@/features/notes/components/note-page-mutations'
+import { prepareNoteDestination } from '@/features/notes/components/useNoteNavigation'
 import * as coWriter from '@/lib/co-writer-api'
 import {
   getNote,
@@ -116,6 +118,28 @@ const proposal: NoteSuggestion = {
   blocks: [{ ...page.blocks![0], content: 'Accepted' }],
   status: 'pending',
 }
+it.each([true, false])('resolves the parent draft before mounting the return editor (matching revision: %s)', async matches => {
+  const child = { ...page, id: '123456abcdef', parent_id: page.id }
+  const blocks = [{ ...page.blocks![0], content: 'Recovered draft body' }]
+  localStorage.setItem(`deeptutor.notes.draft:local:${page.id}`, JSON.stringify({
+    blocks, title: 'Draft title', revision: matches ? page.revision : page.revision - 1,
+  }))
+  const destination = await loadDestination(child, [], true, '', 'local')
+  // BlockNote consumes its initial blocks once on mount.
+  expect(destination.doc?.blocks).toEqual(matches ? blocks : page.blocks)
+  prepareNoteDestination(destination)
+  vi.mocked(saveNote).mockResolvedValue({ ...page, revision: 2 })
+  render(<NoteWorkspace docId={page.id} />)
+  if (matches) {
+    await waitFor(() => expect(saveNote).toHaveBeenCalledWith(page.id, {
+      title: 'Draft title', blocks, expected_revision: page.revision,
+    }))
+  } else {
+    expect(await screen.findByText('A local draft differs from this page.')).toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  }
+})
+
 it('deletes the selected child while preserving unsaved edits on its same-named parent', async () => {
   const parent = { ...page, preview: 'Body' }
   const child = { ...parent, parent_id: parent.id, id: '123456abcdef' }
