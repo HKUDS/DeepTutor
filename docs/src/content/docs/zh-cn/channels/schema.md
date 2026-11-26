@@ -110,7 +110,7 @@ Docker 或生产部署要持久化整个 `data/partners/`。丢失 channel state
 
 ## 各渠道字段
 
-下面是每张渠道卡片上的字段。卡片由 `GET /api/v1/partners/channels/schema` 渲染。共用开关仍在上面的矩阵里。
+下面是每张渠道卡片上的字段。卡片由 `GET /api/partners/channels/schema` 渲染。共用开关仍在上面的矩阵里。
 
 <a id="dingtalk"></a>
 

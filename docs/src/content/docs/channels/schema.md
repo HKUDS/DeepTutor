@@ -110,7 +110,7 @@ Every built-in channel has a dedicated page with platform-side registration step
 
 ## Per-channel fields
 
-These are the fields on each channel card. The card is rendered from `GET /api/v1/partners/channels/schema`. Shared switches stay in the matrix above.
+These are the fields on each channel card. The card is rendered from `GET /api/partners/channels/schema`. Shared switches stay in the matrix above.
 
 <a id="dingtalk"></a>
 

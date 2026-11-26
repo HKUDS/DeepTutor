@@ -1,5 +1,6 @@
 ---
 title: Provider Configuration
+description: Configure LLM, task, embedding, search, voice, and multimodal provider profiles in DeepTutor.
 quadrant: how-to
 ---
 
