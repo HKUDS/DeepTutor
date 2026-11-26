@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
-document.documentElement.dataset.platform = window.desktop.platform;
+const platform = window.desktop.platform;
+document.documentElement.dataset.platform = platform;
 const step = $('step');
 let shownStep = '';
 let swapTimer;
@@ -7,6 +8,10 @@ let swapTimer;
 function showStep(text) {
   if (text === shownStep) return;
   shownStep = text;
+  if (platform === 'darwin') {
+    step.textContent = text;
+    return;
+  }
   clearTimeout(swapTimer);
   step.classList.add('is-swapping');
   swapTimer = setTimeout(() => { step.textContent = text; step.classList.remove('is-swapping'); }, 180);
@@ -30,7 +35,13 @@ function render(view) {
   if (!problem) showStep(view.message);
 }
 
-window.desktop.onStatus(render);
-window.desktop.status().then(render);
+let receivedStatus = false;
+window.desktop.onStatus(view => {
+  receivedStatus = true;
+  render(view);
+});
+window.desktop.status().then(view => {
+  if (!receivedStatus) render(view);
+});
 $('retry').addEventListener('click', () => window.desktop.restart());
 $('logs').addEventListener('click', () => window.desktop.logs());

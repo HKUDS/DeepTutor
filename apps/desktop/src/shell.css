@@ -43,7 +43,8 @@ body {
   padding: 0 32px 44px; text-align: center;
 }
 .brand { display: flex; flex-direction: column; align-items: center; animation: rise .9s cubic-bezier(.2, .8, .2, 1) both; }
-.mark { width: 56px; height: 56px; margin-bottom: 24px; }
+.mark-tile { margin-bottom: 24px; }
+.mark { display: block; width: 56px; height: 56px; }
 .wordmark { width: 184px; height: auto; }
 .tagline { margin: 18px 0 0; font-size: 13px; color: var(--muted); letter-spacing: .005em; }
 
@@ -89,7 +90,73 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(265%); } }
+
+/* macOS supplies the title bar, traffic lights, and full-screen chrome. */
+:root[data-platform="darwin"] {
+  --bg: light-dark(#f5f5f7, #202023);
+  --fg: light-dark(#232326, #f2f2f4);
+  --muted: light-dark(#5c5c63, #aeafb7);
+  --faint: light-dark(#66666f, #a0a0aa);
+  --line: light-dark(#0000001a, #ffffff21);
+  --track: light-dark(#e0e0e6, #39393f);
+  --well: light-dark(#eaeaf0, #2a2a30);
+  --button: light-dark(#fff, #36363d);
+}
+:root[data-platform="darwin"]:not([data-theme]) { color-scheme: light dark; }
+[data-platform="darwin"] body { transition: none; }
+[data-platform="darwin"] .titlebar,
+[data-platform="darwin"][data-phase="ready"] :is(.stage, .foot) { display: none; }
+[data-platform="darwin"] .stage {
+  min-height: 0;
+  justify-content: safe center;
+  overflow: auto;
+  padding: 28px 32px;
+}
+[data-platform="darwin"] .brand { animation-duration: .24s; }
+[data-platform="darwin"] .mark-tile {
+  margin-bottom: 19px;
+  padding: 17px;
+  border-radius: 20px;
+  background: linear-gradient(155deg, light-dark(#fff, #414148), light-dark(#e9e9ef, #29292f));
+  box-shadow: inset 0 0 0 1px light-dark(#00000012, #ffffff24), 0 4px 12px light-dark(#00000012, #0004);
+}
+[data-platform="darwin"] .mark { width: 42px; height: 42px; }
+@media (prefers-color-scheme: dark) {
+  [data-platform="darwin"]:not([data-theme]) img { filter: invert(1); }
+}
+[data-platform="darwin"] .wordmark { width: 152px; }
+[data-platform="darwin"] .tagline { margin-top: 10px; }
+[data-platform="darwin"] .loading {
+  margin-top: 29px;
+  gap: 9px;
+  animation: none;
+}
+[data-platform="darwin"] .track { width: 156px; height: 4px; }
+[data-platform="darwin"] .track span { background: AccentColor; }
+[data-platform="darwin"] .problem {
+  width: min(420px, 100%);
+  margin-top: 26px;
+  animation-duration: .18s;
+}
+[data-platform="darwin"] .problem pre {
+  max-height: 96px;
+  margin-top: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+[data-platform="darwin"] .actions { margin-top: 16px; }
+[data-platform="darwin"] button {
+  min-height: 28px;
+  padding: 6px 13px;
+  border-radius: 7px;
+}
+[data-platform="darwin"] .primary { background: AccentColor; color: AccentColorText; }
+[data-platform="darwin"] .ghost { background: var(--button); }
+[data-platform="darwin"] .ghost:hover { background: var(--well); }
+[data-platform="darwin"] button:focus-visible { outline-color: AccentColor; }
+[data-platform="darwin"] .foot { padding-bottom: 16px; animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .track span { width: 100%; }
+  .track span { inset-inline-start: 31%; }
 }
