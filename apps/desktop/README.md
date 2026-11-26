@@ -17,6 +17,7 @@ requirements.
 | `macos-arm64` | Open DeepTutor for MacOS with Apple Silicon   | MacOS (Apple Silicon)   | `Open-DeepTutor-MacOS-Apple-Silicon-v<version>.dmg`        |
 | `macos-x64`   | Open DeepTutor for MacOS with Intel Silicon   | MacOS (Intel)           | `Open-DeepTutor-MacOS-Intel-v<version>.dmg`                |
 | `windows-x64` | Open DeepTutor for Windows                    | Windows                 | `Open-DeepTutor-Windows-v<version>-Setup.exe`, `…-Portable.zip` |
+| `linux-x64`   | Open DeepTutor for Linux                      | Linux                   | `Open-DeepTutor-Linux-v<version>.AppImage`, `…-v<version>.deb` |
 
 - The app version is the DeepTutor version it bundles, read from
   `deeptutor/__version__.py` via the sealed runtime, so `package.json` stays at
@@ -70,7 +71,9 @@ desktop IPC privileges; only the private shell page owns the native bridge.
 
 Prerequisites (developers only): Node/npm and `uv`. MacOS targets build on a
 Mac (`macos-x64` also on Apple Silicon, through Rosetta); `windows-x64` builds
-on Windows 10+ with NSIS (`makensis`) installed.
+on Windows 10+ with NSIS (`makensis`) installed; `linux-x64` builds on Linux
+with `appimagetool` and `dpkg-deb` available (the CI installs `appimagetool`
+itself).
 
 ```sh
 cd apps/desktop

@@ -36,9 +36,11 @@ const EDITIONS: Record<string, ClientEdition> = {
     short: "MacOS (Intel)",
   },
   "Windows; x64": { full: "Open DeepTutor for Windows", short: "Windows" },
+  "Linux; x64": { full: "Open DeepTutor for Linux", short: "Linux (x64)" },
   // Shells from 1.7.0 sent no architecture.
   macOS: { full: "Open DeepTutor for MacOS", short: "MacOS" },
   Windows: { full: "Open DeepTutor for Windows", short: "Windows" },
+  Linux: { full: "Open DeepTutor for Linux", short: "Linux (x64)" },
 };
 
 /** The desktop shell appends ``OpenDeepTutor/<version> (macOS; arm64)`` to its user agent. */
