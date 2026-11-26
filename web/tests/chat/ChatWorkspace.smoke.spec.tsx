@@ -347,6 +347,28 @@ describe('ChatWorkspace smoke', () => {
     ))
   })
 
+  it('opens a published Markdown reference in the Windows viewer and keeps a stale link in the same conversation', async () => {
+    const userAgent = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('OpenDeepTutor/1.7.4 (Windows; x64)')
+    try {
+      applyState({ messages: [{ id: 1, role: 'assistant', content: 'Notes' }] })
+      await act(async () => { renderWorkspace() })
+      const link = document.createElement('a')
+      link.textContent = 'Read the notes'
+      screen.getByTestId('message-list').appendChild(link)
+      link.href = '/files/attachments/lesson/id/notes.md?dt_workspace=math'
+      fireEvent.click(link)
+      expect(fixture.viewer.openFileTab).toHaveBeenCalledWith(expect.objectContaining({
+        filename: 'notes.md', url: '/files/attachments/lesson/id/notes.md?dt_workspace=math',
+      }))
+      link.setAttribute('href', 'outputs/moved.md')
+      fireEvent.click(link)
+      expect(fixture.viewer.openFileTab).toHaveBeenLastCalledWith(expect.objectContaining({ filename: 'moved.md', url: 'outputs/moved.md' }))
+      expect(fixture.viewer.openWebTab).not.toHaveBeenCalled()
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
   it('does not replace an explicit empty selection', async () => {
     fixture.listKnowledgeBases.mockResolvedValue([
       { id: 'workspace:kb:physics', name: 'physics', is_default: true, status: 'ready' },

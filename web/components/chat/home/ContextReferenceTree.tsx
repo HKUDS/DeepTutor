@@ -3,6 +3,7 @@
 import { memo, useState } from "react";
 import { ChevronDown, X, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { SessionFileLink } from "@/components/chat/SessionFileLink";
 
 /**
  * One row in the reference tree: an attachment, a Space reference, a
@@ -20,6 +21,7 @@ export interface ContextTreeItem {
   label: string;
   /** 16px thumbnail for image attachments — replaces the icon. */
   thumbnailUrl?: string;
+  fileUrl?: string;
   /** Optional click action (e.g. open attachment preview). */
   onClick?: () => void;
   /** Optional remove action (composer only). */
@@ -160,13 +162,13 @@ export default memo(function ContextReferenceTree({
             className={`group/ref flex max-w-full items-center gap-1.5 text-[12px] leading-[1.6] ${rowDirClass}`}
           >
             {item.onClick ? (
-              <button
-                type="button"
+              <SessionFileLink
+                url={item.fileUrl}
                 onClick={item.onClick}
                 className={`flex min-w-0 items-center gap-1.5 rounded-md text-left transition-colors hover:text-[var(--foreground)] [&>span]:hover:text-[var(--foreground)] ${rowDirClass}`}
               >
                 {Inner}
-              </button>
+              </SessionFileLink>
             ) : (
               Inner
             )}

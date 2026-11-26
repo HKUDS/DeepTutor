@@ -48,6 +48,9 @@ import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
 import FilePreviewDrawer from "@/components/chat/preview/FilePreviewDrawer";
+import { isRelativeFileReference, sessionFileUrl } from "@/components/chat/SessionFileLink";
+import { clientEdition } from "@/lib/version";
+import { safeDecodeURIComponent } from "@/lib/markdown-display";
 import { buildSessionActivity } from "@/lib/session-activity";
 import Tooltip from "@/shared/ui/Tooltip";
 import SessionViewerPanel, {
@@ -1786,6 +1789,18 @@ export default function ChatWorkspace() {
     if (!anchor) return;
     const href = anchor.getAttribute("href");
     if (!href) return;
+    // Keep file references in the viewer so an unavailable document can return here.
+    if (clientEdition().short === "Windows") {
+      const url = sessionFileUrl(anchor.href);
+      if (url || isRelativeFileReference(href)) {
+        event.preventDefault();
+        const basename = safeDecodeURIComponent(new URL(anchor.href).pathname.split("/").pop() || href);
+        const label = anchor.textContent?.trim();
+        const filename = url?.startsWith("/files/workspace-items/") && label ? label : basename;
+        viewerPanelRef.current?.openFileTab({ type: "file", id: anchor.href, filename, url: url ?? href });
+        return;
+      }
+    }
     if (!/^https?:\/\//i.test(href)) return;
     event.preventDefault();
     viewerPanelRef.current?.openWebTab(href);

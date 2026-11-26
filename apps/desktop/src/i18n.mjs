@@ -2,6 +2,13 @@
 // language chosen in DeepTutor's own Settings and starts in English.
 
 const en = {
+  fileBrowser: 'Open in default browser',
+  fileDefaultApp: 'Open with default app',
+  fileExplorer: 'Show in File Explorer',
+  fileCopyPath: 'Copy file path',
+  fileUnavailable: 'File unavailable',
+  fileActionFailed: 'Couldn’t complete the file action',
+  backToChat: 'Back to conversation',
   tagline: 'Your personal learning space',
   errorTitle: "DeepTutor couldn't start",
   errorBody: 'Something went wrong while starting the local services. Try again, or check the logs for details.',
@@ -54,6 +61,13 @@ const en = {
 };
 
 const zh = {
+  fileBrowser: '在默认浏览器中打开',
+  fileDefaultApp: '用系统默认应用打开',
+  fileExplorer: '在资源管理器中显示并选中文件',
+  fileCopyPath: '复制文件路径',
+  fileUnavailable: '文件不可用',
+  fileActionFailed: '文件操作未能完成',
+  backToChat: '返回对话',
   tagline: '你的个人学习空间',
   errorTitle: 'DeepTutor 未能启动',
   errorBody: '启动本地服务时出现问题。你可以重试，或查看日志了解详情。',
@@ -106,6 +120,13 @@ const zh = {
 };
 
 const de = {
+  fileBrowser: 'Im Standardbrowser öffnen',
+  fileDefaultApp: 'Mit Standard-App öffnen',
+  fileExplorer: 'Im Explorer anzeigen',
+  fileCopyPath: 'Dateipfad kopieren',
+  fileUnavailable: 'Datei nicht verfügbar',
+  fileActionFailed: 'Dateiaktion fehlgeschlagen',
+  backToChat: 'Zurück zur Unterhaltung',
   tagline: 'Dein persönlicher Lernraum',
   errorTitle: 'DeepTutor konnte nicht starten',
   errorBody: 'Beim Starten der lokalen Dienste ist ein Fehler aufgetreten. Versuche es erneut oder sieh in den Protokollen nach.',
@@ -158,6 +179,13 @@ const de = {
 };
 
 const fr = {
+  fileBrowser: 'Ouvrir dans le navigateur par défaut',
+  fileDefaultApp: 'Ouvrir avec l’application par défaut',
+  fileExplorer: 'Afficher dans l’Explorateur de fichiers',
+  fileCopyPath: 'Copier le chemin du fichier',
+  fileUnavailable: 'Fichier indisponible',
+  fileActionFailed: 'L’opération sur le fichier a échoué',
+  backToChat: 'Revenir à la conversation',
   tagline: "Votre espace d'apprentissage personnel",
   errorTitle: "DeepTutor n'a pas pu démarrer",
   errorBody: 'Un problème est survenu au démarrage des services locaux. Réessayez ou consultez les journaux.',
@@ -210,6 +238,13 @@ const fr = {
 };
 
 const pl = {
+  fileBrowser: 'Otwórz w domyślnej przeglądarce',
+  fileDefaultApp: 'Otwórz w domyślnej aplikacji',
+  fileExplorer: 'Pokaż w Eksploratorze plików',
+  fileCopyPath: 'Kopiuj ścieżkę pliku',
+  fileUnavailable: 'Plik niedostępny',
+  fileActionFailed: 'Nie udało się wykonać operacji na pliku',
+  backToChat: 'Wróć do rozmowy',
   tagline: 'Twoja osobista przestrzeń nauki',
   errorTitle: 'Nie udało się uruchomić DeepTutor',
   errorBody: 'Podczas uruchamiania usług lokalnych wystąpił problem. Spróbuj ponownie lub sprawdź dzienniki.',
@@ -262,6 +297,13 @@ const pl = {
 };
 
 const uk = {
+  fileBrowser: 'Відкрити в типовому браузері',
+  fileDefaultApp: 'Відкрити в типовій програмі',
+  fileExplorer: 'Показати у Провіднику',
+  fileCopyPath: 'Копіювати шлях до файлу',
+  fileUnavailable: 'Файл недоступний',
+  fileActionFailed: 'Не вдалося виконати дію з файлом',
+  backToChat: 'Повернутися до розмови',
   tagline: 'Ваш особистий простір навчання',
   errorTitle: 'Не вдалося запустити DeepTutor',
   errorBody: 'Під час запуску локальних служб сталася помилка. Спробуйте ще раз або перегляньте журнали.',
@@ -314,6 +356,13 @@ const uk = {
 };
 
 const vi = {
+  fileBrowser: 'Mở trong trình duyệt mặc định',
+  fileDefaultApp: 'Mở bằng ứng dụng mặc định',
+  fileExplorer: 'Hiển thị trong File Explorer',
+  fileCopyPath: 'Sao chép đường dẫn tệp',
+  fileUnavailable: 'Tệp không khả dụng',
+  fileActionFailed: 'Không thể thực hiện thao tác với tệp',
+  backToChat: 'Quay lại cuộc trò chuyện',
   tagline: 'Không gian học tập cá nhân của bạn',
   errorTitle: 'Không thể khởi động DeepTutor',
   errorBody: 'Đã xảy ra sự cố khi khởi động các dịch vụ cục bộ. Hãy thử lại hoặc xem nhật ký.',
@@ -366,6 +415,13 @@ const vi = {
 };
 
 const pt = {
+  fileBrowser: 'Abrir no navegador padrão',
+  fileDefaultApp: 'Abrir com o aplicativo padrão',
+  fileExplorer: 'Mostrar no Explorador de Arquivos',
+  fileCopyPath: 'Copiar caminho do arquivo',
+  fileUnavailable: 'Arquivo indisponível',
+  fileActionFailed: 'Não foi possível concluir a ação no arquivo',
+  backToChat: 'Voltar à conversa',
   "tagline": "Seu espaço pessoal de aprendizado",
   "errorTitle": "Não foi possível iniciar o DeepTutor",
   "errorBody": "Ocorreu um erro ao iniciar os serviços locais. Tente novamente ou consulte os logs para ver os detalhes.",
@@ -432,6 +488,13 @@ const pt = {
 };
 
 const tr = {
+  fileBrowser: 'Varsayılan tarayıcıda aç',
+  fileDefaultApp: 'Varsayılan uygulamayla aç',
+  fileExplorer: 'Dosya Gezgini’nde göster',
+  fileCopyPath: 'Dosya yolunu kopyala',
+  fileUnavailable: 'Dosya kullanılamıyor',
+  fileActionFailed: 'Dosya işlemi tamamlanamadı',
+  backToChat: 'Sohbete dön',
   "tagline": "Kişisel öğrenme alanınız",
   "errorTitle": "DeepTutor başlatılamadı",
   "errorBody": "Yerel hizmetler başlatılırken bir sorun oluştu. Yeniden deneyin veya ayrıntılar için günlükleri kontrol edin.",

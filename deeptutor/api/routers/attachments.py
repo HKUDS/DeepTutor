@@ -38,6 +38,7 @@ _content_disposition = content_disposition
 
 
 @router.get("/{session_id}/{attachment_id}/{filename:path}")
+@router.head("/{session_id}/{attachment_id}/{filename:path}", include_in_schema=False)
 async def get_attachment(
     session_id: str,
     attachment_id: str,

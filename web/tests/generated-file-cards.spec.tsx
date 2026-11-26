@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GeneratedFileCards } from "@/features/chat/messages/ChatMessageList";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
@@ -23,6 +23,22 @@ const figure = image("outputs/chat/turn-a/figure.png", "wsi_a");
 const other = image("outputs/chat/turn-a/other.png", "wsi_b");
 
 describe("generated image cards", () => {
+  it("exposes the published URL to the context menu and opens the in-app preview on click", () => {
+    const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("OpenDeepTutor/1.7.4 (Windows; x64)");
+    try {
+      const onOpen = vi.fn();
+      render(<GeneratedFileCards attachments={[figure]} onOpen={onOpen} />);
+      const link = screen.getByRole("link", { name: /figure/i });
+      expect(link).toHaveAttribute("href", figure.url + "?dt_workspace=");
+      fireEvent.contextMenu(link);
+      expect(onOpen).not.toHaveBeenCalled();
+      fireEvent.click(link);
+      expect(onOpen).toHaveBeenCalledWith(figure);
+    } finally {
+      userAgent.mockRestore();
+    }
+  });
+
   it("leaves out an image the reply already embeds inline", () => {
     render(
       <GeneratedFileCards

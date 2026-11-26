@@ -97,6 +97,47 @@ def test_preview_route_requires_authentication(monkeypatch) -> None:
         "/api/file-preview/pdf", params={"source": "/files/outputs/report.docx"}
     )
     assert response.status_code == 401
+    assert (
+        TestClient(app)
+        .get("/api/file-preview/desktop-file", params={"source": "/files/outputs/notes.md"})
+        .status_code
+        == 401
+    )
+
+
+def test_desktop_lookup_is_private_and_resolves_only_published_files(monkeypatch, tmp_path):
+    from deeptutor.services.storage import LocalDiskAttachmentStore
+
+    store = LocalDiskAttachmentStore(tmp_path / "attachments")
+    url = asyncio.run(
+        store.put(session_id="lesson", attachment_id="a1", filename="课堂.md", data=b"notes")
+    )
+    monkeypatch.setattr("deeptutor.services.storage.get_attachment_store", lambda: store)
+    monkeypatch.setattr(file_preview, "_cache_dir", lambda: tmp_path)
+    app = FastAPI()
+    app.include_router(file_preview.router)
+    client = TestClient(app, client=("127.0.0.1", 1234))
+    params = {"source": url}
+    headers = {"X-DeepTutor-Desktop-Token": "shell-secret"}
+    monkeypatch.delenv("DEEPTUTOR_DESKTOP_FILE_TOKEN", raising=False)
+    assert client.get("/desktop-file", params=params, headers=headers).status_code == 404
+    monkeypatch.setenv("DEEPTUTOR_DESKTOP_FILE_TOKEN", "shell-secret")
+    assert client.get("/desktop-file", params=params).status_code == 404
+    assert TestClient(app).get("/desktop-file", params=params, headers=headers).status_code == 404
+    response = client.get("/desktop-file", params=params, headers=headers)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert Path(response.json()["path"]).read_bytes() == b"notes"
+    assert (
+        client.get(
+            "/desktop-file",
+            params={"source": "/api/knowledge-bases/course/files/notes.md"},
+            headers=headers,
+        ).status_code
+        == 400
+    )
+    Path(response.json()["path"]).rename(tmp_path / "moved.md")
+    assert client.get("/desktop-file", params=params, headers=headers).status_code == 404
 
 
 def test_source_url_must_be_local_and_workspace_scope_must_match(
@@ -106,7 +147,8 @@ def test_source_url_must_be_local_and_workspace_scope_must_match(
     source.write_bytes(b"office")
     seen: list[str] = []
 
-    def resolve(path: str, _query: dict) -> tuple[Path, str]:
+    def resolve(path: str, _query: dict, *, original: bool) -> tuple[Path, str]:
+        assert not original
         seen.append(path)
         return source, source.name
 
@@ -155,7 +197,7 @@ def test_get_and_post_return_pdf(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "report.docx"
     source.write_bytes(b"office")
     monkeypatch.setattr(
-        file_preview, "_resolve_authorized_file", lambda _path, _query: (source, source.name)
+        file_preview, "_resolve_authorized_file", lambda _path, _query, **_kw: (source, source.name)
     )
     monkeypatch.setattr(file_preview, "_cache_dir", lambda: tmp_path / "cache")
 
@@ -198,7 +240,7 @@ def test_learner_preview_surface_matches_source(monkeypatch, tmp_path: Path) -> 
     source = tmp_path / "report.docx"
     source.write_bytes(b"office")
     monkeypatch.setattr(
-        file_preview, "_resolve_authorized_file", lambda _path, _query: (source, source.name)
+        file_preview, "_resolve_authorized_file", lambda _path, _query, **_kw: (source, source.name)
     )
     monkeypatch.setattr(file_preview, "_cache_dir", lambda: tmp_path / "cache")
 

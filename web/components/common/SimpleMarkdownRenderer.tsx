@@ -18,6 +18,7 @@ import {
   parseAttachmentHref,
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
+import { sessionFileUrl } from "@/components/chat/SessionFileLink";
 import type { MarkdownRendererProps } from "./markdown-renderer-types";
 import {
   extractMarkdownText as extractText,
@@ -361,7 +362,7 @@ export default function SimpleMarkdownRenderer({
 
       return (
         <a
-          href={href}
+          href={sessionFileUrl(href) ?? href}
           {...(external
             ? { target: "_blank", rel: "noopener noreferrer" }
             : {})}

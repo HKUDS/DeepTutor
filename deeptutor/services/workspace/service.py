@@ -788,7 +788,7 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
         return request
 
     def resolve_published_item(
-        self, workspace_id: str, workspace_item_id: str
+        self, workspace_id: str, workspace_item_id: str, *, original: bool = False
     ) -> tuple[Path, WorkspaceItem]:
         if not re.fullmatch(r"wsi_[0-9a-f]{32}", workspace_item_id):
             raise WorkspaceError("Invalid workspace item id.")
@@ -818,6 +818,11 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
             raise WorkspaceError("The workspace item path is invalid.") from exc
         if not blob.is_file():
             raise WorkspaceError("The presented workspace item is unavailable.")
+        if original:
+            source = self.resolve(binding, item.relative_path)
+            if not source.is_file():
+                raise WorkspaceError("The original workspace file is unavailable.")
+            return source, item
         return blob, item
 
 

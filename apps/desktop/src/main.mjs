@@ -1,4 +1,5 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, clipboard, dialog, session, nativeTheme } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
@@ -9,10 +10,12 @@ import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
+import { conversationPage, resolveDesktopFile, sessionFileMenu, sessionFileURL } from './session-files.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
 const EDITION = edition();
+const desktopFileToken = WINDOWS ? randomUUID() : undefined;
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const shellURL = pathToFileURL(path.join(sourceDirectory, 'index.html')).href;
 // Runtimes are large and machine-specific, so Windows keeps them out of the roaming profile.
@@ -132,6 +135,27 @@ async function openContent(url) {
     partition: 'persist:deeptutor',
   } });
   const content = view.webContents;
+  if (desktopFileToken && state.owned) {
+    content.on('context-menu', async (_event, params) => {
+      const page = content.getURL();
+      if (params.frame !== content.mainFrame || !conversationPage(page, origin)) return;
+      const source = sessionFileURL(params.linkURL || params.srcURL, origin);
+      if (!source) return;
+      const stillHere = () => !content.isDestroyed() && content.getURL() === page;
+      const resolvePath = () => stillHere()
+        ? resolveDesktopFile(content.session, state.backendURL, desktopFileToken, source) : null;
+      const showError = (key) => {
+        if (stillHere()) void dialog.showMessageBox(window, { message: t(key), buttons: [t('backToChat')] });
+      };
+      try {
+        const path = await resolvePath();
+        if (!path || !stillHere()) return;
+        Menu.buildFromTemplate(sessionFileMenu({
+          source, path, resolvePath, shell, clipboard, t, onError: showError,
+        })).popup({ window });
+      } catch { showError('fileUnavailable'); }
+    });
+  }
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -197,7 +221,7 @@ async function launchRuntime(installed) {
       status({ phase: 'error', step: null, message: t('workerExited', { code }) });
       if (!ready) reject(new Error(state.message));
     });
-    child.send({ type: 'start', config, logPath, cachePath: path.join(userRoot, 'cache', installed.manifest.runtimeId) });
+    child.send({ type: 'start', config, logPath, desktopFileToken, cachePath: path.join(userRoot, 'cache', installed.manifest.runtimeId) });
   });
 }
 

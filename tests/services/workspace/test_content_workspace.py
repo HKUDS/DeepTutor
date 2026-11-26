@@ -130,6 +130,12 @@ def test_presentation_is_a_fixed_content_addressed_version(workspace_service) ->
     assert loaded.url.startswith("/files/workspace-items/")
     assert blob.is_relative_to(paths.get_runtime_state_dir())
     assert not (binding.root / "outputs" / ".deeptutor").exists()
+    ids = first.workspace_id, first.workspace_item_id
+    assert service.resolve_published_item(*ids, original=True) == (source, first)
+    source.rename(binding.root / "moved.md")
+    with pytest.raises(WorkspaceError, match="original workspace file"):
+        service.resolve_published_item(*ids, original=True)
+    assert service.resolve_published_item(*ids) == (blob, loaded)
 
 
 def test_private_presentation_store_rejects_symlink_redirection(

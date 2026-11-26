@@ -75,6 +75,27 @@ function renderPanel(props: Partial<SessionViewerPanelProps> = {}) {
 /** The panel slides in over two frames and is aria-hidden until it has. */
 const entered = () => screen.findByRole("button", { name: "New tab" });
 
+it.each([
+  ["/files/attachments/session-a/a/notes.md", 404, "application/json"],
+  ["outputs/moved.md", 200, "text/html; charset=utf-8"],
+] as const)("returns to the conversation for a missing Windows file %s", async (url, status, contentType) => {
+  const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("OpenDeepTutor/1.7.4 (Windows; x64)");
+  const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(null, { status, headers: { "Content-Type": contentType } }));
+  try {
+    const onClose = vi.fn();
+    const { ref } = renderPanel({ onClose });
+    await entered();
+    act(() => ref.current!.openFileTab({ type: "file", filename: "notes.md", url }));
+    expect(await screen.findByText("File unavailable")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to conversation" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith(expect.stringContaining(url), expect.objectContaining({ method: "HEAD" }));
+  } finally {
+    userAgent.mockRestore();
+    request.mockRestore();
+  }
+});
+
 const tabBar = () => screen.getByRole("button", { name: "New tab" }).parentElement!.parentElement!;
 
 it("names every tool on the launcher, and opening things lives there alone", async () => {

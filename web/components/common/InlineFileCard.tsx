@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { SessionFileLink } from "@/components/chat/SessionFileLink";
 
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor } from "@/lib/doc-attachments";
@@ -515,14 +516,14 @@ export function InlineFileCard({
   const spec = docIconFor(filename);
   const Icon = spec.Icon;
   return (
-    <button
-      type="button"
+    <SessionFileLink
+      url={attachment.url}
       onClick={ctx?.onOpen ? () => ctx.onOpen?.(attachment) : undefined}
       className="inline-flex max-w-full items-center gap-1 align-baseline rounded-md px-1 py-0.5 font-medium text-[var(--primary)] underline decoration-[var(--primary)]/40 underline-offset-2 transition-colors hover:bg-[var(--primary)]/5 hover:decoration-[var(--primary)]"
     >
       <Icon className={`h-[14px] w-[14px] shrink-0 ${spec.tint}`} />
       <span className="truncate">{filename}</span>
-    </button>
+    </SessionFileLink>
   );
 }
 
@@ -560,13 +561,13 @@ export function InlineWorkspaceImage({
   );
   if (!ctx?.onOpen) return image;
   return (
-    <button
-      type="button"
+    <SessionFileLink
+      url={attachment.url}
       onClick={() => ctx.onOpen?.(attachment)}
       className="inline-block max-w-full cursor-zoom-in text-left"
       aria-label={`Open ${attachment.filename || name}`}
     >
       {image}
-    </button>
+    </SessionFileLink>
   );
 }
