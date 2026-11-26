@@ -152,6 +152,7 @@ RETIRED_MARKERS = (
     "已废弃",
     "弃用",
     "不再",
+    "曾经",
     "替换",
     "改用",
 )
@@ -252,19 +253,32 @@ WS_PATH = re.compile(r"/ws(?![A-Za-z0-9_])(?:/[A-Za-z0-9_{}/.-]*)?")
 # path. So ``/api/v1`` on the providers page exempts the OpenRouter/Lemonade
 # base URL but still reports ``/api/v1/chat`` there, which is the mistake this
 # test exists to catch.
+# Inline code such as ``deeptutor/api/router_index.json`` names a repository
+# file, and its tail looks exactly like an endpoint. Strip those spans before
+# scanning for paths; a real endpoint mention never starts with a source tree.
+REPO_PATH = re.compile(r"`(?:deeptutor|docs|web|scripts|tests|packages|apps|assets)/[^`\n]+`")
+
+
+def _without_repo_paths(text: str) -> str:
+    """Drop inline code that names a repository file instead of an endpoint."""
+    return REPO_PATH.sub("``", text)
+
+
 FOREIGN_API_PAGES = {
     # page: third-party product whose API paths are legitimate there.
     #
-    # Both the current and the reorganized path are listed: the docs tree moved
-    # from ``partners/`` to ``channels/international/``, and the test has to be
-    # correct against whichever layout it runs on.
     # Mattermost needs both forms: the prose warns readers *not* to append
     # ``/api/v4`` to a base URL, and the channel also drives deeper endpoints
     # such as ``/api/v4/users/me``.
     "docs/src/content/docs/channels/international/mattermost.md": ("/api/v4", "/api/v4/"),
-    "docs/src/content/docs/zh-cn/channels/international/mattermost.md": ("/api/v4", "/api/v4/"),
-    "docs/src/content/docs/partners/mattermost.md": ("/api/v4", "/api/v4/"),
-    "docs/src/content/docs/zh-cn/partners/mattermost.md": ("/api/v4", "/api/v4/"),
+    "docs/src/content/docs/zh-cn/channels/international/mattermost.md": (
+        "/api/v4",
+        "/api/v4/",
+    ),
+    # The channel schema page documents each channel's own inbound path and the
+    # warnings about third-party base URLs.
+    "docs/src/content/docs/channels/schema.md": ("/api/v4", "/api/v4/", "/api/messages"),
+    "docs/src/content/docs/zh-cn/channels/schema.md": ("/api/v4", "/api/v4/", "/api/messages"),
     # Provider base URLs users paste into settings (BytePlus, Zhipu, VolcEngine,
     # OpenRouter, Lemonade), plus the Ollama embedding profile; third-party
     # routes, not DeepTutor routes.
@@ -283,12 +297,12 @@ FOREIGN_API_PAGES = {
         "/api/embed",
     ),
     # Ollama's endpoint on the host: http://host.docker.internal:11434/api/embed.
-    "docs/src/content/docs/get-started/docker.md": ("/api/embed",),
-    "docs/src/content/docs/zh-cn/get-started/docker.md": ("/api/embed",),
+    "docs/src/content/docs/self-hosting/docker.md": ("/api/embed",),
+    "docs/src/content/docs/zh-cn/self-hosting/docker.md": ("/api/embed",),
     # The msteams channel runs its own built-in HTTP server on :3978 (Bot
     # Framework adapter), separate from the FastAPI app.
-    "docs/src/content/docs/partners/msteams.md": ("/api/messages",),
-    "docs/src/content/docs/zh-cn/partners/msteams.md": ("/api/messages",),
+    "docs/src/content/docs/channels/international/msteams.md": ("/api/messages",),
+    "docs/src/content/docs/zh-cn/channels/international/msteams.md": ("/api/messages",),
 }
 
 
@@ -321,7 +335,7 @@ def _documented_api_paths() -> list[tuple[str, str]]:
     found = []
     for page in doc_facts.documentation_pages():
         relative = page.relative_to(doc_facts.REPO_ROOT).as_posix()
-        text = doc_facts.page_body(page)
+        text = _without_repo_paths(doc_facts.page_body(page))
         for pattern, minimum_slashes in ((API_PATH, 2), (WS_PATH, 1)):
             for match in pattern.finditer(text):
                 # A sentence that says the endpoint was removed is history, not
