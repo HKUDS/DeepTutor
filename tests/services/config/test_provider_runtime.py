@@ -1346,14 +1346,14 @@ def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility(
     assert resolved.effective_url == "https://cloudgpu.app/v1"
 
 
-def test_llm_uberllm_binding_uses_default_openai_compatible_endpoint() -> None:
+def test_llm_martllm_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
             "id": "llm-p",
-            "name": "UberLLM",
-            "binding": "uberllm",
+            "name": "MartLLM",
+            "binding": "martllm",
             "base_url": "",
-            "api_key": "uberllm-key",
+            "api_key": "martllm-key",
             "api_version": "",
             "extra_headers": {},
             "models": [
@@ -1368,22 +1368,22 @@ def test_llm_uberllm_binding_uses_default_openai_compatible_endpoint() -> None:
 
     resolved = resolve_llm_runtime_config(catalog=catalog)
 
-    assert resolved.provider_name == "uberllm"
+    assert resolved.provider_name == "martllm"
     assert resolved.provider_mode == "gateway"
-    assert resolved.binding == "uberllm"
+    assert resolved.binding == "martllm"
     assert resolved.model == "deepseek/deepseek-v4-flash"
-    assert resolved.api_key == "uberllm-key"
-    assert resolved.effective_url == "https://api.uberllm.dev/v1"
+    assert resolved.api_key == "martllm-key"
+    assert resolved.effective_url == "https://api.martllm.com/v1"
 
 
-def test_llm_uberllm_base_url_detection_preserves_openai_binding_compatibility() -> None:
+def test_llm_martllm_base_url_detection_preserves_openai_binding_compatibility() -> None:
     catalog = _build_catalog(
         llm_profile={
             "id": "llm-p",
             "name": "OpenAI Compatible",
             "binding": "openai",
-            "base_url": "https://api.uberllm.dev/v1",
-            "api_key": "uberllm-key",
+            "base_url": "https://api.martllm.com/v1",
+            "api_key": "martllm-key",
             "api_version": "",
             "extra_headers": {},
             "models": [
@@ -1398,6 +1398,6 @@ def test_llm_uberllm_base_url_detection_preserves_openai_binding_compatibility()
 
     resolved = resolve_llm_runtime_config(catalog=catalog)
 
-    assert resolved.provider_name == "uberllm"
+    assert resolved.provider_name == "martllm"
     assert resolved.provider_mode == "gateway"
-    assert resolved.effective_url == "https://api.uberllm.dev/v1"
+    assert resolved.effective_url == "https://api.martllm.com/v1"

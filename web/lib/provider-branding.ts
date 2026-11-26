@@ -62,7 +62,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   siliconflow: { file: "siliconcloud-color.svg" },
   stepfun: { file: "stepfun-color.svg" },
   tavily: { file: "tavily-color.svg" },
-  uberllm: { file: "uberllm.svg" },
+  martllm: { file: "martllm.svg" },
   unifically: { file: "unifically.webp" },
   vllm: { file: "vllm-color.svg" },
   volcengine: { file: "volcengine-color.svg" },

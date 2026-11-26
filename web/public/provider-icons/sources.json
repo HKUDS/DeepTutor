@@ -113,9 +113,9 @@
       "sha256": "f8968e617daf1589565237906f3d3e22373fb68bcad5309ed4850e18db21cd74",
       "source": "Official website asset"
     },
-    "uberllm.svg": {
-      "url": "https://uberllm.dev/favicon.svg",
-      "sha256": "9ee24273c046387d69caebbaed022eada4901b7bf3e1ddd2d61978ca804bb7d2",
+    "martllm.svg": {
+      "url": "https://martllm.com/favicon.svg",
+      "sha256": "cd34939ab50f1d037095834d8382a274b1f26af081ecdab6db8857d5193660e2",
       "source": "Official website asset"
     },
     "cloudgpu.png": {
