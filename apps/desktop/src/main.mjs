@@ -1,4 +1,5 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme, powerMonitor } from 'electron';
+import { onWake, recoverAfterWake } from './wake.mjs';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
@@ -409,6 +410,21 @@ else {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
+  // A sleeping display leaves the content view unpainted and can hand back a
+  // minimized window; the runtime also needs to know, so its health monitor
+  // does not reboot a core that only needs a moment to answer again (#2846).
+  onWake(powerMonitor, () => {
+    const outcome = recoverAfterWake({
+      window,
+      view,
+      layout,
+      invalidate: () => view?.webContents?.invalidate?.(),
+    });
+    if (outcome !== 'recovered') void logStartupFailure(new Error(`wake recovery: ${outcome}`));
+    // The runtime lives in the supervisor child, so forward the wake over IPC.
+    try { worker?.connected && worker.send({ type: 'wake' }); }
+    catch { /* A stopped worker is fine: nothing to tell. */ }
+  });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
     restart: () => { void boot(); },
