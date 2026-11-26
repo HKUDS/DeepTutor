@@ -661,6 +661,42 @@ def test_query_rejects_failure_and_malformed_envelopes(result) -> None:
         asyncio.run(engine.query_with_sources(_QueryRag(result), "q"))
 
 
+def _capture_query_param(monkeypatch) -> dict:
+    """Record the kwargs ``query_with_sources`` passes to ``QueryParam``, offline."""
+    captured: dict = {}
+
+    class FakeQueryParam:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+            self.__dict__.update(kwargs)
+
+    fake_lightrag = types.ModuleType("lightrag")
+    fake_lightrag.QueryParam = FakeQueryParam  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
+    monkeypatch.setattr(engine, "query_kwargs_from_settings", lambda: {})
+    return captured
+
+
+class _RerankRag:
+    def __init__(self, rerank_model_func) -> None:
+        self.rerank_model_func = rerank_model_func
+
+    async def aquery_llm(self, _question, *, param):
+        return _query_result()
+
+
+def test_query_disables_rerank_when_no_rerank_model_is_wired(monkeypatch) -> None:
+    captured = _capture_query_param(monkeypatch)
+    asyncio.run(engine.query_with_sources(_RerankRag(None), "q", "hybrid"))
+    assert captured.get("enable_rerank") is False
+
+
+def test_query_keeps_rerank_when_a_rerank_model_is_wired(monkeypatch) -> None:
+    captured = _capture_query_param(monkeypatch)
+    asyncio.run(engine.query_with_sources(_RerankRag(lambda *a, **k: None), "q", "hybrid"))
+    assert captured.get("enable_rerank") is True
+
+
 @REQUIRES_LIGHTRAG
 def test_storage_publishes_schema_two_metadata(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "kv_store_doc_status.json").write_text(
