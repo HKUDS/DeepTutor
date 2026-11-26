@@ -1,5 +1,5 @@
 name: Documentation Issue
-description: Report an inaccuracy, broken link, missing topic, or unclear explanation in the docs at deeptutor.info
+description: Report an inaccuracy, broken link, missing topic, or unclear explanation in the docs at docs.deeptutor.info
 title: "[Docs]: "
 labels: ["docs", "triage"]
 
@@ -10,13 +10,13 @@ body:
       label: Before filing
       options:
         - label: I have searched the existing docs issues and this report is not already filed.
-        - label: This is about the docs at https://deeptutor.info — not a product bug.
+        - label: This is about the docs at https://docs.deeptutor.info — not a product bug.
   - type: input
     id: page
     attributes:
       label: Page URL
       description: Which page does the issue affect?
-      placeholder: https://deeptutor.info/docs/...
+      placeholder: https://docs.deeptutor.info/...
     validations:
       required: true
   - type: dropdown

@@ -7,7 +7,8 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "update-gifs": "node scripts/update-gifs.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.39.2",
@@ -15,6 +16,6 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "i18n-iso-countries": "^7.14.0"
+    "webreel": "^0.1.4"
   }
 }

@@ -1,5 +1,7 @@
 ---
 title: Provider 配置
+description: 配置 DeepTutor 的语言模型、任务模型、嵌入模型、搜索、语音与多模态提供方。
+quadrant: how-to
 ---
 
 
