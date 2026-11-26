@@ -691,10 +691,11 @@ def test_query_disables_rerank_when_no_rerank_model_is_wired(monkeypatch) -> Non
     assert captured.get("enable_rerank") is False
 
 
-def test_query_keeps_rerank_when_a_rerank_model_is_wired(monkeypatch) -> None:
+def test_query_leaves_rerank_to_lightrag_when_a_rerank_model_is_wired(monkeypatch) -> None:
+    # RERANK_BY_DEFAULT keeps working once a reranker can be configured.
     captured = _capture_query_param(monkeypatch)
     asyncio.run(engine.query_with_sources(_RerankRag(lambda *a, **k: None), "q", "hybrid"))
-    assert captured.get("enable_rerank") is True
+    assert "enable_rerank" not in captured
 
 
 @REQUIRES_LIGHTRAG
