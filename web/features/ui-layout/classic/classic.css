@@ -7,3 +7,9 @@
 :root[data-ui-layout="classic"] .dt-composer-surface:has(+ .dt-composer-tray) {
   z-index: 1;
 }
+
+/* Glass --card is translucent; keep the surface opaque so the tucked tray
+   does not show through the composer (#2329). */
+:root[data-ui-layout="classic"].theme-glass .dt-composer-surface {
+  background: var(--surface-raised);
+}
