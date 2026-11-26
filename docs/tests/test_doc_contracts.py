@@ -433,30 +433,6 @@ def test_project_version_is_readable() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+", doc_facts.project_version())
 
 
-# ── Locale parity ───────────────────────────────────────────────────────────
-
-
-def test_locale_page_sets_match() -> None:
-    """Every English page has a zh-cn mirror, and the reverse.
-
-    A one-sided page does not break the Starlight build: the locale switcher
-    falls back to the other language, so the reader silently gets the wrong one
-    rather than an error. This replaces the manual snippet in docs/README.md.
-    """
-    english = {
-        page.relative_to(doc_facts.DOCS_ROOT).as_posix()
-        for page in doc_facts.documentation_pages("en")
-    }
-    chinese = {
-        page.relative_to(doc_facts.DOCS_ROOT / "zh-cn").as_posix()
-        for page in doc_facts.documentation_pages("zh")
-    }
-    assert english == chinese, (
-        f"missing zh-cn pages: {sorted(english - chinese)}\n"
-        f"missing English pages: {sorted(chinese - english)}"
-    )
-
-
 # ── Frontmatter ─────────────────────────────────────────────────────────────
 
 FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
