@@ -50,7 +50,9 @@ def test_web_interface_language_is_offered_in_settings_spec(code: str) -> None:
     assert code in {choice_code for choice_code, _label, _description in _LANGUAGE_CHOICES}
 
 
-@pytest.mark.parametrize("raw", ["ko", "KO", " ko ", "ko-KR", "ko_KR", "korean", "Korean", "한국어"])
+@pytest.mark.parametrize(
+    "raw", ["ko", "KO", " ko ", "ko-KR", "ko_KR", "korean", "Korean", "한국어"]
+)
 def test_korean_aliases_normalize_to_ko(raw: str) -> None:
     assert _normalize_language(raw) == "ko"
     assert _launch_language(raw) == "ko"
