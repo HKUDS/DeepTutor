@@ -8,7 +8,7 @@ import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
-import { killTree } from './processes.mjs';
+import { killTree, withinTime } from './processes.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -30,6 +30,7 @@ const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-p
 // macOS draws the shell's own title bar under the traffic lights; Windows keeps its native frame and menu bar.
 const HEADER_HEIGHT = WINDOWS ? 0 : 44;
 const BACKGROUND = { light: '#ffffff', dark: '#161618' };
+const CONTENT_LOAD_TIMEOUT_MS = 60000;
 let window;
 let view;
 let contentVisible = false;
@@ -165,7 +166,9 @@ async function openContent(ready) {
   window.contentView.addChildView(nextView);
   layout();
   // Load the canonical chat route directly; the Next.js root redirects to it.
-  await content.loadURL(new URL('/chat', ready.url).href);
+  // The splash waits for this load, so a load that never settles must still end in Retry.
+  await withinTime(content.loadURL(new URL('/chat', ready.url).href), CONTENT_LOAD_TIMEOUT_MS,
+    `The learning space did not finish loading within ${CONTENT_LOAD_TIMEOUT_MS / 1000} seconds.`);
   if (view === nextView && !quitting) {
     layout();
     nextView.setVisible(true);
