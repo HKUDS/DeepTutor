@@ -42,6 +42,7 @@ from deeptutor.runtime.agentic import (
 )
 from deeptutor.runtime.agentic.messages import assistant_message, assistant_message_with_tool_calls
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
+from deeptutor.runtime.agentic.usage import record_streamed_usage
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config.loader import get_capability_params
@@ -49,6 +50,8 @@ from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_toke
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
+from deeptutor.services.llm.request_compat import is_stream_options_unsupported
+from deeptutor.services.llm.usage_frame import token_counts
 from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
@@ -127,6 +130,7 @@ class _CallResult:
     text: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     output_chars: int = 0
+    usage_frame: Any = None
     # Streamed to the trace and also kept: a thinking model's provider needs
     # it echoed on the assistant turn that issued the tool calls.
     reasoning_content: str = ""
@@ -293,8 +297,6 @@ class ContextExplorer:
         chunk_meta = merge_trace_metadata(stage_meta, {"trace_kind": "llm_chunk"})
 
         investigation = ""
-        total_in = 0
-        total_out = 0
         nudged_empty_finish = False
         forced_finish_appended = False
         async with stream.stage(EXPLORE_STAGE, source=EXPLORE_SOURCE, metadata=stage_meta):
@@ -313,7 +315,7 @@ class ContextExplorer:
                     # tool-less finish from what has been gathered.
                     messages.append({"role": "user", "content": self._forced_finish_instruction()})
                     forced_finish_appended = True
-                total_in += sum(_content_chars(m) for m in messages)
+                input_chars = sum(_content_chars(m) for m in messages)
                 result = await self._call_llm(
                     client,
                     messages,
@@ -321,8 +323,14 @@ class ContextExplorer:
                     chunk_meta,
                     stream,
                     context.session_id,
+                    track_usage=usage is not None,
                 )
-                total_out += result.output_chars
+                record_streamed_usage(
+                    usage,
+                    result.usage_frame,
+                    input_chars=input_chars,
+                    output_chars=result.output_chars,
+                )
                 if not result.tool_calls:
                     investigation = result.text
                     if (
@@ -382,7 +390,6 @@ class ContextExplorer:
                 ),
             )
 
-        self._account_usage(usage, total_in, total_out, investigation)
         return investigation
 
     async def _call_llm(
@@ -393,6 +400,8 @@ class ContextExplorer:
         chunk_meta: dict[str, Any],
         stream: StreamBus,
         session_id: str,
+        *,
+        track_usage: bool = False,
     ) -> _CallResult:
         """One streamed LLM call. All output streams to the *thinking* channel
         (never CONTENT — that is the answer loop's channel); the returned text
@@ -411,6 +420,8 @@ class ContextExplorer:
         }
         if threads_session_id(self.binding):
             kwargs["deeptutor_session_id"] = f"{session_id}:explore"
+        if track_usage:
+            kwargs["stream_options"] = {"include_usage": True}
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"
@@ -421,15 +432,26 @@ class ContextExplorer:
         thinking_blocks: list[dict[str, Any]] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
+        usage_frame: Any = None
         # Bound connection setup as well as the idle reads below, the same way
         # the answer loop does: a provider that hangs while opening the stream
         # parks the turn just as effectively as one that stalls mid-stream.
-        response_stream = await asyncio.wait_for(
-            client.chat.completions.create(**kwargs),
-            _STREAM_IDLE_TIMEOUT_SECONDS,
-        )
+        try:
+            response_stream = await asyncio.wait_for(
+                client.chat.completions.create(**kwargs), _STREAM_IDLE_TIMEOUT_SECONDS
+            )
+        except Exception as exc:
+            if "stream_options" not in kwargs or not is_stream_options_unsupported(exc):
+                raise
+            kwargs.pop("stream_options")
+            response_stream = await asyncio.wait_for(
+                client.chat.completions.create(**kwargs), _STREAM_IDLE_TIMEOUT_SECONDS
+            )
         try:
             async for chunk in _bounded_stream_chunks(response_stream):
+                frame = getattr(chunk, "usage", None)
+                if frame is not None and token_counts(frame):
+                    usage_frame = frame
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
@@ -476,6 +498,7 @@ class ContextExplorer:
             text="".join(text_parts),
             tool_calls=tool_calls,
             output_chars=output_chars,
+            usage_frame=usage_frame,
             reasoning_content="".join(reasoning_parts),
             response_output_items=response_output_items,
             thinking_blocks=thinking_blocks,

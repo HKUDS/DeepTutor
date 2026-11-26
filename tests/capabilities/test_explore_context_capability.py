@@ -12,6 +12,7 @@ from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
+from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
 
@@ -268,7 +269,8 @@ async def test_loop_reads_source_then_writes_investigation(
     ctx.language = language
     bus = StreamBus()
 
-    block = await cap.pre_loop(ctx, bus, usage=None)
+    usage = UsageTracker()
+    block = await cap.pre_loop(ctx, bus, usage=usage)
 
     assert isinstance(block, PromptBlock)
     assert ("Context Investigation" if language == "en" else "上下文调查") in block.content
@@ -277,6 +279,8 @@ async def test_loop_reads_source_then_writes_investigation(
     # call only via the tool round, and a tool result fed the second round).
     completions = fake_client.chat.completions
     assert len(completions.calls) == 2
+    assert usage.calls == 2
+    assert all(call["stream_options"] == {"include_usage": True} for call in completions.calls)
     system_prompt = completions.calls[0]["messages"][0]["content"]
     assert (
         "at most 15 tool calls" if language == "en" else "最多请求 15 次工具调用"
@@ -286,6 +290,74 @@ async def test_loop_reads_source_then_writes_investigation(
     kinds = [e.type for e in bus._history]
     assert StreamEventType.CONTENT not in kinds
     assert StreamEventType.TOOL_CALL in kinds
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("second_has_usage", [True, False])
+async def test_loop_records_latest_usage_frame_for_each_request(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None, second_has_usage: bool
+) -> None:
+    def usage_chunk(prompt: int, completion: int) -> _FakeChunk:
+        chunk = _FakeChunk(_FakeDelta())
+        chunk.choices = []
+        chunk.usage = {"prompt_tokens": prompt, "completion_tokens": completion}
+        return chunk
+
+    client = _FakeClient(
+        [
+            [
+                _FakeChunk(
+                    _FakeDelta(
+                        tool_calls=[
+                            _FakeToolCall(0, "call_1", "read_source", '{"source_id":"hs-x"}')
+                        ]
+                    )
+                ),
+                usage_chunk(100, 4),
+                usage_chunk(100, 8),
+                usage_chunk(0, 0),
+            ],
+            [_FakeChunk(_FakeDelta(content="Done"))]
+            + ([usage_chunk(30, 4)] if second_has_usage else []),
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: client)
+    usage = UsageTracker()
+    await ExploreContextCapability().pre_loop(
+        _ctx(source_index={"hs-x": "source"}, _manifest="source"), StreamBus(), usage=usage
+    )
+    assert usage.calls == 2
+    if second_has_usage:
+        assert (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens) == (130, 12, 142)
+    else:
+        assert usage.prompt_tokens > 100
+        assert usage.completion_tokens >= 8
+
+
+@pytest.mark.asyncio
+async def test_loop_retries_when_provider_rejects_stream_usage(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    client = _FakeClient([[_FakeChunk(_FakeDelta(content="Done"))]])
+    create = client.chat.completions.create
+    attempts = []
+
+    async def reject_usage(**kwargs: Any) -> _FakeResponseStream:
+        attempts.append(kwargs.copy())
+        if "stream_options" in kwargs:
+            raise ValueError("unsupported parameter: stream_options")
+        return await create(**kwargs)
+
+    client.chat.completions.create = reject_usage
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: client)
+    usage = UsageTracker()
+    result = await ExploreContextCapability().pre_loop(
+        _ctx(source_index={"hs-x": "source"}, _manifest="source"), StreamBus(), usage=usage
+    )
+    assert "Done" in result.content
+    assert len(attempts) == 2
+    assert "stream_options" not in attempts[1]
+    assert usage.calls == 1
 
 
 @pytest.mark.asyncio
