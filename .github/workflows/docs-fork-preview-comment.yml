@@ -1,0 +1,119 @@
+name: Docs Fork Preview Comment
+
+# Posts or updates a PR comment with the inferred fork GitHub Pages preview URL
+# and one-time fork setup instructions for pull requests opened from forks.
+#
+# Security: runs on `pull_request_target` with `pull-requests: write` only and
+# never checks out or executes code from the pull request.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "docs/**"
+      - "deeptutor/modules/manifests/**"
+      - "deeptutor/api/router_index.json"
+      - "deeptutor/partners/channels/**"
+      - "deeptutor/partners/config/schema.py"
+      - "assets/figs/web-dev/**"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/docs-fork-preview-comment.yml"
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment-fork-preview:
+    name: Comment inferred fork preview link
+    if: >-
+      github.event.pull_request.head.repo != null &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docs-fork-preview-comment-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Post or update inferred fork preview comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const headRepo = pr?.head?.repo;
+            if (!headRepo) {
+              core.info("Fork repository metadata unavailable; skipping comment.");
+              return;
+            }
+
+            const forkFullName = headRepo.full_name;
+            const forkOwner = headRepo.owner?.login || "";
+            const forkRepo = headRepo.name || "";
+            const headRef = pr.head?.ref || "";
+            const shortSha = (pr.head?.sha || "").slice(0, 7);
+
+            const ownerLower = forkOwner.toLowerCase();
+            const branchSlug =
+              headRef
+                .toLowerCase()
+                .replace(/[^a-z0-9._-]+/g, "-")
+                .replace(/\.{2,}/g, "-")
+                .replace(/-{2,}/g, "-")
+                .replace(/^[.-]+|[.-]+$/g, "") || "head";
+            const previewDir = `branch-${branchSlug}`;
+
+            const previewUrl =
+              forkRepo.toLowerCase() === `${ownerLower}.github.io`
+                ? `https://${ownerLower}.github.io/${previewDir}/`
+                : `https://${ownerLower}.github.io/${forkRepo}/${previewDir}/`;
+
+            const pagesSettingsUrl = `https://github.com/${forkFullName}/settings/pages`;
+            const actionsUrl = `https://github.com/${forkFullName}/actions/workflows/docs.yml`;
+            const safeRef = headRef.replace(/`/g, "");
+
+            const marker = "<!-- deeptutor-docs-preview -->";
+            const body = [
+              marker,
+              "### Docs Preview (Fork)",
+              "",
+              `- **English**: ${previewUrl}`,
+              `- **简体中文**: ${previewUrl}zh-cn/`,
+              "",
+              `Inferred from fork \`${forkFullName}\` branch \`${safeRef}\` (commit \`${shortSha}\`).`,
+              "",
+              "> **How to enable this preview (one-time setup in your fork)**",
+              "> Because GitHub Actions restricts write permissions on forked PRs, previews for forked PRs are published to your fork's own GitHub Pages:",
+              `> 1. Enable GitHub Actions in your fork ([Docs workflow](${actionsUrl})).`,
+              `> 2. Enable GitHub Pages in [Settings → Pages](${pagesSettingsUrl}): **Deploy from a branch** → branch \`gh-pages\` → folder \`/ (root)\`.`,
+              `> 3. Push to \`${safeRef}\` (or run the Docs workflow manually via \`workflow_dispatch\`). GitHub Pages may take a minute to publish after the fork workflow finishes.`,
+              ">",
+              "> *Note: If your fork uses a custom domain (`CNAME` or `DOCS_PREVIEW_SITE`), check the exact URL in your fork's Docs workflow summary.*",
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" &&
+                typeof comment.body === "string" &&
+                comment.body.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
