@@ -1,9 +1,15 @@
 # DeepTutor Maintainers Allowlist
 #
-# Repository collaborators with `admin`, `maintain`, or `write` permission
-# (including members of @HKUDS/deeptutor-maintainers) are authorized automatically.
-# Add GitHub usernames below (case-insensitive) to grant slash-command access
-# immediately, even while an org/team invitation is still pending.
+# Repository collaborators with `admin`, `maintain`, or `write` permission on
+# HKUDS/DeepTutor are authorized automatically. Listing GitHub usernames below
+# (case-insensitive) also enables slash commands immediately while a repo
+# collaborator invitation is still pending.
 
 maintainers:
   - pancacake
+  - ZQR1101
+  - zszz3
+  - OrdoAbChao7
+  - Qiuner
+  - AleFlyX
+  - JinhangHE126
