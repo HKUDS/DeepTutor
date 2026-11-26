@@ -1,7 +1,7 @@
 import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
-import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
@@ -9,6 +9,8 @@ import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
+import { restoreWorkspace, snapshotWorkspace } from './snapshot.mjs';
+import { focusWindow, repaintOnShow } from './window.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -205,11 +207,10 @@ async function recoverInterruptedUpgrade() {
   const transaction = await readJSON(transactionFile);
   if (!transaction || transaction.phase !== 'testing') return;
   status({ phase: 'starting', step: 'recovering' });
-  if (transaction.backup) {
-    try { await rename(runtimeHome, `${runtimeHome}.interrupted-${Date.now()}`); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    await cp(transaction.backup, runtimeHome, { recursive: true });
-  }
+  // Restore in place rather than moving the workspace aside first: a copy that
+  // fails partway then only leaves files the backup itself wrote, and a
+  // junctioned data folder keeps pointing at the drive the user chose (#2721).
+  if (transaction.backup) await restoreWorkspace(transaction.backup, runtimeHome);
   await writeJSON(activeFile, transaction.previous);
   await writeJSON(transactionFile, { ...transaction, phase: 'recovered' });
 }
@@ -258,14 +259,12 @@ async function boot() {
       // The app was installed over an older core: switch to the bundled one with the
       // same backup and rollback as a manual update.
       status({ phase: 'starting', step: 'updating' });
-      let backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
-      await mkdir(path.dirname(backup), { recursive: true });
-      try { await cp(runtimeHome, backup, { recursive: true }); }
-      catch (error) {
-        // No workspace yet means nothing to restore on rollback.
-        if (error.code !== 'ENOENT') throw error;
-        backup = undefined;
-      }
+      // `snapshotWorkspace` follows a junctioned data folder instead of
+      // re-creating the link (the #2721 EPERM) and returns undefined when there
+      // is no workspace yet, so it needs no separate ENOENT handling.
+      const backup = await snapshotWorkspace(runtimeHome,
+        path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`),
+        { warn: logBackupFailure });
       transaction = { phase: 'testing', previous: previous ?? null, candidate: active.manifest, backup };
       await writeJSON(transactionFile, transaction);
     }
@@ -308,9 +307,9 @@ async function installUpdate() {
     if (next.manifest.runtimeId === active.manifest.runtimeId) return;
     status({ phase: 'starting', step: 'updating' });
     await stopWorker();
-    const backup = path.join(userRoot, 'backups', `before-${next.manifest.runtimeId}-${Date.now()}`);
-    await mkdir(path.dirname(backup), { recursive: true });
-    await cp(runtimeHome, backup, { recursive: true });
+    const backup = await snapshotWorkspace(runtimeHome,
+      path.join(userRoot, 'backups', `before-${next.manifest.runtimeId}-${Date.now()}`),
+      { warn: logBackupFailure });
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
@@ -374,7 +373,9 @@ function buildMenu() {
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
-  app.on('second-instance', () => { window?.show(); window?.focus(); });
+  // `show()` alone leaves a minimized window minimized, which reads as "the
+  // icon did nothing", so restore before showing (#2721).
+  app.on('second-instance', () => focusWindow(window));
   app.on('before-quit', event => {
     if (exitAllowed) return;
     event.preventDefault();
@@ -408,6 +409,10 @@ else {
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
+  // A view added while the window was minimized or occluded is never painted,
+  // and re-laying out unchanged bounds gives the compositor nothing to redo, so
+  // coming back on screen also invalidates the content (#2721).
+  repaintOnShow(window, layout, () => view?.webContents?.invalidate?.());
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
