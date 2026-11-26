@@ -6,9 +6,9 @@ import ast
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTENT = ROOT / "docs" / "src" / "content" / "docs"
@@ -99,9 +99,7 @@ def check_gifs() -> list[str]:
         zh_rel = f"zh-cn/{rel}"
         zh_names = by_page.get(zh_rel, set())
         if names != zh_names:
-            errors.append(
-                f"{rel} gif refs {sorted(names)} != {zh_rel} {sorted(zh_names)}"
-            )
+            errors.append(f"{rel} gif refs {sorted(names)} != {zh_rel} {sorted(zh_names)}")
     return errors
 
 
@@ -118,7 +116,7 @@ def dest_exists(url: str, base: str = "") -> bool:
         if path == base:
             path = "/"
         elif path.startswith(f"{base}/"):
-            path = path[len(base):]
+            path = path[len(base) :]
         else:
             return False
     if path in {"", "/"}:
@@ -159,7 +157,9 @@ def _class_index(paths: list[Path]) -> dict[str, tuple[list[str], list[str]]]:
     return index
 
 
-def _resolved_fields(index: dict[str, tuple[list[str], list[str]]], name: str, seen: set[str] | None = None) -> list[str]:
+def _resolved_fields(
+    index: dict[str, tuple[list[str], list[str]]], name: str, seen: set[str] | None = None
+) -> list[str]:
     seen = seen or set()
     if name in seen or name not in index:
         return []
@@ -186,7 +186,10 @@ def _channel_configs() -> dict[str, list[str]]:
             for stmt in node.body:
                 if (
                     isinstance(stmt, ast.Assign)
-                    and any(isinstance(target, ast.Name) and target.id == "name" for target in stmt.targets)
+                    and any(
+                        isinstance(target, ast.Name) and target.id == "name"
+                        for target in stmt.targets
+                    )
                     and isinstance(stmt.value, ast.Constant)
                     and isinstance(stmt.value.value, str)
                 ):
@@ -216,7 +219,9 @@ def _schema_sections(text: str) -> tuple[str, dict[str, str]]:
     for key, body in zip(iterator, iterator):
         sections[key] = body
     shared = ""
-    match = re.search(r"## (?:Shared delivery switches|共享投递开关)(.*?)(?:\n## |\Z)", parts[0], re.S)
+    match = re.search(
+        r"## (?:Shared delivery switches|共享投递开关)(.*?)(?:\n## |\Z)", parts[0], re.S
+    )
     if match:
         shared = match.group(1)
     return shared, sections
@@ -295,7 +300,9 @@ def check_links() -> list[str]:
     errors = []
     for page in DIST.rglob("*.html"):
         for match in HREF.findall(page.read_text(errors="ignore")):
-            if match.startswith(("http://", "https://", "mailto:", "data:", "#", "javascript:", "//")):
+            if match.startswith(
+                ("http://", "https://", "mailto:", "data:", "#", "javascript:", "//")
+            ):
                 continue
             if not match.startswith("/"):
                 continue
