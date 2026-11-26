@@ -63,17 +63,24 @@ def _docs_text() -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in _command_doc_paths())
 
 
-def _doc_ids() -> set[str]:
-    ids: set[str] = set()
-    for path in DOCS_ROOT.rglob("*.md"):
-        slug = path.relative_to(DOCS_ROOT).with_suffix("").as_posix()
-        ids.add(f"/{slug}")
-        ids.add(f"/{slug}/")
-        if slug.endswith("/index"):
-            base = slug[: -len("/index")]
-            ids.add(f"/{base}")
-            ids.add(f"/{base}/")
-    return ids
+PUBLIC_ROOT = ROOT / "docs" / "public"
+
+# Site-absolute links: ``/learning-workspace/chat/``, ``/gifs/x.gif``, ``/``.
+# Relative links are left alone — the Starlight build rejects them anyway.
+SITE_LINK = re.compile(r"\[[^\]]+\]\((/[A-Za-z0-9_\-./]*)(?:#[^)]+)?\)")
+
+
+def _resolves_on_site(url: str, page: Path) -> bool:
+    """Whether a site-absolute link lands on a page, a locale mirror, or an asset."""
+    target = url.strip("/")
+    if not target:
+        return True
+    for base in (DOCS_ROOT, DOCS_ROOT / "zh-cn"):
+        for suffix in ("", "/index"):
+            for extension in (".md", ".mdx"):
+                if (base / f"{target}{suffix}{extension}").is_file():
+                    return True
+    return (PUBLIC_ROOT / target).exists()
 
 
 def _deeptutor_commands() -> list[str]:
@@ -109,17 +116,25 @@ def test_public_docs_site_pages_are_scanned() -> None:
 
 
 def test_internal_docs_links_point_to_existing_pages() -> None:
-    ids = _doc_ids()
+    """Every site-absolute link resolves to a page or a published asset.
+
+    The previous pattern looked for ``/docs/`` in the URL, which the reorganized
+    site never emits, so this matched nothing and passed on its own emptiness.
+    ``check_docs.py dist`` catches broken links after a build; this catches them
+    in milliseconds before one.
+    """
     missing: list[tuple[str, str]] = []
 
     for path in DOCS_ROOT.rglob("*.md"):
         text = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"\[[^\]]+\]\((/docs/[^)\s#]+)(?:#[^)]+)?\)", text):
+        for match in SITE_LINK.finditer(text):
             href = match.group(1)
-            if href not in ids:
+            if not _resolves_on_site(href, path):
                 missing.append((str(path.relative_to(ROOT)), href))
 
-    assert missing == []
+    assert missing == [], "Broken site-internal links:\n" + "\n".join(
+        f"  {page}: {href}" for page, href in missing
+    )
 
 
 def test_documented_deeptutor_subcommands_exist() -> None:
