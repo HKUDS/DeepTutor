@@ -67,29 +67,24 @@ header.header button[data-open-modal] {
   padding-inline-start: 0.7rem;
   padding-inline-end: 0.45rem;
 }
+
 header.header button[data-open-modal] svg {
   width: 1rem;
   height: 1rem;
 }
-header.header button[data-open-modal] > kbd {
+
+header.header button[data-open-modal]>kbd {
   font-size: 0.6875rem;
   padding-inline: 0.3rem;
 }
 
 /* Unified header sizing — match the landing (deeptutor.info) and eduhub:
-   social icons at 19px, theme/language controls at a 16px icon + 14px label.
-   Starlight marks social links with rel="me"; our WeChat link adds .dt-wechat. */
-header.header a[rel="me"] svg,
-header.header .dt-wechat svg {
-  width: 1.1875rem;
-  height: 1.1875rem;
-}
-/* Theme + language selects (starlight-theme-select / starlight-lang-select) */
-header.header starlight-theme-select select,
+theme/language controls at a 16px icon+14px label. */ header.header starlight-theme-select select,
 header.header starlight-lang-select select {
   font-size: 0.875rem;
   font-weight: 500;
 }
+
 header.header starlight-theme-select .icon,
 header.header starlight-lang-select .icon {
   width: 1rem;
@@ -116,9 +111,9 @@ header.header starlight-lang-select .icon {
 }
 
 /* Sidebar refinement */
-.sidebar-content nav ul li > details > summary,
-.sidebar-content nav ul li > a,
-.sidebar-content nav ul li > span {
+.sidebar-content nav ul li>details>summary,
+.sidebar-content nav ul li>a,
+.sidebar-content nav ul li>span {
   border-radius: 6px;
   font-size: 14px;
 }
@@ -127,15 +122,17 @@ header.header starlight-lang-select .icon {
    size, so a level-1 group and a nested level-2 group look identical.
    Step the type down per level: 16 → 14.5 → 14 (links) → 13 (links in a
    nested group). */
-.sidebar-content ul.top-level > li > details > summary .large {
+.sidebar-content ul.top-level>li>details>summary .large {
   font-size: 16px;
   font-weight: 600;
 }
-.sidebar-content ul ul details > summary .large {
+
+.sidebar-content ul ul details>summary .large {
   font-size: 14.5px;
   font-weight: 600;
   color: var(--ink-soft);
 }
+
 .sidebar-content ul ul details ul a {
   font-size: 13px;
 }
@@ -170,6 +167,7 @@ header.header starlight-lang-select .icon {
 .expressive-code .frame.is-terminal:not(.has-title) .header {
   display: none;
 }
+
 .expressive-code .frame.is-terminal:not(.has-title) figure.frame pre {
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
@@ -185,22 +183,26 @@ site-search button[data-open-modal] {
    controls right. Starlight's inner `.header` (child of `header.header`) is
    re-laid as a 3-column grid; children auto-place title → search → controls. */
 @media (min-width: 50rem) {
-  header.header > .header {
+  header.header>.header {
     display: grid;
     grid-template-columns: 1fr minmax(0, 32rem) 1fr;
     align-items: center;
     gap: var(--sl-nav-gap);
   }
-  header.header > .header > .title-wrapper {
+
+  header.header>.header>.title-wrapper {
     justify-self: start;
   }
-  header.header > .header > div:has(site-search) {
+
+  header.header>.header>div:has(site-search) {
     justify-self: center;
     width: 100%;
   }
-  header.header > .header > .right-group {
+
+  header.header>.header>.right-group {
     justify-self: end;
   }
+
   /* The search trigger fills the centered column → a long search bar. */
   header.header site-search,
   header.header site-search button[data-open-modal] {
@@ -218,30 +220,37 @@ dialog[aria-label="Search"]::backdrop {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
+
 dialog[aria-label="Search"] {
   border-radius: 14px;
   box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
+
 dialog[aria-label="Search"] .dialog-frame {
   padding: 0.75rem;
 }
+
 .pagefind-ui__search-input {
   border-radius: 10px;
 }
+
 .pagefind-ui__result {
   border: none;
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
   transition: background 0.12s ease;
 }
+
 .pagefind-ui__result:hover,
 .pagefind-ui__result[aria-selected="true"] {
   background: var(--sl-color-accent-low);
 }
+
 .pagefind-ui__result-link {
   font-weight: 600;
 }
+
 .pagefind-ui__result-excerpt {
   font-size: 0.8125rem;
   color: var(--sl-color-gray-3);
@@ -263,7 +272,7 @@ dialog[aria-label="Search"] .dialog-frame {
   gap: 1.5rem !important;
 }
 
-.pagination-links > a {
+.pagination-links>a {
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
@@ -276,35 +285,35 @@ dialog[aria-label="Search"] .dialog-frame {
   transition: color 120ms ease;
 }
 
-.pagination-links > a[rel="prev"] {
+.pagination-links>a[rel="prev"] {
   text-align: left;
 }
 
-.pagination-links > a[rel="next"] {
+.pagination-links>a[rel="next"] {
   text-align: right;
 }
 
-.pagination-links > a:hover,
-.pagination-links > a:focus-visible {
+.pagination-links>a:hover,
+.pagination-links>a:focus-visible {
   color: var(--accent) !important;
 }
 
-.pagination-links > a > svg {
+.pagination-links>a>svg {
   display: none;
 }
 
-.pagination-links > a > span > br {
+.pagination-links>a>span>br {
   display: none;
 }
 
-.pagination-links > a > span {
+.pagination-links>a>span {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
 }
 
 /* The eyebrow "Previous" / "Next" — small, all caps, muted */
-.pagination-links > a > span::first-line {
+.pagination-links>a>span::first-line {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -312,7 +321,7 @@ dialog[aria-label="Search"] .dialog-frame {
 }
 
 /* The page title — restrained body size, display face */
-.pagination-links > a .link-title {
+.pagination-links>a .link-title {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 1.05rem;
@@ -323,26 +332,26 @@ dialog[aria-label="Search"] .dialog-frame {
   white-space: nowrap;
 }
 
-.pagination-links > a:hover .link-title,
-.pagination-links > a:focus-visible .link-title {
+.pagination-links>a:hover .link-title,
+.pagination-links>a:focus-visible .link-title {
   color: var(--accent);
 }
 
 /* Subtle directional arrow via pseudo-element on the link-title */
-.pagination-links > a[rel="prev"] .link-title::before {
+.pagination-links>a[rel="prev"] .link-title::before {
   content: "← ";
   color: var(--ink-faint);
   margin-right: 0.1rem;
 }
 
-.pagination-links > a[rel="next"] .link-title::after {
+.pagination-links>a[rel="next"] .link-title::after {
   content: " →";
   color: var(--ink-faint);
   margin-left: 0.1rem;
 }
 
-.pagination-links > a:hover[rel="prev"] .link-title::before,
-.pagination-links > a:hover[rel="next"] .link-title::after {
+.pagination-links>a:hover[rel="prev"] .link-title::before,
+.pagination-links>a:hover[rel="next"] .link-title::after {
   color: var(--accent);
 }
 

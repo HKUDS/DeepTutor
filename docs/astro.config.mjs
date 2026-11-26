@@ -224,13 +224,13 @@ export default defineConfig({
       description: "Agent-native, open-source personalized tutoring.",
       ...(noindex
         ? {
-            head: [
-              {
-                tag: "meta",
-                attrs: { name: "robots", content: "noindex, nofollow" },
-              },
-            ],
-          }
+          head: [
+            {
+              tag: "meta",
+              attrs: { name: "robots", content: "noindex, nofollow" },
+            },
+          ],
+        }
         : {}),
       defaultLocale: "root",
       locales: {
@@ -250,18 +250,6 @@ export default defineConfig({
         SiteTitle: "./src/components/SiteTitle.astro",
         SocialIcons: "./src/components/SocialIcons.astro",
       },
-      social: [
-        {
-          icon: "github",
-          label: "GitHub",
-          href: "https://github.com/HKUDS/DeepTutor",
-        },
-        {
-          icon: "discord",
-          label: "Discord",
-          href: "https://discord.gg/eRsjPgMU4t",
-        },
-      ],
       // Product-domain groups. Legacy paths redirect to these slugs.
       sidebar: [
         {

@@ -42,7 +42,7 @@ def load_mounts() -> dict[str, dict]:
 def route_index(locale: str) -> str:
     index = json.loads(ROUTER_INDEX.read_text())
     mounts = load_mounts()
-    groups: list[tuple[str, str, str, list[dict]]] = []
+    groups: list[tuple[str, str, str, str, list[dict]]] = []
     missing = []
     for reference, patterns in index["routers"].items():
         mount = mounts.get(reference)
