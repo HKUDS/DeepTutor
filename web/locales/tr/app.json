@@ -6665,5 +6665,5 @@
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
   "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
-  "10–3600 seconds. Leave blank for {{default}} seconds. Raise this for slow self-hosted backends.": "10–3600 saniye. {{default}} saniye için boş bırakın. Yavaş kendi kendine barındırılan arka uçlar için bu değeri artırın."
+  "10–3600 seconds. Leave blank for {{default}} seconds. Raise this for slow self-hosted backends.": "10-3600 saniye. {{default}} saniye için boş bırakın. Yavaş kendi kendine barındırılan arka uçlar için bu değeri artırın."
 }
