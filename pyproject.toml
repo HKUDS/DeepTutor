@@ -159,6 +159,12 @@ extend-exclude = '''
 target-version = "py311"
 line-length = 100
 
+# Astro/Starlight pages: the Python inside their code fences is illustrative
+# prose, not project code. Linting and formatting it rewrites deliberately
+# compact samples (one argument per line), so the docs diff would churn on lint
+# runs instead of on content edits.
+extend-exclude = ["docs/src/content/docs"]
+
 [tool.ruff.lint]
 # Enable only foundational lint rules (intentionally relaxed)
 select = [

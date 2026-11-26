@@ -227,7 +227,7 @@ Provider profile 通过 catalog endpoint 编辑；当前 API 里没有单独的 
 GET    /api/partners
 POST   /api/partners
 GET    /api/partners/recent
-GET    /api/channels/schema/schema
+GET    /api/partners/channels/schema
 GET    /api/partners/tool-options
 GET    /api/partners/souls
 POST   /api/partners/souls
@@ -793,11 +793,6 @@ openapi-python-client generate --path deeptutor.openapi.json
 | `WS` | `/ws/partners/{partner_id}` |
 
 ### questions
-
-#### `question:router` — `/api/question` · learning
-
-| 方法 | 路径 |
-| --- | --- |
 
 #### `question_notebook:router` — `/api/question-notebook` · learning
 

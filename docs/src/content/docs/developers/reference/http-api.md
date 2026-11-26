@@ -227,7 +227,7 @@ Provider profiles are edited through the catalog endpoints; there are not separa
 GET    /api/partners
 POST   /api/partners
 GET    /api/partners/recent
-GET    /api/channels/schema/schema
+GET    /api/partners/channels/schema
 GET    /api/partners/tool-options
 GET    /api/partners/souls
 POST   /api/partners/souls
@@ -793,11 +793,6 @@ Generated from `deeptutor/modules/manifests/*.json` and `deeptutor/api/router_in
 | `WS` | `/ws/partners/{partner_id}` |
 
 ### questions
-
-#### `question:router` — `/api/question` · learning
-
-| Method | Path |
-| --- | --- |
 
 #### `question_notebook:router` — `/api/question-notebook` · learning
 

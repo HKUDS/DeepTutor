@@ -23,6 +23,7 @@ on:
       - gh-pages
     paths:
       - "docs/**"
+      - "scripts/export_docs_surface.py"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
       - "deeptutor/partners/channels/**"
@@ -33,6 +34,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "docs/**"
+      - "scripts/export_docs_surface.py"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
       - "deeptutor/partners/channels/**"
@@ -76,6 +78,18 @@ jobs:
       - name: Check sources
         working-directory: .
         run: python3 docs/scripts/check_docs.py
+
+      - name: Set up Python for the contract tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check pages against the exported CLI/API surface
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio
+          pytest -q docs/tests
 
       - name: Install dependencies
         run: npm ci
