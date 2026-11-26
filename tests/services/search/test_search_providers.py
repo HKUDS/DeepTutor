@@ -9,6 +9,8 @@ passed `proxies`) and Jina used to return every result it got.
 from __future__ import annotations
 
 import logging
+import sys
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1000,6 +1002,176 @@ def test_youcom_surfaces_http_errors(monkeypatch) -> None:
 
     with pytest.raises(Exception, match="429 - rate limit exceeded"):
         YouComProvider(api_key="k").search("q")
+
+
+# --------------------------------------------------------------------------
+# WebRouter: keyless, routes one search across its backends with fallback.
+# The library is faked at the module boundary, like `requests` above; one
+# contract test runs the real library over an httpx mock transport.
+# --------------------------------------------------------------------------
+
+
+def _wr_row(**fields: Any) -> SimpleNamespace:
+    row = {"url": "", "title": "", "description": "", "content": "", "published_date": None}
+    return SimpleNamespace(**{**row, **fields})
+
+
+_WEBROUTER_ROWS = [
+    _wr_row(
+        title="Example Guide",
+        url="https://example.com/guide",
+        description="Guide snippet.",
+        content="Full page body.",
+        published_date="2026-10-01",
+    ),
+    _wr_row(title="Body only", url="https://example.org/body", content="Body text."),
+    _wr_row(title="Third", url="https://example.net/third", description="Third snippet."),
+]
+
+
+@pytest.fixture
+def webrouter_calls(monkeypatch):
+    """Install a fake ``web_router`` module and record every router it builds."""
+    captured: list[dict[str, Any]] = []
+
+    class _FakeRouter:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.call: dict[str, Any] = {"init": (args, kwargs), "closed": False}
+            captured.append(self.call)
+
+        def __enter__(self) -> _FakeRouter:
+            return self
+
+        def __exit__(self, *exc: Any) -> None:
+            self.call["closed"] = True
+
+        def search(self, query: str, **kwargs: Any) -> SimpleNamespace:
+            self.call.update(query=query, **kwargs)
+            return SimpleNamespace(
+                provider="tavily", request_id="req-1", results=list(_WEBROUTER_ROWS)
+            )
+
+    monkeypatch.setitem(sys.modules, "web_router", SimpleNamespace(WebRouter=_FakeRouter))
+    return captured
+
+
+def test_webrouter_sends_capped_count_timeout_and_skips_data_apis(webrouter_calls) -> None:
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    WebRouterProvider().search("attention", max_results=50, timeout=12)
+
+    (call,) = webrouter_calls
+    assert call["init"] == ((), {})
+    assert call["query"] == "attention"
+    assert call["max_results"] == 20
+    assert call["timeout"] == 12.0
+    assert call["data_apis"] is False
+    assert call["closed"] is True
+
+
+def test_webrouter_maps_rows_and_names_the_serving_backend(webrouter_calls) -> None:
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    response = WebRouterProvider().search("attention", max_results=2)
+
+    assert response.provider == "webrouter"
+    assert response.answer == ""
+    assert response.model == "webrouter:tavily"
+    assert response.metadata == {
+        "finish_reason": "stop",
+        "backend": "tavily",
+        "request_id": "req-1",
+    }
+    first, second = response.search_results
+    assert first.title == "Example Guide"
+    assert first.url == "https://example.com/guide"
+    assert first.snippet == "Guide snippet."
+    assert first.date == "2026-10-01"
+    assert first.source == "example.com"
+    # No backend snippet: fall back to the page body.
+    assert second.snippet == "Body text."
+    assert second.date == ""
+    assert [c.reference for c in response.citations] == ["[1]", "[2]"]
+    assert response.citations[0].url == "https://example.com/guide"
+
+
+def test_webrouter_closes_the_router_when_the_search_fails(monkeypatch, webrouter_calls) -> None:
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    router_cls = sys.modules["web_router"].WebRouter
+
+    def _fail(self, query: str, **kwargs: Any) -> None:
+        raise RuntimeError("every backend failed")
+
+    monkeypatch.setattr(router_cls, "search", _fail)
+    with pytest.raises(RuntimeError, match="every backend failed"):
+        WebRouterProvider().search("attention")
+    assert webrouter_calls[-1]["closed"] is True
+
+
+def test_webrouter_explains_a_missing_package(monkeypatch) -> None:
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    monkeypatch.setitem(sys.modules, "web_router", None)
+    with pytest.raises(ImportError, match="pip install webrouter"):
+        WebRouterProvider().search("attention")
+
+
+def test_webrouter_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import get_available_providers, list_providers
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    spec = SEARCH_PROVIDERS["webrouter"]
+    assert "webrouter" in list_providers()
+    assert "webrouter" in get_available_providers()
+    assert WebRouterProvider.display_name == spec.label == "WebRouter"
+    assert WebRouterProvider.requires_api_key is False
+    assert WebRouterProvider.supports_answer is False
+    assert spec.soft_fallback is True
+
+
+def test_webrouter_maps_a_real_library_response(monkeypatch) -> None:
+    """Contract check against the installed library: Brave pinned, HTTP mocked."""
+    httpx = pytest.importorskip("httpx")
+    web_router = pytest.importorskip("web_router")
+    from deeptutor.services.search.providers.webrouter import WebRouterProvider
+
+    sent: list[Any] = []
+
+    def _brave(request: Any) -> Any:
+        sent.append(request)
+        body = {
+            "web": {
+                "results": [
+                    {
+                        "title": "Attention Is All You Need",
+                        "url": "https://arxiv.org/abs/1706.03762",
+                        "description": "The Transformer paper.",
+                    }
+                ]
+            }
+        }
+        return httpx.Response(200, json=body)
+
+    real_router = web_router.WebRouter
+    brave = {"api_key": "test-key", "transport": httpx.MockTransport(_brave)}
+    monkeypatch.setattr(
+        web_router,
+        "WebRouter",
+        lambda: real_router("brave", provider_config={"brave": brave}),
+    )
+
+    response = WebRouterProvider().search("attention", max_results=3)
+
+    assert sent and sent[0].url.host == "api.search.brave.com"
+    assert sent[0].url.params["q"] == "attention"
+    assert response.model == "webrouter:brave"
+    (row,) = response.search_results
+    assert row.title == "Attention Is All You Need"
+    assert row.url == "https://arxiv.org/abs/1706.03762"
+    assert row.snippet == "The Transformer paper."
+    assert row.source == "arxiv.org"
 
 
 # --------------------------------------------------------------------------

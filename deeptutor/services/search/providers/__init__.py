@@ -187,6 +187,7 @@ def _register_builtin_providers() -> None:
         serply,
         specstream,
         tavily,
+        webrouter,
         youcom,
         zhipu,
     )
@@ -209,6 +210,7 @@ def _register_builtin_providers() -> None:
         serply,
         specstream,
         tavily,
+        webrouter,
         youcom,
         zhipu,
     )

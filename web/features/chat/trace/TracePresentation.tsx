@@ -569,6 +569,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   zhipu: "Zhipu",
   deepseek: "DeepSeek",
   specstream: "SpecStream",
+  webrouter: "WebRouter",
 };
 
 function providerLabel(slug: string): string {
