@@ -30,7 +30,7 @@ from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler, PromptBlock
 from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, share_mastery_history
 from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG, OUTLINE_TOOL_LOADER
 from deeptutor.capabilities.mastery.memory import MEMORY_NOTICE
-from deeptutor.capabilities.mastery.mode import OUTLINE, REVIEW, STUDY, normalize_mode
+from deeptutor.capabilities.mastery.mode import OUTLINE, normalize_mode
 from deeptutor.core.context import UnifiedContext
 
 #: Runtime snapshot naming the conversation's current mode.
@@ -41,13 +41,14 @@ class MasteryPromptAssembler(LoopPromptAssembler):
     """Open the system prompt with the tutor's protocol, not chat's.
 
     What *this* conversation is for — outline, study or review — is the frame
-    everything below is read through, so every mode's section sits directly
-    after the tutor's identity and before the loop protocol. All three are
-    stated, not only the current one: a conversation changes mode often, and a
+    everything below is read through. A conversation changes mode often, and a
     system prompt that changed with it would invalidate the provider's prompt
     cache from its second block on (and with it every tool schema and history
-    message after it). The current mode is a runtime fact instead, delivered
-    by :meth:`session_mode_snapshot` as an append-only runtime snapshot.
+    message after it). So the system prompt only names the three modes and how
+    to move between them; the current mode's own rules are a runtime fact,
+    delivered by :meth:`session_mode_snapshot` as an append-only runtime
+    snapshot. Only the mode in force is spelled out, so the model never reads
+    three conflicting rule sets at once.
     """
 
     def blocks(self, **kwargs):
@@ -56,17 +57,14 @@ class MasteryPromptAssembler(LoopPromptAssembler):
         return super().blocks(**kwargs)
 
     def session_modes_block(self) -> str:
-        sections = [self._t("session_frame")]
-        for kind in (OUTLINE, STUDY, REVIEW):
-            body = self._t(f"session.{kind}")
-            if body:
-                sections.append(f"### {kind}\n{body}")
-        return "\n\n".join(section for section in sections if section)
+        return self._t("session_frame")
 
     def session_mode_snapshot(self, context: UnifiedContext) -> str:
         kind = normalize_mode(context.metadata.get("mastery_session_mode"))
         text = self._t("session_current", default="Current mode: `{mode}`.")
-        return f"[Runtime context: {SESSION_MODE_SNAPSHOT}]\n{text.replace('{mode}', kind)}"
+        sections = [text.replace("{mode}", kind), self._t(f"session.{kind}")]
+        body = "\n\n".join(section for section in sections if section)
+        return f"[Runtime context: {SESSION_MODE_SNAPSHOT}]\n{body}"
 
     def foundation_blocks(self, context: UnifiedContext) -> list[PromptBlock]:
         return [

@@ -105,11 +105,27 @@ def test_session_mode_is_a_snapshot_not_a_system_prompt_change(language):
         snapshots.append(assembler.session_mode_snapshot(context))
     # Every mode sees the same foundation, so a switch keeps the cached prefix.
     assert prompts[0] == prompts[1] == prompts[2]
-    modes = dict(prompts[0])["mastery_session_modes"]
-    assert all(f"### {mode}" in modes for mode in ("outline", "study", "review"))
     assert len(set(snapshots)) == 3
     assert all(s.startswith("[Runtime context: mastery_session_mode]\n") for s in snapshots)
     assert "`review`" in snapshots[2]
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_only_the_current_modes_rules_reach_the_model(language):
+    pipeline = MasteryLoopPipeline(language=language)
+    assembler = pipeline._prompt_assembler
+    rules = {mode: assembler._t(f"session.{mode}") for mode in ("outline", "study", "review")}
+    assert all(rules.values())
+    context = UnifiedContext(metadata={"mastery_mode": True, "mastery_session_mode": "study"})
+    system = "\n".join(b.content for b in assembler.foundation_blocks(context))
+    # The system prompt names the modes but carries none of their rule sets,
+    # so it never shows the model three conflicting sets of rules at once.
+    assert not any(body in system for body in rules.values())
+    for mode, body in rules.items():
+        context = UnifiedContext(metadata={"mastery_mode": True, "mastery_session_mode": mode})
+        snapshot = assembler.session_mode_snapshot(context)
+        assert body in snapshot
+        assert not any(other in snapshot for name, other in rules.items() if name != mode)
 
 
 @pytest.mark.asyncio

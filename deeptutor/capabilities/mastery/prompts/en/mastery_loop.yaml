@@ -65,12 +65,14 @@ loop:
   settle_exhausted: |-
     This round's exploration budget is spent. Start no new searches or optional work — finish only the recording or grading already under way, then say your piece to the learner.
 
-# What each mode is for. All three stay in the system prompt so a mode switch
-# never rewrites the cached prefix; the current mode arrives as the
-# ``mastery_session_mode`` runtime snapshot. When the mode changes mid-turn,
-# ``mastery_mode`` also carries the new mode's section inside its own result.
+# What each mode is for. Only the frame stays in the system prompt, so a mode
+# switch never rewrites the cached prefix. The current mode and its own rules
+# (``session.<mode>`` below) arrive as the ``mastery_session_mode`` runtime
+# snapshot, so the model only ever reads the rules of the mode in force. When the
+# mode changes mid-turn, ``mastery_mode`` carries the new mode's section inside
+# its own result.
 session_frame: |-
-  This conversation is always in exactly one of the three modes below. The `mastery_session_mode` runtime context names the current one; follow only that mode's section. If `mastery_mode` switches the mode during a turn, its result takes over for the rest of that turn.
+  This conversation is always in exactly one of three modes: `outline` (design or change the outline with the learner), `study` (work the agreed outline forward) and `review` (re-test what is already mastered). The latest `mastery_session_mode` runtime context names the current mode and gives its rules; follow only that mode. Switch with `mastery_mode` and tell the learner when you do. If `mastery_mode` switches the mode during a turn, its result takes over for the rest of that turn.
 session_current: |-
   Current mode: `{mode}`.
 session:
