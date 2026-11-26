@@ -1354,12 +1354,14 @@ function SessionViewerPanelInner(
   const probeUrl = sourceUrl && isChatFileLink(sourceUrl) ? previewUrl : null;
   const fileTabId = fileTab?.id;
   const [fileCheck, setFileCheck] = useState<{
-    tabId: string;
-    url: string;
-    available: boolean;
-  }>();
+    tabId: string | undefined;
+    url: string | null;
+    available: boolean | null;
+  }>({ tabId: fileTabId, url: probeUrl, available: null });
+  if (fileCheck.tabId !== fileTabId || fileCheck.url !== probeUrl) {
+    setFileCheck({ tabId: fileTabId, url: probeUrl, available: null });
+  }
   useEffect(() => {
-    setFileCheck(undefined);
     if (!fileTabId || !probeUrl) return;
     const controller = new AbortController();
     void apiFetch(probeUrl, {
@@ -1395,8 +1397,8 @@ function SessionViewerPanelInner(
     return () => controller.abort();
   }, [fileTabId, probeUrl, sourceUrl]);
 
-  const checkingFile = Boolean(probeUrl && (fileCheck?.tabId !== fileTabId || fileCheck?.url !== probeUrl));
-  const fileAvailable = probeUrl ? !checkingFile && fileCheck?.available === true : Boolean(previewUrl);
+  const checkingFile = Boolean(probeUrl && fileCheck.available === null);
+  const fileAvailable = probeUrl ? fileCheck.available === true : Boolean(previewUrl);
   const fileUnavailable = !fileAvailable && (Boolean(probeUrl) || fileSource?.extractedText === undefined);
 
   const openLocalFile = useCallback(
