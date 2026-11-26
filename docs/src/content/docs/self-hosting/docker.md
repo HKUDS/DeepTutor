@@ -107,7 +107,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-Then in **Settings → LLM** (or **Embedding**), point the provider Base URL at `host.docker.internal`:
+Then in **Settings → Models & services**, point the LLM (or Embedding) provider Base URL at `host.docker.internal`:
 
 | Service | Base URL |
 |---------|----------|
@@ -185,4 +185,4 @@ More: [**Troubleshooting**](/self-hosting/troubleshooting/).
 ## Next
 
 - [**Multi-User Deployment**](/self-hosting/multi-user/) — team setup
-- [**Explore DeepTutor**](/explore/) — tour the running app
+- [**Explore DeepTutor**](/learning-workspace/) — tour the running app

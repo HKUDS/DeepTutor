@@ -14,7 +14,7 @@ quadrant: explanation
 
 | 路径 | 适合 | 页面 |
 | --- | --- | --- |
-| PyPI | 已发布的包，1.7.0 之后的完整应用 | [PyPI](/zh-cn/self-hosting/pypi/) |
+| PyPI | 已发布的包（1.7+ 模块化安装） | [PyPI](/zh-cn/self-hosting/pypi/) |
 | 源码 | 当前 dev 检出 | [从源码运行](/zh-cn/self-hosting/source/) |
 | Docker | 一个已发布容器 | [Docker 教程](/zh-cn/get-started/docker/) 和 [运维](/zh-cn/self-hosting/docker/) |
 | 纯 CLI | 不要 Web 前端 | [纯 CLI](/zh-cn/self-hosting/cli-only/) |

@@ -167,3 +167,16 @@ After changing a module manifest or `router_index.json`:
 ```bash
 python3 docs/scripts/generate_reference.py
 ```
+
+## PR previews (GitHub Pages)
+
+Same-repo pull requests that touch docs build a subpath preview and publish it to the `gh-pages` branch under `pr-<number>/`, then post or update a comment on the PR with links to both locales. Closing the PR removes `pr-<number>/` automatically. Fork pull requests still run the build and link checks without pushing to `gh-pages`.
+
+One-time repository setup: in **Settings → Pages**, set **Source** to **Deploy from a branch**, branch `gh-pages`, folder `/ (root)`. If `gh-pages` uses a custom domain without a committed `CNAME` file, set the repository variable `DOCS_PREVIEW_SITE` (for example `https://docs.deeptutor.info`).
+
+To test a subpath preview build locally:
+
+```bash
+cd docs && DOCS_BASE=/DeepTutor/pr-1 DOCS_NOINDEX=1 ASTRO_TELEMETRY_DISABLED=1 npm run build && cd ..
+DOCS_BASE=/DeepTutor/pr-1 python3 docs/scripts/check_docs.py dist
+```

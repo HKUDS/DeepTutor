@@ -6,6 +6,7 @@ import config from "virtual:starlight/user-config";
 // （home 图标让可点性更明显）。紧邻其右是 EduHub 入口——原在左侧栏，移到顶部。
 const LANDING_URL = "https://deeptutor.info";
 const EDUHUB_URL = "https://eduhub.deeptutor.info";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <div class="dt-brand sl-flex">
@@ -43,7 +44,7 @@ const EDUHUB_URL = "https://eduhub.deeptutor.info";
         />
       )
     }
-    <img class="site-title-wordmark" src="/brand/color-word.png" alt="DeepTutor" />
+    <img class="site-title-wordmark" src={`${base}/brand/color-word.png`} alt="DeepTutor" />
   </a>
   <a class="dt-eduhub" href={EDUHUB_URL} target="_blank" rel="noopener">EduHub</a>
 </div>

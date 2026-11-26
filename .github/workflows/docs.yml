@@ -1,6 +1,20 @@
 name: Docs
 
+# Builds and verifies the public Astro/Starlight docs site.
+#
+# Same-repo pull requests also deploy an isolated preview to the `gh-pages`
+# branch at `pr-<number>/` and post/update a comment with the preview URL,
+# then clean up that directory when the pull request closes.
+#
+# Repository setup (one-time):
+#   Settings -> Pages -> Build and deployment -> Deploy from a branch:
+#   branch `gh-pages`, folder `/ (root)`.
+# Optional repository variable:
+#   DOCS_PREVIEW_SITE — custom origin (e.g. `https://docs.deeptutor.info`)
+#                       if `gh-pages` serves a custom domain without a CNAME file.
+
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -10,24 +24,32 @@ on:
       - "docs/**"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
+      - "deeptutor/partners/channels/**"
+      - "deeptutor/partners/config/schema.py"
       - "assets/figs/web-dev/**"
       - ".github/workflows/docs.yml"
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - "docs/**"
       - "deeptutor/modules/manifests/**"
       - "deeptutor/api/router_index.json"
+      - "deeptutor/partners/channels/**"
+      - "deeptutor/partners/config/schema.py"
       - "assets/figs/web-dev/**"
       - ".github/workflows/docs.yml"
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   docs:
     name: Build and check the docs site
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
+    concurrency:
+      group: docs-build-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     defaults:
       run:
         working-directory: docs
@@ -46,7 +68,7 @@ jobs:
         working-directory: .
         run: python3 docs/scripts/check_docs.py
 
-      - name: Install and build
+      - name: Install dependencies
         run: npm ci
         env:
           ASTRO_TELEMETRY_DISABLED: "1"
@@ -59,3 +81,284 @@ jobs:
       - name: Check built links
         working-directory: .
         run: python3 docs/scripts/check_docs.py dist
+
+  preview:
+    name: Deploy PR preview to GitHub Pages
+    needs: docs
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: docs-gh-pages
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Resolve preview URL and base path
+        id: meta
+        working-directory: .
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          CUSTOM_SITE: ${{ vars.DOCS_PREVIEW_SITE }}
+        run: |
+          set -euo pipefail
+          owner_lower="$(printf '%s' "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')"
+          preview_dir="pr-${PR_NUMBER}"
+
+          cname=""
+          if git fetch --depth=1 origin gh-pages 2>/dev/null; then
+            if git cat-file -e FETCH_HEAD:CNAME 2>/dev/null; then
+              cname="$(git show FETCH_HEAD:CNAME | tr -d '[:space:]')"
+            fi
+          fi
+
+          if [ -n "$CUSTOM_SITE" ]; then
+            docs_site="${CUSTOM_SITE%/}"
+            docs_base="/${preview_dir}"
+          elif [ -n "$cname" ]; then
+            docs_site="https://${cname}"
+            docs_base="/${preview_dir}"
+          elif [ "$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]')" = "${owner_lower}.github.io" ]; then
+            docs_site="https://${owner_lower}.github.io"
+            docs_base="/${preview_dir}"
+          else
+            docs_site="https://${owner_lower}.github.io"
+            docs_base="/${REPO_NAME}/${preview_dir}"
+          fi
+
+          preview_url="${docs_site}${docs_base}/"
+          {
+            echo "docs_site=${docs_site}"
+            echo "docs_base=${docs_base}"
+            echo "preview_dir=${preview_dir}"
+            echo "preview_url=${preview_url}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ASTRO_TELEMETRY_DISABLED: "1"
+
+      - name: Build preview site
+        run: npm run build
+        env:
+          ASTRO_TELEMETRY_DISABLED: "1"
+          DOCS_SITE: ${{ steps.meta.outputs.docs_site }}
+          DOCS_BASE: ${{ steps.meta.outputs.docs_base }}
+          DOCS_NOINDEX: "1"
+
+      - name: Check preview links
+        working-directory: .
+        run: python3 docs/scripts/check_docs.py dist
+        env:
+          DOCS_BASE: ${{ steps.meta.outputs.docs_base }}
+
+      - name: Publish preview to gh-pages
+        working-directory: .
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PREVIEW_DIR: ${{ steps.meta.outputs.preview_dir }}
+          PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
+        run: |
+          set -euo pipefail
+          worktree="$(mktemp -d)"
+          trap 'git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"' EXIT
+
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch --depth=1 origin gh-pages
+            git worktree add --detach "$worktree" FETCH_HEAD
+          else
+            git worktree add --orphan -b gh-pages "$worktree"
+          fi
+
+          touch "${worktree}/.nojekyll"
+          rm -rf "${worktree:?}/${PREVIEW_DIR}"
+          mkdir -p "${worktree}/${PREVIEW_DIR}"
+          cp -R docs/dist/. "${worktree}/${PREVIEW_DIR}/"
+
+          git -C "$worktree" config user.name "github-actions[bot]"
+          git -C "$worktree" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$worktree" add --all -- ".nojekyll" "${PREVIEW_DIR}"
+
+          if git -C "$worktree" diff --cached --quiet; then
+            echo "Preview content unchanged; skipping push."
+          else
+            short_sha="${HEAD_SHA:0:7}"
+            git -C "$worktree" commit -m "chore(docs): update preview for PR #${PR_NUMBER} (${short_sha})"
+            for attempt in 1 2 3; do
+              if git -C "$worktree" push origin HEAD:refs/heads/gh-pages; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                exit 1
+              fi
+              git -C "$worktree" fetch --depth=1 origin gh-pages
+              git -C "$worktree" rebase FETCH_HEAD
+            done
+          fi
+
+          {
+            echo "### Docs PR Preview"
+            echo ""
+            echo "- English: ${PREVIEW_URL}"
+            echo "- 简体中文: ${PREVIEW_URL}zh-cn/"
+            echo "- Commit: \`${HEAD_SHA:0:7}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const marker = "<!-- deeptutor-docs-preview -->";
+            const previewUrl = process.env.PREVIEW_URL;
+            const shortSha = (process.env.HEAD_SHA || "").slice(0, 7);
+            const body = [
+              marker,
+              "### Docs Preview",
+              "",
+              `- **English**: ${previewUrl}`,
+              `- **简体中文**: ${previewUrl}zh-cn/`,
+              "",
+              `Built from commit \`${shortSha}\`. GitHub Pages may take a minute to publish after this push. The preview directory is removed automatically when this PR closes.`,
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" &&
+                typeof comment.body === "string" &&
+                comment.body.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+  cleanup-preview:
+    name: Clean up PR preview from GitHub Pages
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: docs-gh-pages
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Remove preview directory from gh-pages
+        id: cleanup
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          preview_dir="pr-${PR_NUMBER}"
+
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "removed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --depth=1 origin gh-pages
+          worktree="$(mktemp -d)"
+          trap 'git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"' EXIT
+          git worktree add --detach "$worktree" FETCH_HEAD
+
+          if [ ! -d "${worktree}/${preview_dir}" ]; then
+            echo "removed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          rm -rf "${worktree:?}/${preview_dir}"
+          git -C "$worktree" config user.name "github-actions[bot]"
+          git -C "$worktree" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$worktree" add --all -- "${preview_dir}"
+          git -C "$worktree" commit -m "chore(docs): remove preview for PR #${PR_NUMBER}"
+
+          for attempt in 1 2 3; do
+            if git -C "$worktree" push origin HEAD:refs/heads/gh-pages; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            git -C "$worktree" fetch --depth=1 origin gh-pages
+            git -C "$worktree" rebase FETCH_HEAD
+          done
+          echo "removed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Update preview comment on PR
+        if: steps.cleanup.outputs.removed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = "<!-- deeptutor-docs-preview -->";
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" &&
+                typeof comment.body === "string" &&
+                comment.body.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: `${marker}\n### Docs Preview\n\nThis PR is closed, so the GitHub Pages preview has been removed.`,
+              });
+            }

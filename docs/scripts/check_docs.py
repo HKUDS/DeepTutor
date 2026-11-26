@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -104,8 +105,22 @@ def check_gifs() -> list[str]:
     return errors
 
 
-def dest_exists(url: str) -> bool:
+def _normalized_base() -> str:
+    raw = os.environ.get("DOCS_BASE", "/").strip()
+    if raw in {"", "/"}:
+        return ""
+    return "/" + raw.strip("/")
+
+
+def dest_exists(url: str, base: str = "") -> bool:
     path = url.split("#", 1)[0].split("?", 1)[0]
+    if base:
+        if path == base:
+            path = "/"
+        elif path.startswith(f"{base}/"):
+            path = path[len(base):]
+        else:
+            return False
     if path in {"", "/"}:
         return (DIST / "index.html").exists()
     relative = path.lstrip("/")
@@ -235,24 +250,69 @@ def check_channel_schema() -> list[str]:
     return errors
 
 
+def check_generated_reference() -> list[str]:
+    """Ensure generated capabilities and HTTP route index pages match source manifests."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "generate_reference", Path(__file__).resolve().with_name("generate_reference.py")
+    )
+    if spec is None or spec.loader is None:
+        return ["unable to load generate_reference.py"]
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    errors = []
+    for locale, folder in (("en", CONTENT), ("zh", CONTENT / "zh-cn")):
+        cap_path = folder / "developers" / "reference" / "capabilities.md"
+        expected_cap = mod.capabilities(locale)
+        if not cap_path.exists() or cap_path.read_text() != expected_cap:
+            errors.append(
+                f"{cap_path.relative_to(ROOT)} drifted; run python3 docs/scripts/generate_reference.py"
+            )
+        http_path = folder / "developers" / "reference" / "http-api.md"
+        if not http_path.exists():
+            errors.append(f"{http_path.relative_to(ROOT)} is missing")
+            continue
+        actual_http = http_path.read_text()
+        head = (
+            actual_http.split(mod.MARKER, 1)[0].rstrip() + "\n\n"
+            if mod.MARKER in actual_http
+            else actual_http.rstrip() + "\n\n"
+        )
+        expected_http = head + mod.route_index(locale)
+        if actual_http != expected_http:
+            errors.append(
+                f"{http_path.relative_to(ROOT)} route index drifted; run python3 docs/scripts/generate_reference.py"
+            )
+    return errors
+
+
 def check_links() -> list[str]:
     if not DIST.exists():
         return ["docs/dist is missing; run the docs build first"]
+    base = _normalized_base()
     errors = []
     for page in DIST.rglob("*.html"):
         for match in HREF.findall(page.read_text(errors="ignore")):
-            if match.startswith(("http://", "https://", "mailto:", "data:", "#", "javascript:")):
+            if match.startswith(("http://", "https://", "mailto:", "data:", "#", "javascript:", "//")):
                 continue
             if not match.startswith("/"):
                 continue
-            if not dest_exists(match):
+            if not dest_exists(match, base):
                 errors.append(f"{page.relative_to(DIST)} -> {match}")
     return errors
 
 
 def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else "source"
-    errors = check_parity() + check_screenshots() + check_gifs() + check_channel_schema()
+    errors = (
+        check_parity()
+        + check_screenshots()
+        + check_gifs()
+        + check_channel_schema()
+        + check_generated_reference()
+    )
     if mode == "dist":
         errors.extend(check_links())
     if errors:

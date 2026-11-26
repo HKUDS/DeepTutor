@@ -14,7 +14,7 @@ Process environment variables override only a few startup values, such as the po
 
 | Path | When it fits | Page |
 | --- | --- | --- |
-| PyPI | Published packages, full app after 1.7.0 | [PyPI](/self-hosting/pypi/) |
+| PyPI | Published packages, modular 1.7+ full app | [PyPI](/self-hosting/pypi/) |
 | Source | Current dev checkout | [From source](/self-hosting/source/) |
 | Docker | One published container | [Docker tutorial](/get-started/docker/) and [operations](/self-hosting/docker/) |
 | CLI only | No web frontend | [CLI only](/self-hosting/cli-only/) |

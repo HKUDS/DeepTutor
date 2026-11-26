@@ -2,8 +2,11 @@
 // Social icons rendered from the SAME custom marks used on eduhub, at matching
 // optical sizes (GitHub fills its 16-viewBox → 17px; Discord/WeChat sit in a
 // 24-viewBox with vertical padding → 23px) so all three sites look identical.
-const path = Astro.url.pathname;
-const pageURL = `https://deeptutor.info${path}`;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const pageURL = new URL(
+  Astro.url.pathname,
+  Astro.site ?? "https://docs.deeptutor.info",
+).toString();
 const issueURL = `https://github.com/HKUDS/DeepTutor/issues/new?template=docs.yml&page=${encodeURIComponent(
   pageURL,
 )}`;
@@ -69,20 +72,33 @@ const wechatURL = "https://github.com/HKUDS/DeepTutor/issues/78";
   </div>
 </div>
 
-<script is:inline>
+<script is:inline define:vars={{ base }}>
   (() => {
     if (window.__dtLocaleSwitcherPatched) return;
     window.__dtLocaleSwitcherPatched = true;
 
+    const basePrefix = (base || "").replace(/\/$/, "");
     const zhPrefix = "/zh-cn";
-    const isZhPath = (path) => path === zhPrefix || path.startsWith(`${zhPrefix}/`);
+    const stripBase = (path) => {
+      if (basePrefix && (path === basePrefix || path.startsWith(`${basePrefix}/`))) {
+        return path.slice(basePrefix.length) || "/";
+      }
+      return path;
+    };
+    const addBase = (path) => (basePrefix ? `${basePrefix}${path}` : path);
+    const isZhPath = (path) => {
+      const rel = stripBase(path);
+      return rel === zhPrefix || rel.startsWith(`${zhPrefix}/`);
+    };
     const toEnglishPath = (path) => {
-      if (path === zhPrefix || path === `${zhPrefix}/`) return "/";
-      return isZhPath(path) ? path.slice(zhPrefix.length) || "/" : path;
+      const rel = stripBase(path);
+      if (rel === zhPrefix || rel === `${zhPrefix}/`) return addBase("/");
+      return addBase(isZhPath(path) ? rel.slice(zhPrefix.length) || "/" : rel);
     };
     const toChinesePath = (path) => {
-      if (isZhPath(path)) return path;
-      return path === "/" ? `${zhPrefix}/` : `${zhPrefix}${path}`;
+      const rel = stripBase(path);
+      if (rel === zhPrefix || rel.startsWith(`${zhPrefix}/`)) return addBase(rel);
+      return addBase(rel === "/" ? `${zhPrefix}/` : `${zhPrefix}${rel}`);
     };
     const withCurrentSuffix = (path) =>
       `${path}${window.location.search}${window.location.hash}`;
@@ -97,20 +113,22 @@ const wechatURL = "https://github.com/HKUDS/DeepTutor/issues/78";
       }
     };
 
-    // Auto-detect — first visit with no stored choice follows the browser
-    // locale; an explicit switch always wins. Runs before the selects sync.
+    // Auto-detect — on first visit with no stored choice, redirect English
+    // routes to /zh-cn/ for zh browsers without overriding an explicit /zh-cn/
+    // URL. Once the user picks a language, that preference always wins.
     (() => {
       const current = window.location.pathname;
       const stored = readLangPreference();
-      const want = stored
-        ? stored
-        : (navigator.language || "").toLowerCase().startsWith("zh")
-          ? "zh"
-          : "en";
-      if (want === "zh" && !isZhPath(current)) {
+      if (stored === "zh" && !isZhPath(current)) {
         window.location.replace(withCurrentSuffix(toChinesePath(current)));
-      } else if (want === "en" && isZhPath(current)) {
+      } else if (stored === "en" && isZhPath(current)) {
         window.location.replace(withCurrentSuffix(toEnglishPath(current)));
+      } else if (
+        !stored &&
+        !isZhPath(current) &&
+        (navigator.language || "").toLowerCase().startsWith("zh")
+      ) {
+        window.location.replace(withCurrentSuffix(toChinesePath(current)));
       }
     })();
 

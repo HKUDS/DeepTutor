@@ -1,14 +1,79 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const site = process.env.DOCS_SITE || "https://docs.deeptutor.info";
+const rawBase = (process.env.DOCS_BASE || "/").trim();
+const base =
+  rawBase === "" || rawBase === "/"
+    ? "/"
+    : `/${rawBase.replace(/^\/+|\/+$/g, "")}`;
+const noindex = process.env.DOCS_NOINDEX === "1";
+
+/**
+ * When building under a non-root base path (for example GitHub Pages PR
+ * previews at `/<repo>/pr-<number>`), prefix root-relative links and static
+ * asset URLs in the emitted HTML that Markdown/MDX or raw HTML left unprefixed.
+ */
+function prefixBaseIntegration(basePath) {
+  return {
+    name: "deeptutor-prefix-base",
+    hooks: {
+      "astro:build:done": async ({ dir }) => {
+        if (basePath === "/") return;
+        const root = fileURLToPath(dir);
+        const prefix = basePath;
+        const rewriteUrl = (url) => {
+          if (
+            !url.startsWith("/") ||
+            url.startsWith("//") ||
+            url === prefix ||
+            url.startsWith(`${prefix}/`)
+          ) {
+            return url;
+          }
+          return `${prefix}${url}`;
+        };
+        const walk = async (folder) => {
+          const entries = await readdir(folder, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(folder, entry.name);
+            if (entry.isDirectory()) {
+              await walk(full);
+              continue;
+            }
+            if (!entry.name.endsWith(".html")) continue;
+            const original = await readFile(full, "utf8");
+            const updated = original
+              .replace(
+                /(\b(?:href|src)=["'])(\/[^"']*)(["'])/g,
+                (_, lead, url, tail) => `${lead}${rewriteUrl(url)}${tail}`,
+              )
+              .replace(
+                /(<meta\s+http-equiv=["']refresh["'][^>]*content=["']\d+;\s*url=)(\/[^"']*)(["'])/gi,
+                (_, lead, url, tail) => `${lead}${rewriteUrl(url)}${tail}`,
+              );
+            if (updated !== original) {
+              await writeFile(full, updated, "utf8");
+            }
+          }
+        };
+        await walk(root);
+      },
+    },
+  };
+}
 
 // i18n — English is the source-of-truth locale. Chinese pages live under
 // `src/content/docs/zh-cn/` mirroring the English structure. Pages not yet
 // translated fall back to English automatically.
-const zh = "zh-CN";
 
 export default defineConfig({
-  site: "https://docs.deeptutor.info",
+  site,
+  ...(base !== "/" ? { base } : {}),
   redirects: {
     "/tutorbot/": "/channels/",
     "/tutorbot/discord/": "/channels/international/discord/",
@@ -157,6 +222,16 @@ export default defineConfig({
       title: "DeepTutor",
       favicon: "/brand/favicon-32x32.png",
       description: "Agent-native, open-source personalized tutoring.",
+      ...(noindex
+        ? {
+            head: [
+              {
+                tag: "meta",
+                attrs: { name: "robots", content: "noindex, nofollow" },
+              },
+            ],
+          }
+        : {}),
       defaultLocale: "root",
       locales: {
         root: { label: "English", lang: "en" },
@@ -332,5 +407,6 @@ export default defineConfig({
         },
       ],
     }),
+    prefixBaseIntegration(base),
   ],
 });

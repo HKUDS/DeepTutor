@@ -395,8 +395,8 @@ dialog[aria-label="Search"] .dialog-frame {
 
 /* Brand icons (channel/provider) embedded in tables and lists: keep them
    inline and vertically centred against the text baseline. */
-.sl-markdown-content img[src^="/channel-icons/"],
-.sl-markdown-content img[src^="/provider-icons/"] {
+.sl-markdown-content img[src*="/channel-icons/"],
+.sl-markdown-content img[src*="/provider-icons/"] {
   display: inline-block;
   vertical-align: -0.2em;
   margin: 0;

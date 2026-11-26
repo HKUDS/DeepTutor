@@ -97,7 +97,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-然后在 **设置 → LLM**（或 **Embedding**）里，把 provider Base URL 指到 `host.docker.internal`：
+然后在 **设置 → 模型与服务** 里，把语言模型（或 Embedding）的 provider Base URL 指到 `host.docker.internal`：
 
 | 服务 | Base URL |
 |------|----------|

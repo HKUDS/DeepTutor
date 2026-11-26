@@ -18,9 +18,12 @@ function run(command, args) {
   });
 }
 
-export async function compressGifs() {
-  const names = (await readdir(GIF_DIR)).filter((name) => name.endsWith(".gif"));
-  for (const name of names) {
+export async function compressGifs(targetNames = null) {
+  const requested =
+    Array.isArray(targetNames) && targetNames.length > 0
+      ? [...new Set(targetNames.map((name) => path.basename(name)).filter((name) => name.endsWith(".gif")))]
+      : (await readdir(GIF_DIR)).filter((name) => name.endsWith(".gif"));
+  for (const name of requested) {
     const input = path.join(GIF_DIR, name);
     const temp = path.join(GIF_DIR, `.${name}.tmp.gif`);
     await run("ffmpeg", [
@@ -37,7 +40,8 @@ export async function compressGifs() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  compressGifs().catch((error) => {
+  const cliTargets = process.argv.slice(2);
+  compressGifs(cliTargets.length > 0 ? cliTargets : null).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });

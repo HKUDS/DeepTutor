@@ -16,7 +16,6 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "i18n-iso-countries": "^7.14.0",
     "webreel": "^0.1.4"
   }
 }

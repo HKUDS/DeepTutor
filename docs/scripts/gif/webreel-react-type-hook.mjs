@@ -3,11 +3,17 @@ const MARKER = "for (let i = 0; i < text.length; i++) {\n        const char = te
 const HELPER = `async function syncReactField(client, value) {
     await client.Runtime.evaluate({
         expression: \`(() => {
-          const fields = [...document.querySelectorAll("textarea")].filter((node) => {
+          const active = document.activeElement;
+          const isEditable = (node) => {
+            if (!(node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement)) return false;
             const box = node.getBoundingClientRect();
             return box.width > 40 && box.height > 16;
-          });
-          const field = fields.sort((left, right) => right.getBoundingClientRect().width - left.getBoundingClientRect().width)[0];
+          };
+          const field = isEditable(active)
+            ? active
+            : [...document.querySelectorAll("textarea")]
+                .filter(isEditable)
+                .sort((left, right) => right.getBoundingClientRect().width - left.getBoundingClientRect().width)[0];
           if (!field) return;
           field.focus();
           const next = \${JSON.stringify(value)};
