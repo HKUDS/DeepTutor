@@ -12,7 +12,7 @@ DeepTutor 是围绕 **agent-native CLI** 设计的：核心运行时在终端里
 - [**代理交接**](/zh-cn/cli/agent-handoff/) —— 让 Claude Code / Codex / OpenCode / Hermes 来驱动 `deeptutor`
 - [**服务端 API**](/zh-cn/cli/server-api/) —— `deeptutor serve` 暴露的 HTTP / WebSocket 表面
 
-当前 dev 使用仓库根目录中的源码安装流程。使用 1.7.0 模块家族时，裸 `deeptutor` 提供 core 聊天和 SDK；其他命令需要对应功能模块或 `[full]`。运行前用 `deeptutor module list` 和 `deeptutor plugin list` 检查可用范围。
+当前 dev 使用仓库根目录中的源码安装流程。使用 1.7.x 模块家族时，裸 `deeptutor` 提供 core 聊天和 SDK；其他命令需要对应功能模块或 `[full]`。运行前用 `deeptutor module list` 和 `deeptutor plugin list` 检查可用范围。
 
 ## 快速一览
 

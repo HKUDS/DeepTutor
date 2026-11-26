@@ -60,6 +60,7 @@ Use **Settings → Models & services** for normal setup; it writes `data/user/se
 | <img src="/provider-icons/volcengine-color.svg" alt="" width="16" height="16" /> VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3`               |
 | <img src="/provider-icons/volcengine-color.svg" alt="" width="16" height="16" /> VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3`       |
 | <img src="/provider-icons/xiaomimimo.svg" alt="" width="16" height="16" /> Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1`                          |
+| xAI (Grok)              | `xai`                 | `https://api.x.ai/v1`                                    |
 | Y-API                   | `y_api`               | `https://api.y-api.bestvirtualgoods.com/v1`               |
 | <img src="/provider-icons/zhipu-color.svg" alt="" width="16" height="16" /> Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4`                   |
 
@@ -86,6 +87,7 @@ Choose a provider-supported **API format** per LLM or Task profile. **Auto** rou
 | <img src="/provider-icons/azure-color.svg" alt="" width="16" height="16" /> Azure OpenAI | `azure_openai` | deployment name           |      —      |
 | <img src="/provider-icons/cohere-color.svg" alt="" width="16" height="16" /> Cohere | `cohere` | `embed-v4.0`              |    1024     |
 | <img src="/provider-icons/jina.svg" alt="" width="16" height="16" /> Jina | `jina` | `jina-embeddings-v3`      |    1024     |
+| <img src="/provider-icons/mistral-color.svg" alt="" width="16" height="16" /> Mistral | `mistral` | `mistral-embed`        |    1024     |
 | <img src="/provider-icons/ollama.svg" alt="" width="16" height="16" /> Ollama | `ollama` | `nomic-embed-text`        |     768     |
 | Lemonade Server       | `lemonade`    | Any local embedding model |      —      |
 | <img src="/provider-icons/vllm-color.svg" alt="" width="16" height="16" /> vLLM / LM Studio | `vllm` | Any embedding model       |      —      |
@@ -135,6 +137,8 @@ Changing the embedding model after creating a knowledge base will cause a mismat
 | Firecrawl   | API key                | Adds page extraction             |
 | <img src="/provider-icons/baiducloud-color.svg" alt="" width="16" height="16" /> Baidu Qianfan | API key | China-hosted                     |
 | Aliyun IQS  | API key                | China-hosted                     |
+| You.com     | API key                | Returns an answer                |
+| Google Browser Scraper | Base URL    | Scrapes Google via a local browser |
 | None        | None                   | Explicitly disables web search   |
 
 ### Configuration

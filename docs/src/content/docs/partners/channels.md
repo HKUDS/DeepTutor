@@ -5,7 +5,7 @@ description: All built-in Partner channels, their connection model, required fie
 
 Partner channels are delivery adapters around the same Partner brain. They do not create a second agent runtime: an inbound IM event becomes a scoped chat turn, and the reply is delivered back through the channel.
 
-Use the web UI for most configuration: **Partners -> your partner -> Channels** renders the live schema from `/api/v1/partners/channels/schema`, masks secret fields, polls `/channels/status`, and lets you reload channels without rewriting YAML by hand.
+Use the web UI for most configuration: **Partners -> your partner -> Channels** renders the live schema from `/api/partners/channels/schema`, masks secret fields, polls `/channels/status`, and lets you reload channels without rewriting YAML by hand.
 
 ![A Partner’s channel configuration](/screenshots/dev/partners-channels.png)
 

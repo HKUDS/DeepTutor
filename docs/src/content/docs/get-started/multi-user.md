@@ -33,7 +33,7 @@ deeptutor start
 - **User management** at `/admin/users` — create Standard, Learner, or Custom accounts (or import them from a CSV), then promote, demote, or delete them, singly or in a batch. Learner creation initializes the restricted learning grant and profile; the public `/register` endpoint closes once the first admin exists, and further accounts use the admin-only API.
 - **Grant editor** — for each non-admin user, pick the LLM models, knowledge bases, skills, and partners they may use, restrict the system tools (web search, paper search, …), MCP tools, and installed CLI apps to a whitelist, and switch code execution off entirely. Tool whitelists follow the same semantics as partner configs: *Default* allows everything, *Custom* is an explicit whitelist. Grants carry **logical IDs only**; API keys never cross the grant boundary.
 - **Book access editor** — allow personal book creation, set the default for shared admin books (`none` or `read`), and override each to `none`, `read`, or collaborative `edit`. Shared deletion is never delegated; progress, bookmarks, quiz attempts, captures, and Page Chat links remain private.
-- **Hub skill installs** — `POST /api/v1/multi-user/admin/skills/install` (admin-only) imports a skill from an external hub such as ClawHub into the admin catalog. Install ≠ assign: the skill stays invisible to other users until a grant assigns it, so the admin can vet it first. Every install is recorded in the audit trail.
+- **Hub skill installs** — `POST /api/multi-user/admin/skills/install` (admin-only) imports a skill from an external hub such as ClawHub into the admin catalog. Install ≠ assign: the skill stays invisible to other users until a grant assigns it, so the admin can vet it first. Every install is recorded in the audit trail.
 - **Audit trail** — every grant change and assigned-resource access is appended to `data/system/audit/usage.jsonl`.
 
 ## What ordinary users get
@@ -144,9 +144,9 @@ The frontend bundle may be cached. With Docker, recreate the container. From sou
 
 Confirm `data/system/auth/users.json` has `"role": "admin"` on the first user. If not, manually set it and restart.
 
-### `Cannot decode JWT` after restart
+### Every request returns 401 after a restart
 
-`auth_secret` was lost or regenerated. Restore from backup, or accept the regenerated secret and ask all users to log in again.
+`auth_secret` was lost or regenerated, so existing tokens no longer decode. There is no dedicated error for this: the failure is swallowed and surfaces as a plain 401. Restore the secret from backup, or accept the regenerated one and ask all users to log in again.
 
 ## Headless single-user bootstrap
 

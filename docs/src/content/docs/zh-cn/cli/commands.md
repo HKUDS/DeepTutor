@@ -370,23 +370,27 @@ deeptutor session delete sess_abc123
 ## `deeptutor notebook` —— notebook 记录
 
 ```bash
-# 创建 notebook
+# 创建 notebook —— 成功后打印 8 位 id（例如 a3f9c1e2）
 deeptutor notebook create research-notes --description "Daily reading log"
 
-# 添加 markdown 记录
-deeptutor notebook add-md research-notes paper-summary.md \
+# 想再查一次 id 就列出来
+deeptutor notebook list
+
+# 添加 markdown 记录 —— 下面的子命令都传 id，不传名称
+deeptutor notebook add-md <notebook-id> paper-summary.md \
   --title "Attention is all you need" --type research
 
 # 替换某条记录的内容
-deeptutor notebook replace-md research-notes rec_abc123 updated-summary.md
+deeptutor notebook replace-md <notebook-id> 7c1b0d45 updated-summary.md
 
 # 删除一条记录
-deeptutor notebook remove-record research-notes rec_abc123
+deeptutor notebook remove-record <notebook-id> 7c1b0d45
 
 # 查看
-deeptutor notebook list
-deeptutor notebook show research-notes --format json
+deeptutor notebook show <notebook-id> --format json
 ```
+
+只有 `create` 接收 notebook 名称，`list` 则不带任何参数；其余四个子命令都需要那个 8 位 id。只有 `add-md` 会把错误藏起来：id 不存在时它会跳过写入，却照样打印绿色的「Added record …」。`replace-md`、`remove-record` 和 `show` 都会以非零码退出——不过 `replace-md` 报的是「Record not found」。
 
 `show --format` 可取 `rich|json`；类型：`chat`、`question`、`research`、`solve`、`co_writer`、`tutorbot`、`reading`、`video_learning`。
 

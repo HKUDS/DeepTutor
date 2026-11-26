@@ -113,7 +113,7 @@ data/partners/<partner_id>/
 
 ## Web UI vs CLI
 
-配置 channel 推荐用 Web UI，因为它会从 `/api/v1/partners/channels/schema` 渲染实时 schema，并自动 mask secret 字段。CLI 更适合 lifecycle 检查：
+配置 channel 推荐用 Web UI，因为它会从 `/api/partners/channels/schema` 渲染实时 schema，并自动 mask secret 字段。CLI 更适合 lifecycle 检查：
 
 ```bash
 deeptutor partner list

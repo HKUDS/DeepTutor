@@ -3,15 +3,15 @@ title: Install from PyPI
 description: Understand the published package layout, the modular full profile, and migration while preserving runtime data.
 ---
 
-This page explains the **1.7.0** modular family and migration from the **1.6.15** package layout. Choose the full profile for the Web app or core for terminal chat. For current development features, use [Install from Source](/get-started/from-source/) or build a complete matching local wheel family in a separate environment.
+This page explains the **1.7.x** modular family (the current release is 1.7.4) and migration from the **1.6.15** package layout. Choose the full profile for the Web app or core for terminal chat. For current development features, use [Install from Source](/get-started/from-source/) or build a complete matching local wheel family in a separate environment.
 
-The 1.6.15 full package includes the Web app and CLI. In 1.7.0, **`deeptutor` is core CLI/SDK**, **`deeptutor-cli` is a compatibility alias**, and **`deeptutor[full]` selects the full Web application**. Feature wheels must match the core version. Use Python 3.11–3.14 and Node.js 22 LTS for the current development setup.
+The 1.6.15 full package includes the Web app and CLI. In the 1.7.x family, **`deeptutor` is core CLI/SDK**, **`deeptutor-cli` is a compatibility alias**, and **`deeptutor[full]` selects the full Web application**. Feature wheels must match the core version. Use Python 3.11–3.14 and Node.js 22 LTS for the current development setup.
 
 ## Install
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
-python -m pip install "deeptutor[full]==1.7.0"
+python -m pip install "deeptutor[full]==1.7.4"
 deeptutor init     # prompts for ports + LLM provider + optional embedding/search
 deeptutor start    # starts backend + frontend; keep the terminal open
 ```
@@ -30,12 +30,12 @@ After `deeptutor start`, open the frontend URL printed in the terminal — by de
 
 ## Modular installation after publication
 
-For the 1.7.0 wheel family, choose the required installation profile in a separate wheel environment:
+For the 1.7.x wheel family, choose the required installation profile in a separate wheel environment:
 
 ```bash
-python -m pip install "deeptutor[full]==1.7.0"  # Web + CLI + feature modules
+python -m pip install "deeptutor[full]==1.7.4"  # Web + CLI + feature modules
 # Or core only:
-python -m pip install "deeptutor==1.7.0"
+python -m pip install "deeptutor==1.7.4"
 ```
 
 When migrating an old `deeptutor-cli` install, stop DeepTutor, back up its runtime home, and uninstall the old alias **before** installing the new family: `python -m pip uninstall deeptutor-cli`. Its legacy wheel owns files that the new core needs. Preserve `DEEPTUTOR_HOME`, then check `python -m pip check` and `deeptutor module list` before restarting. Upgrading bare core alone does not retain the full application profile.
@@ -52,7 +52,7 @@ pip install -U "deeptutor[full]==<version>"
 
 ## Optional extras
 
-For the published 1.6.15 layout, the full PyPI wheel includes Web + CLI. The 1.7.0 family instead uses `[full]` for those modules. Add-ons install as extras — e.g. all built-in Partner channel SDKs (WeCom, QQ, Slack, Feishu, Telegram, DingTalk, …):
+For the published 1.6.15 layout, the full PyPI wheel includes Web + CLI. The 1.7.x family instead uses `[full]` for those modules. Add-ons install as extras — e.g. all built-in Partner channel SDKs (WeCom, QQ, Slack, Feishu, Telegram, DingTalk, …):
 
 ```bash
 pip install -U "deeptutor[partners]"

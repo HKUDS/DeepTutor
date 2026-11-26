@@ -3,15 +3,15 @@ title: 从 PyPI 安装
 description: 说明模块化 full 安装与旧包迁移，并在升级时保留运行数据。
 ---
 
-本页介绍 **1.7.0** 模块化包及从 **1.6.15** 旧布局迁移的方法。Web 应用选择 full 安装范围，终端聊天可只安装 core。要体验当前开发版功能，请[从源码安装](/zh-cn/get-started/from-source/)，或在独立环境构建、安装完整且版本一致的本地 wheel 家族。
+本页介绍 **1.7.x** 模块化包（当前发布版本为 1.7.4）及从 **1.6.15** 旧布局迁移的方法。Web 应用选择 full 安装范围，终端聊天可只安装 core。要体验当前开发版功能，请[从源码安装](/zh-cn/get-started/from-source/)，或在独立环境构建、安装完整且版本一致的本地 wheel 家族。
 
-1.6.15 完整包包含 Web 与 CLI。1.7.0 中，**`deeptutor` 提供 core CLI/SDK**，**`deeptutor-cli` 是兼容别名**，完整 Web 应用使用 **`deeptutor[full]`**。功能 wheel 必须与 core 同版本。当前开发环境使用 Python 3.11–3.14 与 Node.js 22 LTS。
+1.6.15 完整包包含 Web 与 CLI。1.7.x 家族中，**`deeptutor` 提供 core CLI/SDK**，**`deeptutor-cli` 是兼容别名**，完整 Web 应用使用 **`deeptutor[full]`**。功能 wheel 必须与 core 同版本。当前开发环境使用 Python 3.11–3.14 与 Node.js 22 LTS。
 
 ## 安装
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
-python -m pip install "deeptutor[full]==1.7.0"
+python -m pip install "deeptutor[full]==1.7.4"
 deeptutor init     # 提示输入端口 + LLM 提供商 + 可选 embedding/search
 deeptutor start    # 同时启动后端 + 前端；保持终端开着
 ```
@@ -30,12 +30,12 @@ deeptutor start    # 同时启动后端 + 前端；保持终端开着
 
 ## 模块化包发布后的安装
 
-使用 1.7.0 wheel 家族时，在独立 wheel 环境选择所需的安装范围：
+使用 1.7.x wheel 家族时，在独立 wheel 环境选择所需的安装范围：
 
 ```bash
-python -m pip install "deeptutor[full]==1.7.0"  # Web、CLI 与功能模块
+python -m pip install "deeptutor[full]==1.7.4"  # Web、CLI 与功能模块
 # 或只安装 core：
-python -m pip install "deeptutor==1.7.0"
+python -m pip install "deeptutor==1.7.4"
 ```
 
 迁移旧 `deeptutor-cli` 时，先停止应用、备份运行目录，并在安装新家族**之前**执行 `python -m pip uninstall deeptutor-cli`。旧 wheel 拥有新 core 需要的文件，一次性升级可能造成文件被删除。保留 `DEEPTUTOR_HOME`，重启前运行 `python -m pip check` 和 `deeptutor module list`。仅升级裸 core 不会保留完整应用安装范围。
@@ -52,7 +52,7 @@ pip install -U "deeptutor[full]==<version>"
 
 ## 可选 extras
 
-已发布的 1.6.15 完整 wheel 包含 Web 与 CLI；1.7.0 模块家族改用 `[full]` 选择这些模块。附加能力按 extras 安装 —— 例如全部内置 Partner channel SDK（WeCom、QQ、Slack、飞书、Telegram、钉钉等）：
+已发布的 1.6.15 完整 wheel 包含 Web 与 CLI；1.7.x 家族改用 `[full]` 选择这些模块。附加能力按 extras 安装 —— 例如全部内置 Partner channel SDK（WeCom、QQ、Slack、飞书、Telegram、钉钉等）：
 
 ```bash
 pip install -U "deeptutor[partners]"

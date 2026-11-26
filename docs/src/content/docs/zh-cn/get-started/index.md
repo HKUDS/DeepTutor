@@ -11,19 +11,19 @@ DeepTutor 提供 **四种安装路径**，全部使用相同的运行数据目�
 
 | 方式 | 适用场景 | 页面 |
 |------|---------|------|
-| **PyPI** | 已发布安装包；1.7.0 完整应用使用 [full] | [**PyPI 安装**](/zh-cn/get-started/pypi/) |
+| **PyPI** | 已发布安装包；1.7.x 完整应用使用 [full] | [**PyPI 安装**](/zh-cn/get-started/pypi/) |
 | **源码** | 当前 dev、源码开发与可选热重载 | [**源码安装**](/zh-cn/get-started/from-source/) |
 | **Docker** | 生产部署、托管主机、需要持久化卷 | [**Docker**](/zh-cn/get-started/docker/) |
 | **纯 CLI** | 无界面服务器、被其他 agent 调度、不需要 Web UI | [**纯 CLI 安装**](/zh-cn/get-started/cli-only/) |
 
-> **1.7.0 安装：** `deeptutor[full]` 安装完整 Web 应用，裸 `deeptutor` 安装最小 CLI/SDK。修改模块前停止应用，功能 wheel 与 core 保持同版本。开发时使用源码安装，或[构建本地 wheels](https://github.com/HKUDS/DeepTutor/blob/dev/docs-for-dev/MODULES.md)；升级旧环境前请备份运行目录。
+> **1.7.x 安装：** `deeptutor[full]` 安装完整 Web 应用，裸 `deeptutor` 安装最小 CLI/SDK。修改模块前停止应用，功能 wheel 与 core 保持同版本。开发时使用源码安装，或[构建本地 wheels](https://github.com/HKUDS/DeepTutor/blob/dev/docs-for-dev/MODULES.md)；升级旧环境前请备份运行目录。
 
 ## 最低环境要求
 
 | 组件 | 版本 |
 |------|------|
 | Python | **3.11–3.14** |
-| Node.js | **20+**（PyPI 安装） / **22 LTS**（源码安装，对齐 CI 与 Docker） |
+| Node.js | **20.9+**（PyPI 安装） / **22 LTS**（源码安装，对齐 CI 与 Docker） |
 | 内存 | 取决于所选模型和工作负载 |
 | 磁盘 | 取决于安装 extras 和工作区数据 |
 

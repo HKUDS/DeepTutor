@@ -3,7 +3,7 @@ title: CLI-Only Install
 description: Run current dev from the terminal without frontend setup; understand source CLI and the modular core wheels.
 ---
 
-For current `dev`, CLI use from source installs the main project and skips frontend Node/npm setup. A checkout contains all modules, so it still needs `requirements/full.txt`. The minimal 1.7.0 core wheel supplies chat and SDK separately from feature modules; `deeptutor-cli` is a metadata-only core alias. Do not use the old editable `packaging/deeptutor-cli` project.
+For current `dev`, CLI use from source installs the main project and skips frontend Node/npm setup. A checkout contains all modules, so it still needs `requirements/full.txt`. The minimal 1.7.x core wheel supplies chat and SDK separately from feature modules; `deeptutor-cli` is a metadata-only core alias. Do not use the old editable `packaging/deeptutor-cli` project.
 
 ## Install
 
@@ -58,8 +58,8 @@ The source path above exposes the same modules as the source Web app; it simply 
 | Installation | Included | How to inspect |
 | --- | --- | --- |
 | **Current source checkout** | Checked-in modules; full Python dependencies; no Node/npm required for terminal use | `deeptutor module list`, `deeptutor plugin list` |
-| **1.7.0 bare core wheel** | Shared runtime, chat, ask_questions, CLI, SDK, settings, and sessions | Add same-version feature wheels as needed |
-| **1.7.0 full profile** | Core plus Web/API and the standard feature modules | Install `[full]` from PyPI, or matching local wheels |
+| **1.7.x bare core wheel** | Shared runtime, chat, ask_questions, CLI, SDK, settings, and sessions | Add same-version feature wheels as needed |
+| **1.7.x full profile** | Core plus Web/API and the standard feature modules | Install `[full]` from PyPI, or matching local wheels |
 
 For example, `deep_solve` needs Solve; knowledge bases need Knowledge and configured retrieval services; Partners needs its module and channel SDKs. `--tool` accepts the eight user-toggleable tools only. Attach a KB with `--kb` and retrieval mounts according to context; `--tool rag` does not enable it.
 

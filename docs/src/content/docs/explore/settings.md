@@ -48,7 +48,7 @@ A Partner can bind an owner workspace to share its current materials. Manage tho
 
 ## Appearance
 
-Theme, learning text, and code blocks. The two language toggles moved to the General settings page: **Interface language** covers navigation, settings, and status text only; **Model output language** sets the default language of chat and capability responses. Four themes ship in the box: **Default** (clean pure-white with a blue accent), **Cream** (warm, paper-like, terracotta accent), **Dark** (Cream's warmth on near-black), and **Glass** (translucent purple panels on a deep gradient). Each tile previews the theme it applies. A **Code blocks** panel sets the syntax theme, line numbers, and wrapping.
+Theme, learning text, and code blocks. The two language toggles moved to the General settings page: **Interface language** covers navigation, settings, and status text only; **Model output language** sets the default language of chat and capability responses. Five themes ship in the box: **System** (follows your device), **Default** (clean pure-white with a blue accent), **Cream** (warm, paper-like, terracotta accent), **Dark** (Cream's warmth on near-black), and **Glass** (translucent purple panels on a deep gradient). Each tile previews the theme it applies. A **Code blocks** panel sets the syntax theme, line numbers, and wrapping.
 
 ![Appearance settings](/screenshots/dev/appearance.png)
 
@@ -72,7 +72,7 @@ Five related controls have their own settings pages:
 - **Starting points** — how much recent activity feeds the three suggestions under an empty composer.
 - **Attachments** — upload size caps and extracted-text budgets for chat attachments (admin-gated).
 
-MCP servers are **not** here any more: each account installs its own from the MCP Services store in Personalization, or adds a remote server by URL (`/settings/mcp` redirects there). See [MCP Services](/ecosystem/mcp/).
+MCP servers are **not** here any more: each account installs its own from the MCP Services store at `/space/mcp` in Personalization, or adds a remote server by URL. See [MCP Services](/ecosystem/mcp/).
 
 ![Video Learning settings](/screenshots/dev/settings-video.png)
 

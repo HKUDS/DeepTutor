@@ -3,7 +3,7 @@ title: 仅 CLI 安装
 description: 选项 4 —— 给 headless 服务器、agent harness 以及 Claude Code / Codex / Hermes 用的轻量安装方式。
 ---
 
-当前 `dev` 的源码 CLI 安装使用主项目，并跳过前端 Node/npm 设置。源码包含全部模块，所以仍需安装 `requirements/full.txt`。1.7.0 的精简 core wheel 提供聊天和 SDK，功能模块可另行安装；`deeptutor-cli` 是 core 的元数据兼容别名。不要继续 editable 安装旧 `packaging/deeptutor-cli` 项目。
+当前 `dev` 的源码 CLI 安装使用主项目，并跳过前端 Node/npm 设置。源码包含全部模块，所以仍需安装 `requirements/full.txt`。1.7.x 的精简 core wheel 提供聊天和 SDK，功能模块可另行安装；`deeptutor-cli` 是 core 的元数据兼容别名。不要继续 editable 安装旧 `packaging/deeptutor-cli` 项目。
 
 ## 安装
 
@@ -58,8 +58,8 @@ deeptutor config show
 | 安装方式 | 包含什么 | 如何检查 |
 | --- | --- | --- |
 | **当前源码 checkout** | 仓库模块、完整 Python 依赖；终端使用不需要 Node/npm | `deeptutor module list`、`deeptutor plugin list` |
-| **1.7.0 裸 core wheel** | 共享运行时、chat、ask_questions、CLI、SDK、设置与会话 | 按需添加同版本功能 wheel |
-| **1.7.0 full 安装范围** | core、Web/API 与常用功能模块 | 从 PyPI 安装 `[full]`，或构建同版本本地 wheel |
+| **1.7.x 裸 core wheel** | 共享运行时、chat、ask_questions、CLI、SDK、设置与会话 | 按需添加同版本功能 wheel |
+| **1.7.x full 安装范围** | core、Web/API 与常用功能模块 | 从 PyPI 安装 `[full]`，或构建同版本本地 wheel |
 
 例如，`deep_solve` 需要 Solve；知识库需要 Knowledge 与检索配置；伙伴需要对应模块及渠道 SDK。`--tool` 只接受八个用户可开关工具。通过 `--kb` 附加知识库后，检索按上下文挂载，`--tool rag` 不会启用它。
 

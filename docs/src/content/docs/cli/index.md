@@ -12,7 +12,7 @@ This section covers:
 - [**Agent handoff**](/cli/agent-handoff/) — let Claude Code, Codex, OpenCode, or Hermes drive `deeptutor` for you
 - [**Server API**](/cli/server-api/) — the HTTP / WebSocket surface that `deeptutor serve` exposes
 
-Current dev uses the source installation below from the repository root. With the 1.7.0 modular family, bare `deeptutor` supplies core chat/SDK; add feature modules or `[full]` for the broader commands. Inspect `deeptutor module list` and `deeptutor plugin list` before using optional capabilities.
+Current dev uses the source installation below from the repository root. With the 1.7.x modular family, bare `deeptutor` supplies core chat/SDK; add feature modules or `[full]` for the broader commands. Inspect `deeptutor module list` and `deeptutor plugin list` before using optional capabilities.
 
 ## Quick tour
 

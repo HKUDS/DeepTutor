@@ -11,19 +11,19 @@ For the full app, the recommended flow is **pick a runtime-home directory → in
 
 | Option | When to use | Page |
 |--------|-------------|------|
-| **PyPI** | Published packages; full app uses [full] in 1.7.0 | [**Install from PyPI**](/get-started/pypi/) |
+| **PyPI** | Published packages; full app uses [full] in 1.7.x | [**Install from PyPI**](/get-started/pypi/) |
 | **From Source** | Current dev, local development, optional hot reload | [**Install from Source**](/get-started/from-source/) |
 | **Docker** | Production deployments, hosted hosts, persistent volumes | [**Docker**](/get-started/docker/) |
 | **CLI Only** | Headless server, agent harness, no Web UI needed | [**CLI-Only Install**](/get-started/cli-only/) |
 
-> **1.7.0 installation:** `deeptutor[full]` installs the Web app; bare `deeptutor` installs core CLI/SDK. Stop DeepTutor before changing modules and keep feature wheels at the core version. For development, use the source instructions or [build local wheels](https://github.com/HKUDS/DeepTutor/blob/dev/docs-for-dev/MODULES.md). Back up your runtime home before upgrading older installations.
+> **1.7.x installation:** `deeptutor[full]` installs the Web app; bare `deeptutor` installs core CLI/SDK. Stop DeepTutor before changing modules and keep feature wheels at the core version. For development, use the source instructions or [build local wheels](https://github.com/HKUDS/DeepTutor/blob/dev/docs-for-dev/MODULES.md). Back up your runtime home before upgrading older installations.
 
 ## Minimum requirements
 
 | Component | Version |
 |-----------|---------|
 | Python | **3.11–3.14** |
-| Node.js | **20+** (PyPI) / **22 LTS** (from source, matches CI + Docker) |
+| Node.js | **20.9+** (PyPI) / **22 LTS** (from source, matches CI + Docker) |
 | RAM | Depends on the selected models and workload |
 | Disk | Depends on install extras and workspace data |
 
