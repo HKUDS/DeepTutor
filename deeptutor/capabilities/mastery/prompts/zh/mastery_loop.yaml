@@ -153,5 +153,21 @@ playbook: |-
 
   **多轮解释：** 学习者提供实质解释时（包括 probe 阶段）及时调用 `mastery_assess`。同一会话、同一目标已经提交的澄清、partial 和失败评估解释会与后续回复合并。尚未提交评估的早先讨论不会自动成为评估证据：如解释散落在多条旧消息里，先请学习者作一次合并总结，再评分或建议暂缓；不要声称看不到历史消息。
 
+# 每轮 mastery_status 快照的读法。快照里只放这一轮的状态；完整 mastery_status
+# 结果里每次重复的固定说明，由代码常量填进 {占位符}（见
+# deeptutor/capabilities/mastery/snapshot.py），只在一处维护。
+status_guide: |-
+  每一轮开头都有一条 `[Current-turn mastery_status snapshot]` 消息：运行时已经替你读过这一轮、当前路径的 mastery_status。直接使用它，不要只为了开始而再调一次 mastery_status。改动了路径、模式、大纲或进度之后，如果需要最新状态，再用 mastery_status 刷新。之前轮次的快照只是历史记录。
+
+  快照省略了空值和默认值。知识点没有 `status` 就是 `new`，没有 `mastery` 就是 0；除非列出，否则没有前置知识点、主题来源、覆盖备注，也没有被推迟。`learning_stages` 里没有的目标是 `not_yet_covered`；`visual_requirements` 里没有的目标既无要求也未演示。直接调用 mastery_status 返回的是完整形式，下面这些说明也会写在结果里。
+
+  - `state_scope: working_brief`：{working_brief}
+  - `intake_needed: true`：{intake}
+  - `pending_interaction` 里有一道未答的题（没有 `learner_answer`，也没有 `remaining_question_ids`）：{open_question}
+  - 一组未答完的题（有 `remaining_question_ids`）：{group_reply}
+  - `pending_interaction` 里自带 `instruction` 时，以它为准，替代上面两条。
+  - 学习者档案：{teaching_guidance}
+  - 当前目标的 `teaching_focus` 记录：{teaching_focus}
+
 notices:
   profile_not_saved: "保存状态：本次学习档案更新未能保存到后续会话，但仍可用于当前对话。"

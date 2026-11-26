@@ -279,3 +279,25 @@ def test_current_round_projection_is_disposable_and_preserves_changed_state():
     assert expand_shared(projected) == expand_shared(original)
     assert projected[1] == original[1]
     assert "$mastery_same_value" in projected[3]["content"]
+
+
+def test_short_header_snapshots_are_still_shared_anchors() -> None:
+    """Snapshots now start with only their first line; older sessions keep the long notice."""
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER, snapshot_payload_text
+
+    payload = {"path_id": "p", "map": large_state()}
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(payload),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("later", "mastery_status", payload)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+    assert projected[0] == snapshot
+    reference = json.loads(projected[-1]["content"])["map"]["$mastery_same_value"]
+    assert reference == {"snapshot": "mastery_status_snapshot", "pointer": "/map"}
+    assert json.loads(snapshot_payload_text(snapshot["content"])) == payload
+    legacy = _MASTERY_SNAPSHOT_NOTICE + json.dumps(payload)
+    assert json.loads(snapshot_payload_text(legacy)) == payload
+    assert snapshot_payload_text("[Runtime context: workspace]\n{}") is None

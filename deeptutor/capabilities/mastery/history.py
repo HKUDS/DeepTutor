@@ -14,13 +14,31 @@ from typing import Any
 
 from deeptutor.services.session.model_history import _MASTERY_SNAPSHOT_NOTICE
 
+#: First line of the per-turn mastery_status snapshot; its JSON payload follows.
+#: What the runtime used to repeat after it in every snapshot now sits once in
+#: the system prompt (see :mod:`deeptutor.capabilities.mastery.snapshot`).
+SNAPSHOT_HEADER = "[Current-turn mastery_status snapshot]\n"
+
+
+def snapshot_payload_text(content: str) -> str | None:
+    """The JSON text of a snapshot message, or ``None`` when it is not one.
+
+    Accepts the short header and the longer notice older sessions stored, which
+    begins with the same line.
+    """
+    for prefix in (_MASTERY_SNAPSHOT_NOTICE, SNAPSHOT_HEADER):
+        if content.startswith(prefix):
+            return content[len(prefix) :]
+    return None
+
+
 STATE_REFERENCE_NOTICE = (
     "\n\n[Historical mastery state sharing]\n"
     'A {"$mastery_same_value": {"tool_call_id": "...", "pointer": "/..."}} '
     'or {"$mastery_same_value": {"snapshot": "mastery_status_snapshot", "pointer": "/..."}} '
     "inside a tool result means EXACTLY the same JSON value at that "
     "pointer in the named tool result or runtime snapshot's full payload. "
-    "For a mastery status snapshot, the payload is the JSON after its notice; "
+    "For a mastery status snapshot, the payload is the JSON after its first line; "
     'without "occurrence" it is the first such snapshot in this request, '
     'with "occurrence": N the N-th one. '
     "The referenced value is included in this request, not external memory. "
@@ -184,20 +202,20 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
         content = message.get("content")
         if not isinstance(content, str):
             continue
-        is_snapshot = (
-            message.get("role") == "user"
+        snapshot_text = (
+            snapshot_payload_text(content)
+            if message.get("role") == "user"
             and message.get("_context_snapshot") == "mastery_status_snapshot"
-            and content.startswith(_MASTERY_SNAPSHOT_NOTICE)
+            else None
         )
+        is_snapshot = snapshot_text is not None
         if is_snapshot:
             snapshot_seen += 1
         name = names.get(message.get("tool_call_id")) if message.get("role") == "tool" else None
         if not is_snapshot and name not in _FIELDS:
             continue
         try:
-            payload = json.loads(
-                content[len(_MASTERY_SNAPSHOT_NOTICE) :] if is_snapshot else content
-            )
+            payload = json.loads(snapshot_text if is_snapshot else content)
             if not isinstance(payload, dict):
                 continue
             # Do not reinterpret non-standard numbers or pre-existing reference syntax.

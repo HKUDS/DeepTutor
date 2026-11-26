@@ -158,5 +158,22 @@ playbook: |-
 
   Keep each round focused on one objective.
 
+# How to read the per-turn mastery_status snapshot. The snapshot carries only
+# this turn's state; the fixed guidance a full mastery_status result repeats is
+# filled into the {placeholders} from the code constants it comes from
+# (deeptutor/capabilities/mastery/snapshot.py), so it is written in one place.
+status_guide: |-
+  Each turn starts with a `[Current-turn mastery_status snapshot]` message: the runtime has already read mastery_status for this turn and the active path. Use it directly; do not call mastery_status again just to begin. Refresh with mastery_status after changing the path, mode, outline or progress when updated state is needed. Earlier turns' snapshots are historical only.
+
+  The snapshot omits empty and default values. A knowledge point without `status` is `new`, without `mastery` is at 0, and has no prerequisites, topic sources, override note or deferral unless they are listed. An objective missing from `learning_stages` is `not_yet_covered`; one missing from `visual_requirements` has none required or demonstrated. A call to mastery_status returns the full form, with the guidance below written into it.
+
+  - `state_scope: working_brief`: {working_brief}
+  - `intake_needed: true`: {intake}
+  - An open question in `pending_interaction` (no `learner_answer`, no `remaining_question_ids`): {open_question}
+  - An open question group (`remaining_question_ids` present): {group_reply}
+  - An `instruction` inside `pending_interaction` replaces the two items above.
+  - Learner profile: {teaching_guidance}
+  - `teaching_focus` notes for the current objective: {teaching_focus}
+
 notices:
   profile_not_saved: "Storage status: the requested learner-profile update was not saved for future sessions. It can still guide this conversation."
