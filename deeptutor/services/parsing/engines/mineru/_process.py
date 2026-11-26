@@ -59,7 +59,7 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                 # Attach before execution: no child can escape an assignment race.
                 kwargs["creationflags"] = win32con.CREATE_SUSPENDED | subprocess.CREATE_NO_WINDOW
                 process = subprocess.Popen(cmd, **kwargs)  # nosec B603: fixed argv, shell=False
-                win32job.AssignProcessToJobObject(job, int(process._handle))
+                win32job.AssignProcessToJobObject(job, int(process._handle))  # type: ignore[attr-defined]  # CPython Windows process handle
                 assigned = True
                 threads = psutil.Process(process.pid).threads()
                 if len(threads) != 1:
@@ -89,7 +89,7 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                         time.sleep(0.05)
                 finally:
                     job.Close()
-            elif process is not None:
+            elif sys.platform != "win32" and process is not None:
                 for sig in (signal.SIGTERM, signal.SIGKILL):
                     try:
                         os.killpg(process.pid, sig)
@@ -111,6 +111,8 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
 
 def _process_group_exists(pgid: int) -> bool:
     """Only ESRCH confirms absence; EPERM may hide members or just zombies."""
+    if sys.platform == "win32":
+        raise NotImplementedError("POSIX process groups are unavailable on Windows")
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
@@ -125,7 +127,7 @@ def _process_group_alive(pgid: int) -> bool:
     if not _process_group_exists(pgid):
         return False
 
-    if sys.platform != "darwin":
+    if sys.platform != "darwin" and hasattr(os, "getpgid"):
         import psutil
 
         saw_member = False
