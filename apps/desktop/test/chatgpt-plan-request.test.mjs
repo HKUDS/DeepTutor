@@ -34,3 +34,11 @@ test('only the Desktop view receives the plan authentication header', () => {
     );
   }
 });
+
+test('plan authentication is scoped to the mounted frontend, including during startup', () => {
+  const supplied = { 'X-DeepTutor-Desktop-Session': 'untrusted' };
+  const details = { ...request, requestHeaders: supplied };
+  assert.deepEqual(planRequestHeaders(details, { ...context, frontendURL: undefined }), {});
+  assert.deepEqual(planRequestHeaders(details, context), { [header]: 'fixture' });
+  assert.deepEqual(planRequestHeaders(details, { ...context, sessionToken: undefined }), {});
+});

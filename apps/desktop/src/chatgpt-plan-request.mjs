@@ -9,7 +9,7 @@ export function planRequestHeaders(details, { sessionToken, frontendURL, content
       delete headers[name];
     }
   }
-  if (!sessionToken || contentsId == null || details.webContentsId !== contentsId || !mainFrame) return headers;
+  if (!sessionToken || !frontendURL || contentsId == null || details.webContentsId !== contentsId || !mainFrame) return headers;
   const request = new URL(details.url);
   const front = new URL(frontendURL);
   if (details.initiatorOrigin && details.initiatorOrigin !== front.origin) return headers;

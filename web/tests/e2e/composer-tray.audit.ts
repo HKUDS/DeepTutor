@@ -3,12 +3,12 @@ import { sourceModuleInventory } from './fixtures/modules'
 
 const SESSION = 'tray-overlap'
 
-async function openConversation(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem('deeptutor.ui-layout', 'modern')
+async function openConversation(page: Page, layout: 'classic' | 'modern' = 'modern') {
+  await page.addInitScript(layout => {
+    localStorage.setItem('deeptutor.ui-layout', layout)
     localStorage.setItem('deeptutor-language', 'en')
     localStorage.setItem('deeptutor-theme', 'light')
-  })
+  }, layout)
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname
     const json = (payload: unknown) => route.fulfill({ json: payload })
@@ -97,6 +97,29 @@ async function openConversation(page: Page) {
     return route.fulfill({ status: 404, json: {} })
   })
   await page.goto(`/chat/${SESSION}`, { waitUntil: 'domcontentloaded' })
+}
+
+for (const layout of ['classic', 'modern'] as const) {
+  test(`${layout}: the tray does not intercept the bottom of composer buttons`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await openConversation(page, layout)
+    await expect(page.locator('html')).toHaveAttribute('data-ui-layout', layout)
+
+    const tray = page.locator('.dt-composer-tray')
+    await expect(tray).toBeVisible()
+    const surface = page.locator('.dt-composer-surface')
+    await surface.locator('textarea').fill('A draft')
+    const names = layout === 'classic' ? ['Resources', 'Chat', 'Send'] : ['Resources', 'Send']
+    for (const name of names) {
+      const button = surface.getByRole('button', { name, exact: true })
+      // A centre click can miss a tray covering only the lower part of a button.
+      await expect.poll(() => button.evaluate(element => {
+        const { left, width, bottom } = element.getBoundingClientRect()
+        return element.contains(document.elementFromPoint(left + width / 2, bottom - 3))
+      }), { message: `${name} is obstructed at its lower edge` }).toBe(true)
+    }
+  })
 }
 
 test('upward tray menus keep their final option reachable above the composer', async ({ page }) => {

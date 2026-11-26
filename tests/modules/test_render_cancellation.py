@@ -20,7 +20,8 @@ def test_cleanup_rechecks_group_after_permission_race(monkeypatch, group_exists)
             raise PermissionError("group changed during signal")
         raise ProcessLookupError("group already reaped")
 
-    monkeypatch.setattr(process, "os", SimpleNamespace(name="posix", killpg=killpg))
+    monkeypatch.setattr(process, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(process, "os", SimpleNamespace(killpg=killpg))
     # The POSIX branch is simulated on every OS; Windows has no SIGKILL.
     monkeypatch.setattr(process.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(process.time, "sleep", lambda _: None)
@@ -38,7 +39,7 @@ def test_windows_cleanup_targets_the_entire_owned_tree(monkeypatch, returncode):
     from deeptutor.runtime import process
 
     calls = []
-    monkeypatch.setattr(process, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(process, "sys", SimpleNamespace(platform="win32"))
 
     def run(argv, **kwargs):
         calls.append((argv, kwargs))

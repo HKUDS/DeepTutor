@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import time
 from typing import Literal
 
@@ -15,7 +16,7 @@ def kill_process_tree(pid: int) -> None:
     Callers still reap their process/streams before releasing runtime leases.
     Windows Process.kill() alone leaves build and renderer children running.
     """
-    if os.name != "nt":
+    if sys.platform != "win32":
         for attempt in range(5):
             try:
                 os.killpg(pid, signal.SIGKILL)
