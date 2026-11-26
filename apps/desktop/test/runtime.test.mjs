@@ -117,6 +117,7 @@ test('a signed bundle installs into Unicode and relocated data directories', asy
   } catch (error) {
     // Creating directory symlinks requires a privilege on some Windows hosts.
     if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
+    // A junction also passes on the unpatched installer, so this fallback only checks data directory relocation.
     await symlink(physicalRoot, linkedRoot, 'junction');
   }
   const relocated = await installBundle(manifestFile, linkedRoot, publicKey);
