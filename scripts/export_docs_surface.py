@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -23,6 +24,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 DEFAULT_OUTPUT = PROJECT_ROOT / "docs" / "tests" / "docs_surface.json"
+
+# The lazy router profile (`DEEPTUTOR_CHAT_ENGINE=typescript-native`) records
+# routing patterns instead of the routers themselves, so the WebSocket walk in
+# collect_api() would find nothing and the artifact would silently lose the
+# socket namespace. Report the complete surface: pin the eager loader the same
+# way scripts/build_router_index.py does, before anything imports the app.
+os.environ["DEEPTUTOR_CHAT_ENGINE"] = "python"
 
 # Routes the app mounts itself, outside of any module manifest.
 SELF_MOUNTED_PREFIXES = (
