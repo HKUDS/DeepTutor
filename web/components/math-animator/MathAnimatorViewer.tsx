@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Code2, Expand, Image as ImageIcon, Timer, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ChatFileLink, useInlineFileCardContext } from "@/components/common/InlineFileCard";
+import { ChatFileLink } from "@/components/common/ChatFileLink";
+import { useInlineFileCardContext } from "@/components/common/InlineFileCard";
 import { apiUrl } from "@/lib/api";
 import { isChatFileLink } from "@/lib/chat-file-link";
 import type { MathAnimatorResult } from "@/lib/math-animator-types";

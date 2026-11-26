@@ -5,8 +5,8 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor } from "@/lib/doc-attachments";
-import { apiUrl } from "@/lib/api";
 import { isChatFileLink } from "@/lib/chat-file-link";
+import { ChatFileLink } from "./ChatFileLink";
 import { previewKindFor } from "@/components/chat/preview/previewerFor";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
@@ -493,54 +493,6 @@ export function InlineFileCardProvider({
     <InlineFileCardContext.Provider value={value}>
       {children}
     </InlineFileCardContext.Provider>
-  );
-}
-
-export function ChatFileLink({
-  attachment,
-  onOpen,
-  className,
-  children,
-  ariaLabel,
-  unavailableReference,
-}: {
-  attachment: MessageAttachment;
-  onOpen?: (attachment: MessageAttachment) => void;
-  className: string;
-  children: ReactNode;
-  ariaLabel?: string;
-  unavailableReference?: string;
-}) {
-  const href = attachment.url && isChatFileLink(attachment.url)
-    ? apiUrl(attachment.url)
-    : unavailableReference
-      ? `#chat-file-unavailable-${encodeURIComponent(unavailableReference)}`
-      : null;
-  if (href && onOpen) {
-    return (
-      <a
-        href={href}
-        data-chat-file-link=""
-        onClick={(event) => {
-          event.preventDefault();
-          onOpen(attachment);
-        }}
-        className={className}
-        aria-label={ariaLabel}
-      >
-        {children}
-      </a>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onOpen ? () => onOpen(attachment) : undefined}
-      className={className}
-      aria-label={ariaLabel}
-    >
-      {children}
-    </button>
   );
 }
 

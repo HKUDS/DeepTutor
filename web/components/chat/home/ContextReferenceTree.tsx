@@ -3,7 +3,7 @@
 import { memo, useState } from "react";
 import { ChevronDown, X, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ChatFileLink } from "@/components/common/InlineFileCard";
+import { ChatFileLink } from "@/components/common/ChatFileLink";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 
 /**

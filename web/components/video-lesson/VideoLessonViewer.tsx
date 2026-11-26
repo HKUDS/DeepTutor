@@ -2,7 +2,8 @@
 
 import { Clapperboard, Code2, ExternalLink, Timer } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ChatFileLink, useInlineFileCardContext } from "@/components/common/InlineFileCard";
+import { ChatFileLink } from "@/components/common/ChatFileLink";
+import { useInlineFileCardContext } from "@/components/common/InlineFileCard";
 import { apiUrl } from "@/lib/api";
 import { isChatVideoLessonLink } from "@/lib/chat-file-link";
 import type { VideoLessonResult } from "@/lib/video-lesson-types";

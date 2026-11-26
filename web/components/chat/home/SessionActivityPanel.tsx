@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
-import { ChatFileLink } from "@/components/common/InlineFileCard";
+import { ChatFileLink } from "@/components/common/ChatFileLink";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { listSessions, type SessionSummary } from "@/lib/session-api";
 import { listNotebooks, type NotebookSummary } from "@/lib/notebook-api";
