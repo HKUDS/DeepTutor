@@ -13,6 +13,7 @@ import { killTree } from './processes.mjs';
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
 const EDITION = edition();
+const MACOS = process.platform === 'darwin';
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const shellURL = pathToFileURL(path.join(sourceDirectory, 'index.html')).href;
 // Runtimes are large and machine-specific, so Windows keeps them out of the roaming profile.
@@ -27,9 +28,11 @@ const transactionFile = path.join(userRoot, 'upgrade.json');
 const interfaceFile = path.join(runtimeHome, 'data/user/settings/interface.json');
 const seed = app.isPackaged ? path.join(process.resourcesPath, 'seed/runtime.json') : path.join(sourceDirectory, '../.local', targetId(), 'seed/runtime.json');
 const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-public.pem'), 'utf8');
-// macOS draws the shell's own title bar under the traffic lights; Windows keeps its native frame and menu bar.
-const HEADER_HEIGHT = WINDOWS ? 0 : 44;
+// Native frames already exclude their title bars from the content bounds.
+const HEADER_HEIGHT = MACOS || WINDOWS ? 0 : 44;
 const BACKGROUND = { light: '#ffffff', dark: '#161618' };
+const MACOS_BACKGROUND = { light: '#f5f5f7', dark: '#202023' };
+const shellBackground = () => (MACOS ? MACOS_BACKGROUND : BACKGROUND)[ui.theme];
 let window;
 let view;
 let worker;
@@ -86,7 +89,12 @@ async function readInterface() {
   let saved;
   try { saved = await readJSON(interfaceFile) ?? {}; }
   catch { return ui; } // A half-written or hand-edited file keeps the current choice.
-  const dark = saved.theme === 'dark' || (saved.theme === 'system' && nativeTheme.shouldUseDarkColors);
+  if (MACOS) {
+    const source = { light: 'light', snow: 'light', dark: 'dark', glass: 'dark' };
+    nativeTheme.themeSource = Object.hasOwn(source, saved.theme) ? source[saved.theme] : 'system';
+  }
+  const dark = MACOS ? nativeTheme.shouldUseDarkColors
+    : saved.theme === 'dark' || (saved.theme === 'system' && nativeTheme.shouldUseDarkColors);
   return { language: resolveLanguage(saved.language), theme: dark ? 'dark' : 'light' };
 }
 
@@ -95,7 +103,8 @@ async function refreshInterface() {
   if (next.language === ui.language && next.theme === ui.theme) return;
   ui = next;
   buildMenu();
-  window?.setBackgroundColor(BACKGROUND[ui.theme]);
+  window?.setBackgroundColor(shellBackground());
+  if (MACOS) view?.setBackgroundColor(shellBackground());
   publish();
 }
 
@@ -127,11 +136,16 @@ function layout() {
 async function openContent(url) {
   hideContent();
   const origin = new URL(url).origin;
-  view = new WebContentsView({ webPreferences: {
+  const nextView = new WebContentsView({ webPreferences: {
     contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     partition: 'persist:deeptutor',
   } });
-  const content = view.webContents;
+  view = nextView;
+  if (MACOS) {
+    nextView.setVisible(false);
+    nextView.setBackgroundColor(shellBackground());
+  }
+  const content = nextView.webContents;
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -151,9 +165,14 @@ async function openContent(url) {
   content.on('will-redirect', restrict);
   content.on('will-attach-webview', event => event.preventDefault());
   content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
-  window.contentView.addChildView(view);
+  window.contentView.addChildView(nextView);
   layout();
   await content.loadURL(url);
+  if (MACOS && view === nextView && !quitting) {
+    nextView.setVisible(true);
+    if (window.isFocused()) content.focus();
+    status({ phase: 'ready' });
+  }
 }
 
 function trustedShell(event) {
@@ -187,7 +206,9 @@ async function launchRuntime(installed) {
     let ready = false;
     child.on('message', next => {
       if (worker !== child || quitting) return;
-      status(next);
+      // The worker is ready before the embedded page has loaded.
+      if (MACOS && next.phase === 'ready') status({ ...next, phase: 'starting', step: 'openingSpace' });
+      else status(next);
       if (next.phase === 'ready' && !ready) { ready = true; resolve(next); }
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
@@ -401,13 +422,18 @@ else {
   });
   window = new BrowserWindow({
     title: 'Open DeepTutor', width: 1360, height: 920, minWidth: 900, minHeight: 620,
-    backgroundColor: BACKGROUND[ui.theme],
-    ...(WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
+    backgroundColor: shellBackground(),
+    ...(MACOS ? { show: false } : WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
     webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
+  if (MACOS) {
+    window.once('ready-to-show', () => { if (!quitting) window.show(); });
+    window.on('enter-full-screen', layout);
+    window.on('leave-full-screen', layout);
+  }
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
