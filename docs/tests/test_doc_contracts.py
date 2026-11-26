@@ -32,9 +32,11 @@ COMMAND = re.compile(
     r"\bdeeptutor[ \t]+([a-z][a-z0-9_-]*)(?:[ \t]+([a-z][a-z0-9_-]*))?(?![a-z0-9_-])"
 )
 
-# Commands inside fenced examples are checked too — that is where readers copy
-# them from, and it is most of the mentions on the site. Only lines that
-# actually *invoke* the CLI count, so a path or a container name does not:
+# A command mention counts when its line actually *invokes* the CLI. That
+# covers fenced examples — where readers copy from, and where most mentions on
+# the site live — and also prose lines and table rows that start an invocation
+# the same way. Matching only the invocation position keeps a path or a
+# container name out:
 #
 #   deeptutor kb list                    → invocation (line start)
 #   $ deeptutor kb list                  → invocation (shell prompt)
@@ -44,7 +46,7 @@ COMMAND = re.compile(
 #                                           the container name, `python` the
 #                                           command, so this would otherwise
 #                                           look like `deeptutor python`.
-FENCED_COMMAND = re.compile(
+COMMAND_INVOCATION = re.compile(
     r"""
     (?:
         ^[ \t]*(?:\$[ \t]+)?                     # line start, optional prompt
@@ -104,7 +106,7 @@ def _documented_commands() -> list[tuple[str, str, str]]:
                 continue
             found.append((relative, match.group(1), match.group(2) or ""))
         fenced = page.read_text(encoding="utf-8")
-        for match in FENCED_COMMAND.finditer(fenced):
+        for match in COMMAND_INVOCATION.finditer(fenced):
             if _describes_retired_mention(fenced, match.start()):
                 continue
             if _is_schematic_mention(fenced, match.end()):

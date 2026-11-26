@@ -139,6 +139,12 @@ def matches_api_path(documented: str, known: set[str]) -> bool:
     A documented path that is a strict segment prefix of a known path also
     matches, because docs legitimately name a mounted prefix as the surface root
     ("the ``/api/reading`` surface").
+
+    Known limit: a single-parameter route absorbs any literal in that slot, so a
+    documented ``/api/books/nonexistent`` matches the served
+    ``/api/books/{book_id}``. Distinguishing a wrong concrete id from a real one
+    would need the route's value constraints, which the surface does not carry;
+    this check answers "is there a route of this shape", not "is this id valid".
     """
     documented_segments = [segment for segment in documented.split("/") if segment]
     for candidate in known:
