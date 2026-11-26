@@ -55,10 +55,10 @@ jobs:
         working-directory: docs
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -101,10 +101,10 @@ jobs:
         working-directory: docs
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -225,7 +225,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment preview URL on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -289,7 +289,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -336,7 +336,7 @@ jobs:
 
       - name: Update preview comment on PR
         if: steps.cleanup.outputs.removed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const marker = "<!-- deeptutor-docs-preview -->";
