@@ -35,7 +35,7 @@ class SmartRetriever:
         passages: list[str] = []
         all_sources: list[dict] = []
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 continue
             content = result.get("content") or result.get("answer") or ""
             if content:

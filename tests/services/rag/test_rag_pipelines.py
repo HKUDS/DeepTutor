@@ -373,3 +373,19 @@ async def test_generate_queries_strips_list_markers_not_leading_numbers(
     queries = await retriever._generate_queries("some context", 3)
 
     assert queries == ["2024 budget forecast", "5G network rollout", "climate policy"]
+
+
+@pytest.mark.asyncio
+async def test_smart_retrieve_skips_cancelled_search() -> None:
+    async def cancelled_search(**_kwargs: Any) -> Dict[str, Any]:
+        raise asyncio.CancelledError()
+
+    retriever = SmartRetriever(search=cancelled_search)
+
+    result = await retriever.retrieve(
+        context="anything",
+        kb_name="kb",
+        query_hints=["q"],
+    )
+
+    assert result == {"answer": "", "sources": []}
