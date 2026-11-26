@@ -126,3 +126,46 @@ async def test_http_date_survives_terminal_rate_limit_error(
         await _make_adapter().embed(EmbeddingRequest(texts=["hello"], model="test-model"))
 
     assert transport.calls == 9
+
+
+class _RateLimitedThenFlakyTransport(httpx.AsyncBaseTransport):
+    """Return rate limits, then one transport error, then success."""
+
+    def __init__(self, rate_limits: int) -> None:
+        self.rate_limits = rate_limits
+        self.calls = 0
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.calls += 1
+        if self.calls <= self.rate_limits:
+            return httpx.Response(429, headers={"Retry-After": "1"}, request=request)
+        if self.calls == self.rate_limits + 1:
+            raise httpx.ReadTimeout("simulated read timeout", request=request)
+        return httpx.Response(
+            200,
+            json={"data": [{"embedding": [0.1, 0.2]}], "model": "test-model"},
+            request=request,
+        )
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retries_do_not_consume_transport_retry_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rate_limits = OpenAICompatibleEmbeddingAdapter._MAX_RETRIES
+    transport = _RateLimitedThenFlakyTransport(rate_limits)
+    _install_transport(monkeypatch, transport)
+    sleeps: list[float] = []
+
+    async def _record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", _record_sleep)
+
+    result = await _make_adapter().embed(EmbeddingRequest(texts=["hello"], model="test-model"))
+
+    assert result.embeddings == [[0.1, 0.2]]
+    assert transport.calls == rate_limits + 2
+    # The first transport retry uses the base backoff, not one scaled by the
+    # number of preceding rate-limit retries.
+    assert sleeps == [60] * rate_limits + [OpenAICompatibleEmbeddingAdapter._RETRY_BACKOFF]

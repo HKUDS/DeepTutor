@@ -252,10 +252,12 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         )
         last_exc: Exception | None = None
         rate_limit_retries = 0
+        transport_retries = 0
         # 槽位必须 > 限流重试上限：429 的 continue 也消耗 attempt，若循环
         # 先耗尽而 last_exc 仍为 None，会静默落到循环外的 data 引用上
-        # （UnboundLocalError）。多给 4 个槽位兜住 8 轮限流 + 网络重试。
-        for attempt in range(1 + max(self._MAX_RETRIES, 10)):
+        # （UnboundLocalError）。限流与网络重试各自计数，槽位按两者之和
+        # （8 轮限流 + _MAX_RETRIES 次网络重试 + 1 次 encoding_format 重试）给足。
+        for _attempt in range(1 + self._MAX_RETRIES + 8 + 1):
             try:
                 async with httpx.AsyncClient(
                     timeout=timeout, verify=not disable_ssl_verify_enabled()
@@ -361,11 +363,12 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                 # Retrying any of these with backoff is safe and obviates the
                 # need to keep extending an explicit allow-list.
                 last_exc = exc
-                if attempt < self._MAX_RETRIES:
-                    wait = self._RETRY_BACKOFF * (2**attempt)
+                if transport_retries < self._MAX_RETRIES:
+                    wait = self._RETRY_BACKOFF * (2**transport_retries)
+                    transport_retries += 1
                     logger.warning(
                         f"Embedding request transport error ({type(exc).__name__}: {exc}) "
-                        f"on attempt {attempt + 1}/{1 + self._MAX_RETRIES}, "
+                        f"on attempt {transport_retries}/{1 + self._MAX_RETRIES}, "
                         f"retrying in {wait:.1f}s..."
                     )
                     await asyncio.sleep(wait)
