@@ -278,7 +278,11 @@ class LlamaIndexPipeline:
             # #1802: validate and publish pixels before persisting nodes that
             # reference them. Failed indexing can leave unused immutable assets;
             # failed asset publication must not leave a partially accepted index.
-            VisualAssetStore(kb_dir).publish(visual_candidates, prune_missing=True)
+            # Figure validation and durable writes can outlast desktop health
+            # probes. Keep the API loop responsive until publication completes.
+            await asyncio.to_thread(
+                VisualAssetStore(kb_dir).publish, visual_candidates, prune_missing=True
+            )
 
             def checkpoint_document(path: Path, embedding_reused: bool) -> None:
                 if run is not None:
@@ -527,7 +531,7 @@ class LlamaIndexPipeline:
                 self.logger.warning("No valid documents to add")
                 return False
 
-            VisualAssetStore(kb_dir).publish(visual_candidates)
+            await asyncio.to_thread(VisualAssetStore(kb_dir).publish, visual_candidates)
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")
                 num_added = await _run_with_stall_guard(
