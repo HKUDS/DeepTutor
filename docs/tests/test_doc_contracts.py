@@ -100,17 +100,34 @@ def _documented_commands() -> list[tuple[str, str, str]]:
         for match in COMMAND.finditer(prose):
             if _describes_retired_mention(prose, match.start()):
                 continue
+            if _is_schematic_mention(prose, match.end()):
+                continue
             found.append((relative, match.group(1), match.group(2) or ""))
         fenced = page.read_text(encoding="utf-8")
         for match in FENCED_COMMAND.finditer(fenced):
             if _describes_retired_mention(fenced, match.start()):
                 continue
+            if _is_schematic_mention(fenced, match.end()):
+                continue
             found.append((relative, match.group(1), match.group(2) or ""))
     return found
 
 
+def _is_schematic_mention(text: str, end: int, window: int = 6) -> bool:
+    """Whether a command mention is followed by an ellipsis.
+
+    ``deeptutor bot ...`` names a family of commands in a migration table rather
+    than an invocation a reader can copy, and the same is true in the ``zh-cn``
+    table, which has no English word for the checker to look for.
+    """
+    tail = text[end : end + window].lstrip(" \t")
+    return tail.startswith("...") or tail.startswith("…")
+
+
 # Words that, near the match, signal the sentence is about a command that no
-# longer exists rather than one a reader should run.
+# longer exists rather than one a reader should run. Both locales ship, so the
+# list covers both — otherwise the zh-cn mirror page that says "旧的 /api/v1/chat
+# … 均已移除" reads as a live claim.
 RETIRED_MARKERS = (
     "old ",
     "legacy",
@@ -124,13 +141,34 @@ RETIRED_MARKERS = (
     "used to be",
     "formerly",
     "previous",
+    # zh-cn
+    "旧的",
+    "以前",
+    "原来",
+    "已移除",
+    "均已移除",
+    "已废弃",
+    "弃用",
+    "不再",
+    "替换",
+    "改用",
 )
 
 
-def _describes_retired_mention(text: str, position: int, window: int = 90) -> bool:
-    """Whether the match sits in a sentence about a retired command or endpoint."""
-    start = max(0, position - window)
-    context = text[start : position + window].lower()
+def _describes_retired_mention(text: str, position: int) -> bool:
+    """Whether the match sits on a line describing a retired command/endpoint.
+
+    Scoped to the match's own line plus the line above it, not a fixed character
+    window. A window bled across table rows: the "legacy ``/api/v1/chat`` … are
+    removed" sentence sat within 90 characters of the live socket table, which
+    silently exempted ``/ws/partner-groups/{group_id}`` three rows earlier.
+    """
+    line_start = text.rfind("\n", 0, position) + 1
+    previous_start = text.rfind("\n", 0, max(0, line_start - 1)) + 1
+    line_end = text.find("\n", position)
+    if line_end < 0:
+        line_end = len(text)
+    context = text[previous_start:line_end].lower()
     return any(marker in context for marker in RETIRED_MARKERS)
 
 
@@ -189,11 +227,14 @@ def _format_unknown_subcommands(unknown: dict[str, set[str]]) -> str:
     return "\n".join(lines)
 
 
-# ── HTTP routes ─────────────────────────────────────────────────────────────
+# ── HTTP and WebSocket routes ───────────────────────────────────────────────
 
-# A documented API path: starts at /api/ and continues with path segments,
-# optionally ending in a path parameter or a common resource suffix.
+# A documented endpoint path: an /api/ route, or a /ws socket endpoint. Both
+# are checked: the socket namespace is documented as a table in
+# cli/server-api.md, and a renamed socket would otherwise go unnoticed because
+# the HTTP pattern cannot match it.
 API_PATH = re.compile(r"/api/[A-Za-z0-9_{}/.-]+")
+WS_PATH = re.compile(r"/ws(?![A-Za-z0-9_])(?:/[A-Za-z0-9_{}/.-]*)?")
 
 # Paths that belong to a third-party API the docs describe rather than to
 # DeepTutor's own backend. The Mattermost channel speaks Mattermost's v4 API,
@@ -266,38 +307,46 @@ def _is_foreign_api_path(page: str, path: str) -> bool:
 
 
 def _documented_api_paths() -> list[tuple[str, str]]:
-    """Every ``/api/...`` path the docs show, prose and examples alike.
+    """Every ``/api/...`` and ``/ws...`` path the docs show, examples included.
 
     Examples are included because that is where a reader actually sends the
     request: a ``curl`` block pointing at a route the backend does not mount is
     a worse failure than a prose mention. Frontmatter stays excluded.
+
+    The socket namespace is documented as its own table, so it needs its own
+    pattern: ``/ws`` plus subpaths, with a boundary that rejects ``/wss``.
     """
     found = []
     for page in doc_facts.documentation_pages():
         relative = page.relative_to(doc_facts.REPO_ROOT).as_posix()
         text = doc_facts.page_body(page)
-        for match in API_PATH.finditer(text):
-            # A sentence that says the endpoint was removed is history, not a
-            # claim that it is callable — the same exemption CLI commands get.
-            if _describes_retired_mention(text, match.start()):
-                continue
-            path = match.group(0).rstrip(".,;:)`'\"")
-            # A path may end in a template parameter (``/api/x/{a}/{b}``); strip
-            # trailing punctuation must not eat the closing braces.
-            while path.endswith("{") or path.endswith("}"):
-                path = path[:-1]
-            if path.count("/") < 2:
-                continue
-            found.append((relative, path))
+        for pattern, minimum_slashes in ((API_PATH, 2), (WS_PATH, 1)):
+            for match in pattern.finditer(text):
+                # A sentence that says the endpoint was removed is history, not
+                # a claim that it is callable — the same exemption CLI commands
+                # get.
+                if _describes_retired_mention(text, match.start()):
+                    continue
+                path = match.group(0).rstrip(".,;:)`'\"")
+                # A path may be cut mid-template (``/api/x/{a`` in a table
+                # column); drop the dangling opening brace. Closing braces are
+                # part of the path: stripping them turned ``{partner_id}`` into
+                # ``{partner_id`` and only matched by accident.
+                while path.endswith("{"):
+                    path = path[:-1]
+                if path.count("/") < minimum_slashes:
+                    continue
+                found.append((relative, path))
     return found
 
 
 def test_documented_api_paths_are_served() -> None:
-    """Every ``/api/...`` path in prose matches a route the backend mounts.
+    """Every ``/api/...`` and ``/ws...`` path matches a route the backend mounts.
 
     This is what caught the four ``/api/v1/...`` references: DeepTutor mounts no
     ``/api/v1`` prefix, so those requests returned 404 while the docs presented
-    them as the way to call the endpoint.
+    them as the way to call the endpoint. The socket half covers the namespace
+    table in ``cli/server-api.md``.
     """
     known = doc_facts.api_paths()
     unknown: dict[str, set[str]] = {}
@@ -366,6 +415,30 @@ def _format_stale_pins(stale: list[tuple[str, str]], current: str) -> str:
 def test_project_version_is_readable() -> None:
     """Guard the reader itself: a silent parse failure would disable the check."""
     assert re.fullmatch(r"\d+\.\d+\.\d+", doc_facts.project_version())
+
+
+# ── Locale parity ───────────────────────────────────────────────────────────
+
+
+def test_locale_page_sets_match() -> None:
+    """Every English page has a zh-cn mirror, and the reverse.
+
+    A one-sided page does not break the Starlight build: the locale switcher
+    falls back to the other language, so the reader silently gets the wrong one
+    rather than an error. This replaces the manual snippet in docs/README.md.
+    """
+    english = {
+        page.relative_to(doc_facts.DOCS_ROOT).as_posix()
+        for page in doc_facts.documentation_pages("en")
+    }
+    chinese = {
+        page.relative_to(doc_facts.DOCS_ROOT / "zh-cn").as_posix()
+        for page in doc_facts.documentation_pages("zh")
+    }
+    assert english == chinese, (
+        f"missing zh-cn pages: {sorted(english - chinese)}\n"
+        f"missing English pages: {sorted(chinese - english)}"
+    )
 
 
 # ── Frontmatter ─────────────────────────────────────────────────────────────

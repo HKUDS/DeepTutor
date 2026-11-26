@@ -25,9 +25,16 @@ SURFACE_PATH = REPO_ROOT / "docs" / "tests" / "docs_surface.json"
 
 
 @cache
-def documentation_pages(locale: str = "en") -> list[Path]:
-    """Every Markdown page, optionally restricted to one locale."""
+def documentation_pages(locale: str = "all") -> list[Path]:
+    """Every Markdown page, optionally restricted to one locale.
+
+    ``"all"`` is the default on purpose. The site ships an English tree and a
+    ``zh-cn/`` mirror, and a check that silently covered only one of them would
+    have passed on 58 of 116 pages while reporting nothing.
+    """
     pages = sorted(path for pattern in ("*.md", "*.mdx") for path in DOCS_ROOT.rglob(pattern))
+    if locale == "all":
+        return pages
     if locale == "zh":
         return [page for page in pages if "zh-cn" in page.relative_to(DOCS_ROOT).parts]
     return [page for page in pages if "zh-cn" not in page.relative_to(DOCS_ROOT).parts]
