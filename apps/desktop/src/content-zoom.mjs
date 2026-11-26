@@ -26,7 +26,8 @@ export function createContentZoom(saved, persist) {
     attach(contents) {
       current = contents;
       loaded = false;
-      contents.setZoomMode('manual');
+      // Manual mode updates the factor without scaling pixels; isolate rendered zoom to this view.
+      contents.setZoomMode('isolated');
       contents.on('did-finish-load', () => {
         if (contents !== current || contents.isDestroyed()) return;
         loaded = true;
