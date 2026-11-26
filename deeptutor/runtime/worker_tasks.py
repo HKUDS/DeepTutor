@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from deeptutor.reading.models import MaterialManifest
 
 
 def extract_document_text(
@@ -42,6 +46,15 @@ def extract_document_to_markdown(
     Path(output_path).write_text(text, encoding="utf-8")
 
 
+def ingest_reading_material(
+    source_path: str, *, root: str, filename: str | None = None
+) -> MaterialManifest:
+    """Extract and persist a document in the explicitly selected workspace."""
+    from deeptutor.reading.store import ReadingStore
+
+    return ReadingStore(root).ingest(source_path, filename=filename)
+
+
 def test_allocate_bytes(size: int) -> int:
     """Small deterministic task used by the parent-memory regression test."""
 
@@ -53,4 +66,4 @@ def test_allocate_bytes(size: int) -> int:
     return len(payload)
 
 
-__all__ = ["extract_document_text", "extract_document_to_markdown"]
+__all__ = ["extract_document_text", "extract_document_to_markdown", "ingest_reading_material"]
