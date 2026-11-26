@@ -2,11 +2,14 @@ name: Docs
 
 # Builds and verifies the public Astro/Starlight docs site.
 #
-# Same-repo pull requests also deploy an isolated preview to the `gh-pages`
-# branch at `pr-<number>/` and post/update a comment with the preview URL,
-# then clean up that directory when the pull request closes.
+# Previews on GitHub Pages (`gh-pages` branch):
+# - Same-repo pull requests deploy an isolated preview at `pr-<number>/`,
+#   post/update a comment with the preview URL, and remove it when the PR closes.
+# - Fork repositories (`repository.fork == true`) deploy branch previews on
+#   `push` (any branch except `gh-pages`) and `workflow_dispatch` at
+#   `branch-<slug>/` on the fork's own `gh-pages` branch.
 #
-# Repository setup (one-time):
+# Repository setup (one-time, in upstream or in your fork):
 #   Settings -> Pages -> Build and deployment -> Deploy from a branch:
 #   branch `gh-pages`, folder `/ (root)`.
 # Optional repository variable:
@@ -16,10 +19,8 @@ name: Docs
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - dev
-      - preview
+    branches-ignore:
+      - gh-pages
     paths:
       - "docs/**"
       - "deeptutor/modules/manifests/**"
@@ -45,7 +46,15 @@ permissions:
 jobs:
   docs:
     name: Build and check the docs site
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: >-
+      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (
+        github.event.repository.fork == true ||
+        github.ref_name == 'main' ||
+        github.ref_name == 'dev' ||
+        github.ref_name == 'preview'
+      ))
     runs-on: ubuntu-latest
     concurrency:
       group: docs-build-${{ github.event.pull_request.number || github.ref }}
@@ -82,13 +91,66 @@ jobs:
         working-directory: .
         run: python3 docs/scripts/check_docs.py dist
 
+      - name: Notify how to enable fork PR preview
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        working-directory: .
+        env:
+          FORK_FULL_NAME: ${{ github.event.pull_request.head.repo.full_name }}
+          FORK_OWNER: ${{ github.event.pull_request.head.repo.owner.login }}
+          FORK_REPO: ${{ github.event.pull_request.head.repo.name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FORK_FULL_NAME" ]; then
+            echo "::notice title=Fork PR Docs Preview::Docs preview deployment is skipped in the upstream repo for forked PRs. Enable GitHub Actions and GitHub Pages (branch gh-pages, folder / (root)) in your fork to deploy branch previews automatically."
+            exit 0
+          fi
+
+          owner_lower="$(printf '%s' "$FORK_OWNER" | tr '[:upper:]' '[:lower:]')"
+          branch_slug="$(printf '%s' "$HEAD_REF" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/\.{2,}/-/g; s/-{2,}/-/g; s/^[.-]+//; s/[.-]+$//')"
+          if [ -z "$branch_slug" ]; then
+            branch_slug="head"
+          fi
+          preview_dir="branch-${branch_slug}"
+
+          if [ "$(printf '%s' "$FORK_REPO" | tr '[:upper:]' '[:lower:]')" = "${owner_lower}.github.io" ]; then
+            preview_url="https://${owner_lower}.github.io/${preview_dir}/"
+          else
+            preview_url="https://${owner_lower}.github.io/${FORK_REPO}/${preview_dir}/"
+          fi
+
+          pages_settings_url="https://github.com/${FORK_FULL_NAME}/settings/pages"
+          actions_url="https://github.com/${FORK_FULL_NAME}/actions/workflows/docs.yml"
+
+          echo "::notice title=Fork PR Docs Preview::PR preview deployment is skipped in the upstream repo for forked PRs. To enable live docs previews, enable GitHub Actions and GitHub Pages (branch gh-pages, folder / (root)) in your fork (${pages_settings_url}). Pushing to '${HEAD_REF}' will publish to ${preview_url}"
+
+          {
+            echo "### Docs Preview for Forked PRs"
+            echo ""
+            echo "Automatic preview deployment in the upstream repository is skipped for PRs from forks."
+            echo "To enable a live docs preview for this PR, configure your fork \`${FORK_FULL_NAME}\`:"
+            echo ""
+            echo "1. Enable GitHub Actions in your fork ([Docs workflow](${actions_url}))."
+            echo "2. Enable GitHub Pages in [Settings -> Pages](${pages_settings_url}): **Deploy from a branch**, branch \`gh-pages\`, folder \`/ (root)\`."
+            echo "3. Push to \`${HEAD_REF}\` (or run the Docs workflow manually via \`workflow_dispatch\`)."
+            echo ""
+            echo "Once published, your preview will be available at:"
+            echo "- **English**: ${preview_url}"
+            echo "- **简体中文**: ${preview_url}zh-cn/"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   preview:
-    name: Deploy PR preview to GitHub Pages
+    name: Deploy preview to GitHub Pages
     needs: docs
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.action != 'closed' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name == 'pull_request' &&
+       github.event.action != 'closed' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+       github.event.repository.fork == true &&
+       github.ref_name != 'gh-pages')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,7 +162,7 @@ jobs:
       run:
         working-directory: docs
     steps:
-      - name: Checkout PR head
+      - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Set up Node.js
@@ -114,14 +176,27 @@ jobs:
         id: meta
         working-directory: .
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REF_NAME: ${{ github.ref_name }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
           CUSTOM_SITE: ${{ vars.DOCS_PREVIEW_SITE }}
         run: |
           set -euo pipefail
           owner_lower="$(printf '%s' "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')"
-          preview_dir="pr-${PR_NUMBER}"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            preview_dir="pr-${PR_NUMBER}"
+            preview_label="PR #${PR_NUMBER}"
+          else
+            branch_slug="$(printf '%s' "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/\.{2,}/-/g; s/-{2,}/-/g; s/^[.-]+//; s/[.-]+$//')"
+            if [ -z "$branch_slug" ]; then
+              branch_slug="head"
+            fi
+            preview_dir="branch-${branch_slug}"
+            preview_label="branch ${REF_NAME}"
+          fi
 
           cname=""
           if git fetch --depth=1 origin gh-pages 2>/dev/null; then
@@ -149,6 +224,7 @@ jobs:
             echo "docs_site=${docs_site}"
             echo "docs_base=${docs_base}"
             echo "preview_dir=${preview_dir}"
+            echo "preview_label=${preview_label}"
             echo "preview_url=${preview_url}"
           } >> "$GITHUB_OUTPUT"
 
@@ -174,9 +250,11 @@ jobs:
       - name: Publish preview to gh-pages
         working-directory: .
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PREVIEW_DIR: ${{ steps.meta.outputs.preview_dir }}
+          PREVIEW_LABEL: ${{ steps.meta.outputs.preview_label }}
           PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
         run: |
           set -euo pipefail
@@ -203,7 +281,7 @@ jobs:
             echo "Preview content unchanged; skipping push."
           else
             short_sha="${HEAD_SHA:0:7}"
-            git -C "$worktree" commit -m "chore(docs): update preview for PR #${PR_NUMBER} (${short_sha})"
+            git -C "$worktree" commit -m "chore(docs): update preview for ${PREVIEW_LABEL} (${short_sha})"
             for attempt in 1 2 3; do
               if git -C "$worktree" push origin HEAD:refs/heads/gh-pages; then
                 break
@@ -217,14 +295,24 @@ jobs:
           fi
 
           {
-            echo "### Docs PR Preview"
+            echo "### Docs Preview (${PREVIEW_LABEL})"
             echo ""
             echo "- English: ${PREVIEW_URL}"
             echo "- 简体中文: ${PREVIEW_URL}zh-cn/"
             echo "- Commit: \`${HEAD_SHA:0:7}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            pages_settings_url="https://github.com/${REPO_FULL_NAME}/settings/pages"
+            echo "::notice title=Fork Docs Preview Published::Preview pushed to gh-pages (${PREVIEW_URL}). If this is your first time, enable GitHub Pages (branch gh-pages, folder / (root)) at ${pages_settings_url}."
+            {
+              echo ""
+              echo "> **Note**: If the link returns 404, enable GitHub Pages for this fork at [Settings -> Pages](${pages_settings_url}) (**Deploy from a branch** -> \`gh-pages\` -> \`/ (root)\`)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v8
         env:
           PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
