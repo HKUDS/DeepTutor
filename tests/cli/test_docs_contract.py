@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 import shlex
 from urllib.parse import unquote, urlsplit
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
-DOCS_ROOT = ROOT / "site" / "src" / "content" / "docs"
+DOCS_ROOT = ROOT / "docs" / "src" / "content" / "docs"
+SURFACE_ARTIFACT = ROOT / "docs" / "tests" / "docs_surface.json"
 HANDBOOK_ROOT = ROOT / "docs-for-dev"
 PUBLIC_DOCS = (
     ROOT / "README.md",
@@ -90,6 +94,20 @@ def _deeptutor_commands() -> list[str]:
     return commands
 
 
+def _docs_surface() -> dict:
+    """The committed CLI/API surface the docs are checked against."""
+    if not SURFACE_ARTIFACT.is_file():
+        pytest.skip("run scripts/export_docs_surface.py")
+    return json.loads(SURFACE_ARTIFACT.read_text(encoding="utf-8"))
+
+
+def test_public_docs_site_pages_are_scanned() -> None:
+    """Guard the path itself: a missing site tree must not silently disable the checks."""
+    assert DOCS_ROOT.is_dir(), f"public docs site not found at {DOCS_ROOT.relative_to(ROOT)}"
+    pages = list(DOCS_ROOT.rglob("*.md"))
+    assert len(pages) > 50, f"only found {len(pages)} pages under {DOCS_ROOT.relative_to(ROOT)}"
+
+
 def test_internal_docs_links_point_to_existing_pages() -> None:
     ids = _doc_ids()
     missing: list[tuple[str, str]] = []
@@ -105,28 +123,9 @@ def test_internal_docs_links_point_to_existing_pages() -> None:
 
 
 def test_documented_deeptutor_subcommands_exist() -> None:
-    top_level = {
-        "book",
-        "chat",
-        "config",
-        "doctor",
-        "init",
-        "kb",
-        "memory",
-        "module",
-        "notebook",
-        "partner",
-        "plugin",
-        "provider",
-        "run",
-        "serve",
-        "session",
-        "skill",
-        "start",
-        "stop",
-        "workspace",
-    }
-    provider_subcommands = {"login"}
+    surface = _docs_surface()
+    top_level = set(surface["cli"]["groups"])
+    nested_subcommands = surface["cli"]["subcommands"]
 
     for command in _deeptutor_commands():
         first_segment = command.split("|", 1)[0].split("#", 1)[0].strip()
@@ -136,8 +135,9 @@ def test_documented_deeptutor_subcommands_exist() -> None:
         if len(tokens) < 2:
             continue
         assert tokens[1] in top_level, command
-        if tokens[1] == "provider" and len(tokens) >= 3:
-            assert tokens[2] in provider_subcommands, command
+        nested = nested_subcommands.get(tokens[1])
+        if nested is not None and len(tokens) >= 3:
+            assert tokens[2] in nested, command
 
 
 def test_deep_research_examples_include_required_config() -> None:
