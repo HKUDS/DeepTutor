@@ -49,6 +49,7 @@ from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_toke
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
@@ -107,15 +108,15 @@ _KIND_BY_PREFIX: dict[str, tuple[str, str]] = {
 # loop, as a ``pre_loop`` hook, so without its own bound a stalled CLI parks
 # the whole turn in ``running`` — the lease keeps renewing, recovery sees a
 # live owner, and only an explicit cancel frees it.
-_STREAM_IDLE_TIMEOUT_SECONDS = 90.0
 
 
 async def _bounded_stream_chunks(stream: Any):
     """Yield stream chunks, raising once the provider goes idle for too long."""
     iterator = stream.__aiter__()
+    idle_timeout_s = get_stream_idle_timeout_seconds()
     while True:
         try:
-            yield await asyncio.wait_for(iterator.__anext__(), _STREAM_IDLE_TIMEOUT_SECONDS)
+            yield await asyncio.wait_for(iterator.__anext__(), idle_timeout_s)
         except StopAsyncIteration:
             return
         except TimeoutError:
@@ -426,7 +427,7 @@ class ContextExplorer:
         # parks the turn just as effectively as one that stalls mid-stream.
         response_stream = await asyncio.wait_for(
             client.chat.completions.create(**kwargs),
-            _STREAM_IDLE_TIMEOUT_SECONDS,
+            get_stream_idle_timeout_seconds(),
         )
         try:
             async for chunk in _bounded_stream_chunks(response_stream):

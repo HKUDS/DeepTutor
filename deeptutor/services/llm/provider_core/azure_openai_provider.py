@@ -22,6 +22,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     parse_response_output,
 )
 from deeptutor.services.llm.provider_core.openai_stream import managed_openai_stream
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 
 _ENDPOINT_SUFFIXES = (
     "/chat/completions",
@@ -211,7 +212,7 @@ class AzureOpenAIProvider(LLMProvider):
         )
         body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
         body["stream"] = True
-        idle_timeout_s = 90
+        idle_timeout_s = get_stream_idle_timeout_seconds()
 
         try:
             stream = await self._client.responses.create(**body)

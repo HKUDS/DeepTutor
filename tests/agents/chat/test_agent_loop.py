@@ -3023,7 +3023,7 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
     pipeline = AgenticChatPipeline(language="en")
     pipeline.registry = _Registry()
     monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
-    monkeypatch.setattr(agent_loop_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(agent_loop_mod, "get_stream_idle_timeout_seconds", lambda: 0.01)
     monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["web_search"])
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
     bus = StreamBus()

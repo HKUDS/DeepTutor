@@ -47,6 +47,7 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # validated against the FETCH_PROVIDERS table in _normalize_system.
     # DEEPTUTOR_FETCH_BACKEND is the deployment override.
     "web_fetch_backend": "local",
+    "llm_stream_idle_timeout_seconds": 90,
     # Reference policy applied after every web-search provider. This belongs in
     # runtime JSON so packaged installs and the settings service share one
     # source of truth; project main.yaml is intentionally not an operator
@@ -804,6 +805,7 @@ class RuntimeSettingsService:
         integrations = self.load_integrations()
         return {
             "DEEPTUTOR_VERSION_CHECK_ENABLED": _bool_env(system["version_check_enabled"]),
+            "DEEPTUTOR_STREAM_IDLE_TIMEOUT_SECONDS": str(system["llm_stream_idle_timeout_seconds"]),
             "BACKEND_PORT": str(system["backend_port"]),
             "BACKEND_WORKERS": str(system["backend_workers"]),
             "FRONTEND_PORT": str(system["frontend_port"]),
@@ -966,6 +968,8 @@ class RuntimeSettingsService:
             payload["capability_routing_enabled"] = value
         if value := self._process_env_value("DEEPTUTOR_FETCH_BACKEND"):
             payload["web_fetch_backend"] = value
+        if value := self._process_env_value("DEEPTUTOR_STREAM_IDLE_TIMEOUT_SECONDS"):
+            payload["llm_stream_idle_timeout_seconds"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_FILE_MB"):
             payload["chat_attachment_max_file_mb"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_TOTAL_MB"):
@@ -1428,6 +1432,12 @@ class RuntimeSettingsService:
                 settings.get("capability_routing_enabled"), False
             ),
             "web_fetch_backend": _normalize_web_fetch_backend(settings.get("web_fetch_backend")),
+            "llm_stream_idle_timeout_seconds": _coerce_clamped_int(
+                settings.get("llm_stream_idle_timeout_seconds"),
+                DEFAULT_SYSTEM_SETTINGS["llm_stream_idle_timeout_seconds"],
+                30,
+                1800,
+            ),
             "web_search_source_filtering": {
                 "enabled": _coerce_bool(source_filter.get("enabled"), True),
                 "blocked_domains": _string_or_list(source_filter.get("blocked_domains")),
