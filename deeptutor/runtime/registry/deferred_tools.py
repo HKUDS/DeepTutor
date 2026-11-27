@@ -156,7 +156,14 @@ class DeferredToolLoader:
         self._allowed = set(allowed) if allowed is not None else None
         # Capability-owned schemas may be deferred without changing global tools.
         self._capability_names = set(capability_names or ())
-        self._loaded = {name for name in self._loaded if self._is_allowed(name)}
+        # Session state is shared by every loader of the session: a mastery
+        # turn records its outline tools there, a later plain chat turn builds
+        # a loader that knows nothing about them. Names this loader cannot
+        # serve are *retained*: never mounted or reported by it, but written
+        # back with the session state, so the next turn that owns them still
+        # finds them and its ``tools[]`` keeps the cached prefix.
+        self._retained = {name for name in self._loaded if not self._is_allowed(name)}
+        self._loaded -= self._retained
         self._live_schemas: list[dict[str, Any]] | None = None
 
     def _is_allowed(self, name: str) -> bool:
@@ -174,16 +181,19 @@ class DeferredToolLoader:
         """Schemas for tools already loaded in this session (manifest-validated)."""
         schemas: list[dict[str, Any]] = []
         stale: set[str] = set()
+        foreign: set[str] = set()
         for name in sorted(self._loaded):
             tool = self._registry.get(name)
-            if tool is None or not (
-                getattr(tool, "deferred", False) or name in self._capability_names
-            ):
+            if tool is None:
                 stale.add(name)
                 continue
-            if not self._is_allowed(name):
+            if not (getattr(tool, "deferred", False) or name in self._capability_names):
+                # A capability's tool recorded by another turn of the session.
+                foreign.add(name)
                 continue
             schemas.append(_loaded_schema(tool))
+        self._loaded -= foreign
+        self._retained |= foreign
         if stale:
             # Server removed/renamed since last turn — drop quietly.
             self._loaded -= stale
@@ -222,7 +232,7 @@ class DeferredToolLoader:
         try:
             from deeptutor.services.mcp.session_state import record_loaded_tools
 
-            record_loaded_tools(self._session_id, self._loaded)
+            record_loaded_tools(self._session_id, self._loaded | self._retained)
         except Exception:
             logger.warning("failed to persist deferred-tool state", exc_info=True)
 

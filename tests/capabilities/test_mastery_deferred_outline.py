@@ -311,3 +311,81 @@ async def test_navigation_is_mounted_before_the_first_topic_exists(monkeypatch):
 
     assert "mastery_sessions" in first
     assert first == second
+
+
+@pytest.mark.asyncio
+async def test_a_plain_chat_turn_between_mastery_turns_keeps_the_outline_tools(monkeypatch):
+    """mastery (outline) → plain chat → mastery (study) in one session.
+
+    The chat turn's provider loader knows nothing about mastery's tools. It
+    used to treat the recorded outline tools as stale and persist the set
+    without them, so the next mastery turn mounted fewer tools than the one
+    before it and re-paid the whole cached prefix.
+    """
+    from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
+    from deeptutor.runtime.registry.deferred_tools import DeferredToolLoader
+    from deeptutor.runtime.registry.scoped_registry import ScopedToolRegistry
+
+    class _McpTool(BaseTool):
+        deferred = True
+
+        def get_definition(self) -> ToolDefinition:
+            return ToolDefinition(name="mcp_provider_tool", description="d")
+
+        async def execute(self, **kwargs: object) -> ToolResult:
+            return ToolResult(content="ok")
+
+    state: dict[str, set[str]] = {}
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools", lambda sid: set(state.get(sid, set()))
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools",
+        lambda sid, names: state.__setitem__(sid, set(names)),
+    )
+
+    async def providers(self, context):
+        # What ``build_tool_view`` builds for an unrestricted caller with one
+        # deferred MCP tool: no capability names, ``allowed=None``.
+        registry = ScopedToolRegistry(base=self.registry, overlay=[_McpTool()])
+        loader = DeferredToolLoader(
+            registry=registry,
+            session_id=context.session_id,
+            loaded=set(state.get(context.session_id, set())),
+            allowed=None,
+        )
+        self._tool_view = ProviderToolView(
+            registry=registry, loader=loader, pool=(_McpTool(),), manifest=""
+        )
+        self._deferred_loader = loader
+
+    monkeypatch.setattr(AgenticLoopPipeline, "_prepare_deferred_tools", providers)
+
+    async def mastery_turn(mode: str) -> list[str]:
+        pipeline = MasteryLoopPipeline(language="en")
+        context = UnifiedContext(
+            session_id="synthetic",
+            metadata={"mastery_mode": True, "mastery_path_id": "p", "mastery_session_mode": mode},
+        )
+        await pipeline._prepare_deferred_tools(context)
+        schemas = pipeline._build_llm_tool_schemas(
+            pipeline._compose_enabled_tools(context), context
+        )
+        pipeline._tool_view.attach(schemas)
+        return sorted(s["function"]["name"] for s in schemas)
+
+    outline = await mastery_turn("outline")
+    assert {"mastery_build", "mastery_revise"} <= state["synthetic"]
+
+    chat = AgenticLoopPipeline(language="en")
+    chat_context = UnifiedContext(session_id="synthetic", user_message="hi")
+    await chat._prepare_deferred_tools(chat_context)
+    chat_schemas = chat._build_llm_tool_schemas(
+        chat._compose_enabled_tools(chat_context), chat_context
+    )
+    chat._tool_view.attach(chat_schemas)
+    chat_names = [s["function"]["name"] for s in chat_schemas]
+    assert "mastery_build" not in chat_names
+    assert {"mastery_build", "mastery_revise"} <= state["synthetic"]
+
+    assert await mastery_turn("study") == outline
