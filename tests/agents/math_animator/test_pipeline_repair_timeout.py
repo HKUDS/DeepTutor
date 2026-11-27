@@ -140,12 +140,11 @@ async def test_repair_timeout_error_names_the_local_deadline_and_setting() -> No
     message = str(excinfo.value)
     # The existing "timed out" contract is preserved.
     assert "timed out" in message
-    # The error now names the stage, the effective seconds, and that this is a
-    # local overall deadline the user can raise — not a provider connection fault.
+    # The error names the stage, the effective seconds, and the local deadline.
     assert "Code repair" in message
-    assert "local" in message
+    assert "local overall repair deadline" in message
     assert "capabilities.math_animator.repair_timeout" in message
-    assert "not a provider connection failure" in message
+    assert "not a provider connection failure" not in message
 
 
 @pytest.mark.asyncio

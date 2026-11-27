@@ -51,6 +51,7 @@ def test_repair_timeout_default_matches_the_previously_hardcoded_deadline(
     monkeypatch.setattr(module, "PROJECT_ROOT", _settings_root(tmp_path, {"capabilities": {}}))
 
     assert get_math_animator_params() == {"repair_timeout": 180}
+    assert "repair_timeout" not in module.capabilities_settings_dict()["math_animator"]
 
 
 def test_repair_timeout_is_overridable_from_main_yaml(
@@ -89,20 +90,26 @@ def test_repair_timeout_is_clamped_to_a_sane_range(
     assert get_math_animator_params()["repair_timeout"] == expected
 
 
-def test_repair_timeout_is_exposed_to_the_settings_page(
+def test_configured_repair_timeout_round_trips_through_the_settings_page(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The same block the UI reads and writes, so the page cannot drift."""
-    monkeypatch.setattr(module, "PROJECT_ROOT", _settings_root(tmp_path, {"capabilities": {}}))
+    monkeypatch.setattr(
+        module,
+        "PROJECT_ROOT",
+        _settings_root(
+            tmp_path,
+            {"capabilities": {}},
+            {"capabilities": {"math_animator": {"repair_timeout": 320}}},
+        ),
+    )
 
     payload = module.capabilities_settings_dict()
-
-    # The runtime knob joins the pre-existing LLM block without disturbing it.
-    assert payload["math_animator"]["repair_timeout"] == 180
+    assert payload["math_animator"]["repair_timeout"] == 320
     assert payload["math_animator"]["temperature"] == 0.2
     assert payload["math_animator"]["max_tokens"] == 16834
 
-    module.save_capabilities_settings({"math_animator": {"repair_timeout": 320}})
+    payload["visualize"]["max_tokens"] = 32000
+    module.save_capabilities_settings(payload)
 
     assert get_math_animator_params()["repair_timeout"] == 320
     main_cfg = ConfigManager().load_config()
@@ -112,15 +119,12 @@ def test_repair_timeout_is_exposed_to_the_settings_page(
 def test_saving_another_capability_does_not_shadow_the_repair_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Opening unrelated settings and saving must not persist an inert default.
-
-    Persisting ``capabilities.math_animator.repair_timeout`` just because some
-    other capability was saved would permanently shadow the pipeline default —
-    the #1316 shape the runtime table's comment warns about.
-    """
+    """The real Settings page GETs the full DTO and PUTs it back verbatim."""
     monkeypatch.setattr(module, "PROJECT_ROOT", _settings_root(tmp_path, {"capabilities": {}}))
 
-    module.save_capabilities_settings({"visualize": {"max_tokens": 32000}})
+    payload = module.capabilities_settings_dict()
+    payload["visualize"]["max_tokens"] = 32000
+    module.save_capabilities_settings(payload)
 
     main_cfg = ConfigManager().load_config()
     assert "math_animator" not in main_cfg.get("capabilities", {})

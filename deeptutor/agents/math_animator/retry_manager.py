@@ -117,8 +117,7 @@ class CodeRetryManager:
                             raise ManimRenderError(
                                 f"Code repair attempt #{attempt + 1} timed out after "
                                 f"{int(self.repair_timeout_seconds)}s. This is the local overall "
-                                f"repair deadline (capabilities.math_animator.repair_timeout), "
-                                f"not a provider connection failure."
+                                f"repair deadline (capabilities.math_animator.repair_timeout)."
                             ) from timeout_exc
                         code = repaired.code.strip() or code
                         if self.on_status is not None:
@@ -152,8 +151,7 @@ class CodeRetryManager:
                     raise ManimRenderError(
                         f"Code repair attempt #{attempt + 1} timed out after "
                         f"{int(self.repair_timeout_seconds)}s. This is the local overall "
-                        f"repair deadline (capabilities.math_animator.repair_timeout), "
-                        f"not a provider connection failure."
+                        f"repair deadline (capabilities.math_animator.repair_timeout)."
                     ) from timeout_exc
                 code = repaired.code.strip() or code
                 if self.on_status is not None:

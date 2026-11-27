@@ -99,13 +99,10 @@ _MAIN_YAML_RUNTIME_DEFAULTS: dict[str, dict[str, Any]] = {
         },
     },
     "math_animator": {
-        # Overall deadline for one code-repair call in the render-fix loop. Must
-        # match ``CodeRetryManager``'s shipped default: this table is the fallback
-        # written when a settings payload is saved, so a user who merely opens
-        # animation settings and saves would otherwise persist 180 and permanently
-        # shadow the loop's own default — the #1316 shape. A long reasoning model
-        # repairing a book animation was cancelled mid-edit at this fixed ceiling
-        # with no setting that moved it (#2767).
+        # Runtime fallback for one code-repair call in the render-fix loop. It is
+        # deliberately omitted from the Settings DTO until explicitly configured,
+        # because the page PUTs that DTO back verbatim; injecting the default here
+        # would persist 180 on an unrelated save and shadow the loop's own default.
         "repair_timeout": 180,
     },
 }
@@ -337,6 +334,10 @@ def capabilities_settings_dict() -> dict[str, Any]:
     for cap in _AGENTS_YAML_CAPABILITY_SECTIONS:
         block = _build_simple_llm_block(agents_cfg, cap)
         block.update(_build_main_runtime_block(main_cfg, cap))
+        if cap == "math_animator":
+            animator_cfg = _get_at(main_cfg, ("capabilities", "math_animator"))
+            if not isinstance(animator_cfg, dict) or "repair_timeout" not in animator_cfg:
+                block.pop("repair_timeout", None)
         result[cap] = block
     return result
 
