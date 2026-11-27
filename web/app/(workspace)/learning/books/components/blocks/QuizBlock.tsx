@@ -13,10 +13,13 @@ import { useTranslation } from "react-i18next";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { Block, QuizAttempt } from "@/lib/book-types";
+import { normalizeQuizMathText } from "@/lib/quiz-math";
 import {
   isChoiceQuizQuestion,
+  isConceptQuizQuestion,
   normalizeQuizQuestionType,
   resolveChoiceAnswerKey,
+  resolveConceptAnswer,
 } from "@/lib/quiz-question-type";
 
 export interface QuizAttemptArgs {
@@ -148,44 +151,58 @@ function QuizQuestionCard({
   const normalizedType = normalizeQuizQuestionType(question.question_type);
   const options = question.options || {};
   const isChoice = isChoiceQuizQuestion(normalizedType);
+  const isConcept = isConceptQuizQuestion(normalizedType);
   const correct = String(question.correct_answer || "").trim();
   const correctChoiceKey = resolveChoiceAnswerKey(correct, options);
+  const correctConcept = resolveConceptAnswer(correct);
+  // Concept questions are true/false only when the stored key is binary.
+  const conceptIsBinary = isConcept && Boolean(correctConcept);
+  // Choice and binary concept questions have an answer key, so they can grade
+  // themselves. Everything else is self-graded or revealed.
+  const gradesSelection = isChoice || conceptIsBinary;
+  const correctConceptLabel =
+    correctConcept === "true" ? t("True") : t("False");
 
   // Restore what the reader last did, so leaving and coming back doesn't wipe
   // their answers — the attempts were always persisted, just never read back.
-  const [selected, setSelected] = useState<string | null>(
-    previous && isChoice ? previous.user_answer || null : null,
-  );
+  const [selected, setSelected] = useState<string | null>(() => {
+    const answer = previous?.user_answer || "";
+    if (!answer) return null;
+    if (isChoice) return answer.toUpperCase();
+    if (conceptIsBinary && (answer === "true" || answer === "false")) {
+      return answer;
+    }
+    return null;
+  });
   const [revealed, setRevealed] = useState(!!previous);
   const [selfGraded, setSelfGraded] = useState<boolean | null>(
-    previous && !isChoice ? previous.is_correct : null,
+    previous && !gradesSelection ? previous.is_correct : null,
   );
 
   const reportedRef = useRef<string | null>(
-    previous
-      ? `${question.question_id || index}:${previous.user_answer || ""}`
-      : null,
+    previous ? `${questionId}:${selected || ""}` : null,
   );
 
-  // Choice questions grade themselves the moment the answer is revealed.
+  // Answer-keyed questions grade themselves the moment the answer is revealed.
   useEffect(() => {
-    if (!isChoice || !revealed || !selected || !onAttempt) return;
+    if (!gradesSelection || !revealed || !selected || !onAttempt) return;
     const reportKey = `${questionId}:${selected}`;
     if (reportedRef.current === reportKey) return;
     reportedRef.current = reportKey;
     onAttempt({
       questionId,
       userAnswer: selected,
-      isCorrect: selected.toUpperCase() === correctChoiceKey,
+      isCorrect: selected === (isChoice ? correctChoiceKey : correctConcept),
     });
   }, [
+    gradesSelection,
     isChoice,
     revealed,
     selected,
     onAttempt,
     questionId,
     correctChoiceKey,
-    index,
+    correctConcept,
   ]);
 
   const recordSelfGrade = (isCorrect: boolean) => {
@@ -206,7 +223,9 @@ function QuizQuestionCard({
           </span>
           <div className="min-w-0 flex-1">
             <MarkdownRenderer
-              content={String(question.question || t("(missing)"))}
+              content={normalizeQuizMathText(
+                String(question.question || t("(missing)")),
+              )}
               variant="compact"
               className="font-sans text-sm font-medium text-[var(--foreground)] [&_ol]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-2"
               enableMath
@@ -220,7 +239,36 @@ function QuizQuestionCard({
         )}
       </div>
 
-      {isChoice && Object.keys(options).length > 0 ? (
+      {conceptIsBinary ? (
+        <div className="mt-3 grid grid-cols-2 gap-1.5">
+          {(["true", "false"] as const).map((value) => {
+            const isSelected = selected === value;
+            const isCorrect = revealed && value === correctConcept;
+            const isWrongPick =
+              revealed && isSelected && value !== correctConcept;
+            return (
+              <button
+                key={value}
+                onClick={() => setSelected(value)}
+                aria-pressed={isSelected}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  isCorrect
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
+                    : isWrongPick
+                      ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+                      : isSelected
+                        ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]"
+                        : "border-transparent bg-[rgb(var(--dt-ink,55_53_47)/0.035)] text-[var(--foreground)] hover:bg-[rgb(var(--dt-ink,55_53_47)/0.06)]"
+                }`}
+              >
+                {value === "true" ? t("True") : t("False")}
+                {isCorrect && <CheckCircle2 className="h-4 w-4" />}
+                {isWrongPick && <XCircle className="h-4 w-4" />}
+              </button>
+            );
+          })}
+        </div>
+      ) : isChoice && Object.keys(options).length > 0 ? (
         <div className="mt-3 space-y-1.5">
           {Object.entries(options).map(([key, label]) => {
             const upperKey = key.toUpperCase();
@@ -247,7 +295,7 @@ function QuizQuestionCard({
                 </span>
                 <div className="min-w-0 flex-1 break-words">
                   <MarkdownRenderer
-                    content={label}
+                    content={normalizeQuizMathText(label)}
                     variant="compact"
                     className="font-sans text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
                     enableMath
@@ -279,23 +327,27 @@ function QuizQuestionCard({
           )}
           {revealed ? t("Hide answer") : t("Reveal answer")}
         </button>
-        {revealed && correct && isChoice && (
-          <span className="text-xs text-[var(--muted-foreground)]">
-            {t("Answer")}:{" "}
-            <span className="font-mono text-[var(--foreground)]">
-              {correctChoiceKey || correct}
+        {revealed &&
+          (isChoice || conceptIsBinary) &&
+          (conceptIsBinary ? correctConcept : correct) && (
+            <span className="text-xs text-[var(--muted-foreground)]">
+              {t("Answer")}:{" "}
+              <span className="font-mono text-[var(--foreground)]">
+                {conceptIsBinary
+                  ? correctConceptLabel
+                  : correctChoiceKey || correct}
+              </span>
             </span>
-          </span>
-        )}
+          )}
       </div>
 
-      {revealed && correct && !isChoice && (
+      {revealed && correct && !gradesSelection && (
         <div className="mt-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.035)] p-2">
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
             {t("Answer")}
           </div>
           <MarkdownRenderer
-            content={correct}
+            content={normalizeQuizMathText(correct)}
             variant="compact"
             className="font-sans text-sm text-[var(--foreground)] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-1.5 [&_pre]:my-2"
             enableMath
@@ -305,7 +357,7 @@ function QuizQuestionCard({
 
       {/* Written answers can only be graded by the reader. Without this they
           were invisible to progress entirely — practice chapters scored zero. */}
-      {revealed && !isChoice && (
+      {revealed && !gradesSelection && (
         <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-[var(--muted)]/30 px-2.5 py-1.5">
           <span className="text-xs text-[var(--muted-foreground)]">
             {t("How did you do?")}
@@ -330,7 +382,7 @@ function QuizQuestionCard({
       {revealed && question.explanation && (
         <div className="mt-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] p-2">
           <MarkdownRenderer
-            content={String(question.explanation)}
+            content={normalizeQuizMathText(String(question.explanation))}
             variant="compact"
             enableMath
           />
