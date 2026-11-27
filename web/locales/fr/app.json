@@ -4559,7 +4559,7 @@
   "Admin resources stay linked server-side; users only receive allowed access.": "Les ressources administrateur restent liées côté serveur ; les utilisateurs ne reçoivent que l'accès autorisé.",
   "Advanced": "Avancé",
   "Advanced connection settings": "Paramètres de connexion avancés",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Paramètres avancés du modèle",
   "After applying changes, lower limits take effect immediately. Raising limits needs a backend restart so larger uploads fit through the WebSocket transport.": "Après application des modifications, les limites abaissées prennent effet immédiatement. Les augmenter nécessite un redémarrage du backend pour que les envois plus volumineux passent par le transport WebSocket.",
   "Age band": "Tranche d'âge",
   "Agent response timed out. Please try again.": "La réponse de l'agent a expiré. Veuillez réessayer.",

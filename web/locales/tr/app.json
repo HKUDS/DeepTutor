@@ -4337,7 +4337,7 @@
   "Currently active": "Şu anda etkin",
   "Changes take effect after Apply changes.": "Değişiklikler, “Değişiklikleri uygula” seçildikten sonra geçerli olur.",
   "Provider configuration": "Sağlayıcı yapılandırması",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Gelişmiş model ayarları",
   "Could not discard the draft: {{message}}": "Taslak atılamadı: {{message}}",
   "Failed to load settings.": "Ayarlar yüklenemedi.",
   "Manage home suggestions and how long DeepTutor waits for replies.": "Ana sayfa önerilerini ve DeepTutor'ın cevapları ne kadar bekleyeceğini yönetin.",

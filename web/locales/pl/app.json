@@ -4350,7 +4350,7 @@
   "Currently active": "Obecnie aktywne",
   "Changes take effect after Apply changes.": "Zmiany wejdą w życie po zastosowaniu zmian.",
   "Provider configuration": "Konfiguracja dostawcy",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Zaawansowane ustawienia modeli",
   "Could not discard the draft: {{message}}": "Nie udało się odrzucić wersji roboczej: {{message}}",
   "Failed to load settings.": "Nie udało się wczytać ustawień.",
   "Manage home suggestions and how long DeepTutor waits for replies.": "Zarządzaj sugestiami na stronie głównej oraz czasem oczekiwania DeepTutor na odpowiedzi.",

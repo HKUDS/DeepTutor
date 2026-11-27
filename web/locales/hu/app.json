@@ -4465,7 +4465,7 @@
   "Currently active": "Jelenleg aktív",
   "Changes take effect after Apply changes.": "A módosítások a Módosítások alkalmazása után lépnek életbe.",
   "Provider configuration": "Szolgáltató beállítása",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Speciális modellbeállítások",
   "Could not discard the draft: {{message}}": "Nem sikerült elvetni a piszkozatot: {{message}}",
   "Failed to load settings.": "A beállítások betöltése nem sikerült.",
   "Manage home suggestions and how long DeepTutor waits for replies.": "Kezelje a kezdőlapi javaslatokat és azt, mennyi ideig vár a DeepTutor a válaszokra.",

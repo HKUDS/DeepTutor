@@ -4335,7 +4335,7 @@
   "Currently active": "Đang hoạt động",
   "Changes take effect after Apply changes.": "Thay đổi có hiệu lực sau khi nhấn Áp dụng thay đổi.",
   "Provider configuration": "Cấu hình nhà cung cấp",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Cài đặt mô hình nâng cao",
   "Could not discard the draft: {{message}}": "Không thể bỏ bản nháp: {{message}}",
   "Failed to load settings.": "Không thể tải cài đặt.",
   "Manage home suggestions and how long DeepTutor waits for replies.": "Quản lý gợi ý ở trang chủ và thời gian DeepTutor chờ phản hồi.",

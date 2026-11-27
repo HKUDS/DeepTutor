@@ -4336,7 +4336,7 @@
   "Currently active": "現在有効",
   "Changes take effect after Apply changes.": "変更は「変更を適用」の後に反映されます。",
   "Provider configuration": "プロバイダーの設定",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "モデルの詳細設定",
   "Could not discard the draft: {{message}}": "下書きを破棄できませんでした: {{message}}",
   "Failed to load settings.": "設定を読み込めませんでした。",
   "Manage home suggestions and how long DeepTutor waits for replies.": "ホームの提案と、DeepTutor が返信を待つ時間を管理します。",

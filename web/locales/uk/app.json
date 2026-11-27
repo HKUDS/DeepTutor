@@ -4365,7 +4365,7 @@
   "Currently active": "Наразі активний",
   "Changes take effect after Apply changes.": "Зміни набувають чинності після застосування змін.",
   "Provider configuration": "Конфігурація провайдера",
-  "Advanced model settings": "Advanced model settings",
+  "Advanced model settings": "Розширені налаштування моделі",
   "Could not discard the draft: {{message}}": "Не вдалося скасувати чернетку: {{message}}",
   "Failed to load settings.": "Не вдалося завантажити налаштування.",
   "Manage home suggestions and how long DeepTutor waits for replies.": "Керуйте пропозиціями для дому та тим, як довго DeepTutor чекає на відповіді.",
