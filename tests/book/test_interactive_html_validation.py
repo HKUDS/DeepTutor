@@ -40,10 +40,7 @@ def _context() -> BlockContext:
     )
 
 
-async def _generate(response: str, monkeypatch: pytest.MonkeyPatch) -> Block:
-    from deeptutor.agents.visualize import pipeline as pipeline_module
-    from deeptutor.services.llm import config as config_module
-
+def _pipeline(responses: list[str]) -> MagicMock:
     pipeline = MagicMock()
     pipeline.run_analysis = AsyncMock(
         return_value=VisualizationAnalysis(
@@ -52,15 +49,29 @@ async def _generate(response: str, monkeypatch: pytest.MonkeyPatch) -> Block:
             chart_type="interactive",
         )
     )
-    pipeline.run_code_generation = AsyncMock(return_value=response)
+    pipeline.run_code_generation = AsyncMock(side_effect=responses)
+    pipeline.code_agent.binding = "deepseek"
+    pipeline.code_agent.get_model.return_value = "deepseek-flash"
+    pipeline.code_agent.get_max_tokens.return_value = 16000
+    return pipeline
+
+
+async def _run(pipeline: MagicMock, monkeypatch: pytest.MonkeyPatch) -> Block:
+    from deeptutor.agents.visualize import pipeline as pipeline_module
+    from deeptutor.services.llm import config as config_module
+
     monkeypatch.setattr(pipeline_module, "VisualizePipeline", MagicMock(return_value=pipeline))
     monkeypatch.setattr(
         config_module,
         "get_llm_config",
         lambda: SimpleNamespace(api_key="test", base_url="", api_version=""),
     )
-
     return await InteractiveGenerator().generate(_context())
+
+
+async def _generate(response: str, monkeypatch: pytest.MonkeyPatch) -> Block:
+    # The same reply on every attempt, so a retry cannot rescue a bad page.
+    return await _run(_pipeline([response, response]), monkeypatch)
 
 
 @pytest.mark.asyncio
@@ -138,3 +149,55 @@ async def test_fences_and_end_tags_inside_the_document_are_kept(
 
     assert result.status == BlockStatus.READY
     assert result.payload["code"]["content"] == html
+
+
+def _efforts(pipeline: MagicMock) -> list[object]:
+    return [
+        call.kwargs.get("reasoning_effort") for call in pipeline.run_code_generation.await_args_list
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "first",
+    ["", f"```html\n{_HTML[: _HTML.index('</script>')]}"],
+    ids=["empty", "cut-off"],
+)
+async def test_a_page_that_ran_out_of_room_is_retried_with_thinking_off(
+    first: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reasoning model can spend the whole output budget thinking and return
+    # nothing, or stop halfway; asking again with thinking off frees the room.
+    pipeline = _pipeline([first, _HTML])
+    result = await _run(pipeline, monkeypatch)
+
+    assert result.status == BlockStatus.READY
+    assert result.payload["code"]["content"] == _HTML
+    assert _efforts(pipeline) == [None, "none"]
+
+
+@pytest.mark.asyncio
+async def test_a_page_still_out_of_room_after_the_retry_says_what_to_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _pipeline(["", ""])
+    result = await _run(pipeline, monkeypatch)
+
+    assert result.status == BlockStatus.ERROR
+    assert "returned no code" in result.error
+    assert "16000-token" in result.error
+    assert "Settings → Capabilities → Visualize" in result.error
+    assert "Reasoning effort → None" not in result.error
+    assert _efforts(pipeline) == [None, "none"]
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_page_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Unpaired script tags are a model mistake, not a budget problem.
+    pipeline = _pipeline([_HTML.replace("</body>", "</script></body>"), _HTML])
+    result = await _run(pipeline, monkeypatch)
+
+    assert result.status == BlockStatus.ERROR
+    assert "unpaired <script>" in result.error
+    assert "Max tokens" not in result.error
+    assert _efforts(pipeline) == [None]

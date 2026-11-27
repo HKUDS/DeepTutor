@@ -34,7 +34,13 @@ class CodeGeneratorAgent(BaseAgent):
         user_input: str,
         history_context: str,
         analysis: VisualizationAnalysis,
+        reasoning_effort: str | None = None,
     ) -> str:
+        """Write the code for *analysis*.
+
+        ``reasoning_effort`` overrides the model's thinking level for this one
+        call; ``None`` keeps whatever the model is configured with.
+        """
         # Structured prompt assembly: every render type loads the shared
         # base + general rules, plus exactly one format-specific rule block.
         # This keeps the per-call prompt dense with the rules that matter for
@@ -63,6 +69,7 @@ class CodeGeneratorAgent(BaseAgent):
             user_prompt=user_prompt,
             system_prompt=system_prompt,
             stage="generating",
+            reasoning_effort=reasoning_effort,
             trace_meta=build_trace_metadata(
                 call_id=new_call_id("viz-codegen"),
                 phase="generating",

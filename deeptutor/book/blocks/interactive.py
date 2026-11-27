@@ -9,6 +9,10 @@ deterministic local ``validate_visualization``. HTML has no repair pass (full
 single-file documents are too large for a useful targeted fix), so an
 unrenderable document raises ``GenerationFailure`` and lets the book engine
 retry — better than baking a placeholder page into the book.
+
+The one exception is a page that ran out of room — empty, or cut off before
+``</html>``. A reasoning model can spend the whole output budget thinking, so
+that page is asked for once more with thinking turned off before failing.
 """
 
 from __future__ import annotations
@@ -71,8 +75,27 @@ def _offset(text: str, position: tuple[int, int]) -> int:
     return offset + column
 
 
+class _OutOfRoom(GenerationFailure):
+    """The model returned no page, or stopped before the page was finished.
+
+    Both happen when a reasoning model spends the output budget on hidden
+    thinking, so they are worth one more attempt with thinking turned off.
+    """
+
+
+def _budget_hint(max_tokens: int | None) -> str:
+    budget = f"its {max_tokens}-token" if max_tokens else "its"
+    return (
+        f" It was retried with thinking turned off and still ran out of {budget} "
+        "output budget: raise Max tokens in Settings → Capabilities → Visualize, "
+        "or turn off thinking or lower the reasoning effort for this model in Settings."
+    )
+
+
 def _normalize_interactive_html(code: str) -> str:
     text = (code or "").strip()
+    if not text:
+        raise _OutOfRoom("interactive generation returned no code.")
     start = _HTML_START.search(text)
     if start is None:
         raise GenerationFailure(
@@ -87,7 +110,7 @@ def _normalize_interactive_html(code: str) -> str:
         if parser.open_scripts and _HTML_END.search(text) is not None:
             raise GenerationFailure("interactive html contains unpaired <script> tags.")
         where = "inside a <script>" if parser.open_scripts else "before its closing </html>"
-        raise GenerationFailure(
+        raise _OutOfRoom(
             f"interactive html is incomplete: it stops {where} "
             "(the model output was probably cut off)."
         )
@@ -98,6 +121,15 @@ def _normalize_interactive_html(code: str) -> str:
     if end is None:  # pragma: no cover - the parser only reports real end tags
         raise GenerationFailure("interactive html has an unreadable </html> tag.")
     return text[: end.end()]
+
+
+def _max_tokens(agent: Any) -> int | None:
+    """The budget the code-generation call was sent with, for the error text."""
+    try:
+        return int(agent.get_max_tokens())
+    except Exception:  # pragma: no cover - only used to word an error
+        logger.debug("Could not read the visualize budget", exc_info=True)
+        return None
 
 
 class InteractiveGenerator(BlockGenerator):
@@ -152,21 +184,40 @@ class InteractiveGenerator(BlockGenerator):
                 api_version=llm_config.api_version,
                 language=ctx.language,
             )
+            from deeptutor.services.llm.reasoning_params import thinking_off_effort_for
+
             analysis = await pipeline.run_analysis(
                 user_input=user_input,
                 history_context=history_context,
                 render_mode="html",
             )
-            code = await pipeline.run_code_generation(
-                user_input=user_input,
-                history_context=history_context,
-                analysis=analysis,
-            )
         except Exception as exc:
             logger.warning(f"InteractiveGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"interactive generation failed: {exc}") from exc
 
-        code = _normalize_interactive_html(code)
+        async def write_page(reasoning_effort: str | None) -> str:
+            try:
+                return await pipeline.run_code_generation(
+                    user_input=user_input,
+                    history_context=history_context,
+                    analysis=analysis,
+                    reasoning_effort=reasoning_effort,
+                )
+            except Exception as exc:
+                logger.warning(f"InteractiveGenerator failed: {exc}", exc_info=True)
+                raise GenerationFailure(f"interactive generation failed: {exc}") from exc
+
+        agent = pipeline.code_agent
+        try:
+            code = _normalize_interactive_html(await write_page(None))
+        except _OutOfRoom as first:
+            logger.info(f"Interactive page ran out of room ({first}); retrying with thinking off")
+            effort = thinking_off_effort_for(agent.binding, agent.get_model())
+            try:
+                code = _normalize_interactive_html(await write_page(effort))
+            except _OutOfRoom as exc:
+                raise GenerationFailure(str(exc) + _budget_hint(_max_tokens(agent))) from exc
+
         ok, validation_error = validate_visualization(code, "html")
         if not ok:
             raise GenerationFailure(f"interactive html failed validation: {validation_error}")
