@@ -32,16 +32,15 @@ import {
   type ServiceName,
 } from "@/features/settings/store/SettingsStore";
 import {
-  FEATURED_DOMESTIC_PROVIDERS,
-  MORE_PROVIDERS,
   SYNCABLE_EXTRA_SERVICES,
   findQuickPreset,
   formatFriendlySetupError,
+  getQuickProviderGroups,
   pickRecommendedModel,
   type FriendlyErrorResult,
   type QuickProviderPreset,
 } from "@/lib/quick-setup-presets";
-import { inputClass, selectClass } from "./shared";
+import { inputClass, subPanelClass } from "./shared";
 
 type SetupResultState = {
   providerId: string;
@@ -77,8 +76,16 @@ function hasActiveService(
   );
 }
 
+const compactSelectClass =
+  "h-9 max-w-[230px] cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 pr-8 text-[13px] leading-5 text-[var(--foreground)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--foreground)_25%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)] disabled:cursor-not-allowed disabled:opacity-60";
+
 export function QuickModelSetupWorkspace() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const uiLanguage = i18n?.resolvedLanguage ?? i18n?.language ?? "zh";
+  const { featured: featuredProviders, more: moreProviders } = useMemo(
+    () => getQuickProviderGroups(uiLanguage),
+    [uiLanguage],
+  );
 
   const {
     catalog,
@@ -103,9 +110,31 @@ export function QuickModelSetupWorkspace() {
     ],
   );
   const hasConfiguredLlm = Boolean(activeLlm);
+  const hasConfiguredEmbedding = useMemo(
+    () => hasActiveService(catalog.services, "embedding"),
+    [catalog.services],
+  );
+  const hasConfiguredSearch = useMemo(
+    () => hasActiveService(catalog.services, "search"),
+    [catalog.services],
+  );
+  const hasConfiguredVoice = useMemo(
+    () =>
+      hasActiveService(catalog.services, "tts") ||
+      hasActiveService(catalog.services, "stt"),
+    [catalog.services],
+  );
+  const hasConfiguredMultimodal = useMemo(
+    () =>
+      hasActiveService(catalog.services, "imagegen") ||
+      hasActiveService(catalog.services, "videogen"),
+    [catalog.services],
+  );
 
   const [showAddForm, setShowAddForm] = useState(!hasConfiguredLlm);
-  const [selectedVendorId, setSelectedVendorId] = useState<string>("deepseek");
+  const [selectedVendorId, setSelectedVendorId] = useState<string>(
+    () => featuredProviders[0]?.id ?? "deepseek",
+  );
   const [showMoreVendors, setShowMoreVendors] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -134,7 +163,7 @@ export function QuickModelSetupWorkspace() {
   }, [connectionTargets]);
 
   const selectedPreset: QuickProviderPreset =
-    findQuickPreset(selectedVendorId) ?? FEATURED_DOMESTIC_PROVIDERS[0];
+    findQuickPreset(selectedVendorId) ?? featuredProviders[0];
 
   const selectedTarget = targetByProvider.get(selectedPreset.id);
 
@@ -489,104 +518,239 @@ export function QuickModelSetupWorkspace() {
     const syncable = getSyncableCapabilities(preset.id);
     const hasEmbedding = syncable.includes("embedding");
     const hasVoice = syncable.includes("tts") || syncable.includes("stt");
+    const extraTags = [
+      hasEmbedding ? t("quickSetup.tag.knowledgeBase") : null,
+      hasVoice ? t("quickSetup.tag.voice") : null,
+    ].filter(Boolean);
 
     return (
       <button
         key={preset.id}
         type="button"
         onClick={() => handleSelectVendor(preset.id)}
-        className={`group relative flex flex-col justify-between rounded-xl border p-4 text-left transition-all ${
+        className={`group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-150 ${
           isSelected
-            ? "border-[var(--primary)] bg-[var(--primary)]/[0.06] ring-1 ring-[var(--primary)]"
-            : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--foreground)]/30 hover:bg-[var(--accent)]/40"
+            ? "border-[var(--foreground)] bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))] shadow-sm ring-1 ring-[var(--foreground)]"
+            : "border-[color-mix(in_srgb,var(--border)_85%,transparent)] bg-[var(--background)] hover:border-[color-mix(in_srgb,var(--foreground)_28%,var(--border))] hover:bg-[color-mix(in_srgb,var(--muted)_35%,transparent)]"
         }`}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)]">
-              <ProviderIcon provider={preset.id} size={20} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--muted)_80%,transparent)]">
+              <ProviderIcon provider={preset.id} size={18} />
             </div>
-            <div>
-              <div className="text-[14px] font-semibold text-[var(--foreground)]">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="truncate text-[14px] font-semibold leading-5 text-[var(--foreground)]">
                 {t(preset.nameKey)}
-              </div>
+              </span>
               {preset.badgeKey && (
-                <span className="mt-0.5 inline-block rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--primary)]">
+                <span className="shrink-0 rounded-md bg-[color-mix(in_srgb,var(--muted)_95%,transparent)] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[var(--muted-foreground)]">
                   {t(preset.badgeKey)}
                 </span>
               )}
             </div>
           </div>
-          {isSelected && (
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)]">
-              <Check size={12} strokeWidth={2.5} />
-            </span>
-          )}
+          <span
+            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+              isSelected
+                ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+                : "border-[var(--border)] bg-transparent"
+            }`}
+          >
+            {isSelected && <Check size={10} strokeWidth={3} />}
+          </span>
         </div>
 
-        <p className="mt-2.5 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+        <p className="text-[12.5px] leading-[1.55] text-[var(--muted-foreground)]">
           {t(preset.taglineKey)}
         </p>
 
-        {(hasEmbedding || hasVoice) && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {hasEmbedding && (
-              <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
-                {t("quickSetup.tag.knowledgeBase")}
-              </span>
-            )}
-            {hasVoice && (
-              <span className="rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[11px] text-rose-700 dark:text-rose-400">
-                {t("quickSetup.tag.voice")}
-              </span>
-            )}
-          </div>
+        {extraTags.length > 0 && (
+          <p className="text-[11.5px] leading-4 text-[color-mix(in_srgb,var(--muted-foreground)_85%,transparent)]">
+            {extraTags.join(" · ")}
+          </p>
         )}
       </button>
     );
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Compact 3-Step Configuration Progress Strip */}
+      <section className={`overflow-hidden ${subPanelClass}`}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,var(--border)_65%,transparent)] px-5 py-3">
+          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--foreground)]">
+            {t("quickSetup.progress.title")}
+          </h2>
+          <span className="text-[12px] text-[var(--muted-foreground)]">
+            {t("quickSetup.progress.scopeHint")}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 divide-y divide-[color-mix(in_srgb,var(--border)_65%,transparent)] md:grid-cols-3 md:divide-x md:divide-y-0">
+          {/* Step 1: Chat LLM */}
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    hasConfiguredLlm ? "bg-emerald-500" : "bg-[var(--foreground)]"
+                  }`}
+                />
+                <span className="text-[13px] font-medium text-[var(--foreground)]">
+                  {t("quickSetup.progress.step1Title")}
+                </span>
+              </div>
+              <span
+                className={`text-[11.5px] font-medium ${
+                  hasConfiguredLlm
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-[var(--foreground)]"
+                }`}
+              >
+                {hasConfiguredLlm
+                  ? t("quickSetup.progress.done")
+                  : t("quickSetup.progress.required")}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-[1.55] text-[var(--muted-foreground)]">
+              {t("quickSetup.progress.step1Desc")}
+            </p>
+          </div>
+
+          {/* Step 2: Embedding */}
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    hasConfiguredEmbedding ? "bg-emerald-500" : "bg-[var(--border)]"
+                  }`}
+                />
+                <span className="text-[13px] font-medium text-[var(--foreground)]">
+                  {t("quickSetup.progress.step2Title")}
+                </span>
+              </div>
+              <span
+                className={`text-[11.5px] font-medium ${
+                  hasConfiguredEmbedding
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-[var(--muted-foreground)]"
+                }`}
+              >
+                {hasConfiguredEmbedding
+                  ? t("quickSetup.progress.done")
+                  : t("quickSetup.progress.recommended")}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-[1.55] text-[var(--muted-foreground)]">
+              {t("quickSetup.progress.step2Desc")}
+            </p>
+            {!hasConfiguredEmbedding && (
+              <Link
+                href="/settings/embedding"
+                className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-[var(--foreground)] underline decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)]"
+              >
+                {t("quickSetup.progress.configureEmbedding")}
+                <ArrowRight size={12} />
+              </Link>
+            )}
+          </div>
+
+          {/* Step 3: Task model & optional services */}
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    hasConfiguredSearch ||
+                    hasConfiguredVoice ||
+                    hasConfiguredMultimodal
+                      ? "bg-emerald-500"
+                      : "bg-[var(--border)]"
+                  }`}
+                />
+                <span className="text-[13px] font-medium text-[var(--foreground)]">
+                  {t("quickSetup.progress.step3Title")}
+                </span>
+              </div>
+              <span className="text-[11.5px] text-[var(--muted-foreground)]">
+                {t("quickSetup.progress.optional")}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-[1.55] text-[var(--muted-foreground)]">
+              {t("quickSetup.progress.step3Desc")}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+              <Link
+                href="/settings/task-models"
+                className="text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              >
+                {t("Task models")}
+              </Link>
+              <Link
+                href="/settings/search"
+                className="text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              >
+                {t("Search")}
+              </Link>
+              <Link
+                href="/settings/voice"
+                className="text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              >
+                {t("settings.nav.voice")}
+              </Link>
+              <Link
+                href="/settings/multimodal"
+                className="text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              >
+                {t("Multimodal generation")}
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Active Model Bar */}
       {hasConfiguredLlm && activeLlm && (
-        <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-5 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--muted)_80%,transparent)]">
                 <ProviderIcon
                   provider={activeLlm.profile.binding || "openai"}
-                  size={24}
+                  size={20}
                 />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-medium text-[var(--muted-foreground)]">
-                    {t("quickSetup.activeCard.label")}
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                    <CheckCircle2 size={11} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+                  <span>{t("quickSetup.activeCard.label")}</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     {t("quickSetup.activeCard.ready")}
                   </span>
                 </div>
-                <div className="mt-0.5 text-base font-semibold text-[var(--foreground)]">
-                  {activeLlm.model?.user_name ||
-                    activeLlm.model?.name ||
-                    activeLlm.model?.model}
-                  <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">
-                    · {activeLlm.profile.name}
+                <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+                    {activeLlm.model?.user_name ||
+                      activeLlm.model?.name ||
+                      activeLlm.model?.model}
+                  </span>
+                  <span className="truncate text-[12.5px] text-[var(--muted-foreground)]">
+                    {activeLlm.profile.name}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               {llmRows.length > 1 && (
                 <select
                   aria-label={t("quickSetup.activeCard.switchLabel")}
                   disabled={switchingActive || !catalogEditable}
                   value={`${activeLlm.profile.id}::${activeLlm.model?.id ?? ""}`}
                   onChange={(e) => void handleSwitchActiveLlm(e.target.value)}
-                  className={`${selectClass} w-auto min-w-[190px] py-1.5 text-[13px]`}
+                  className={compactSelectClass}
                 >
                   {llmRows.map((row) => (
                     <option
@@ -596,7 +760,7 @@ export function QuickModelSetupWorkspace() {
                       {row.model?.user_name ||
                         row.model?.name ||
                         row.model?.model}{" "}
-                      ({row.profile.name})
+                      · {row.profile.name}
                     </option>
                   ))}
                 </select>
@@ -604,7 +768,7 @@ export function QuickModelSetupWorkspace() {
 
               <Link
                 href="/chat"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3.5 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90"
               >
                 {t("quickSetup.action.startChat")}
                 <ArrowRight size={14} />
@@ -616,7 +780,7 @@ export function QuickModelSetupWorkspace() {
                   setShowAddForm((prev) => !prev);
                   setSetupResult(null);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3.5 py-2 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
               >
                 <Plus size={14} />
                 {showAddForm
@@ -626,10 +790,8 @@ export function QuickModelSetupWorkspace() {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--border)]/60 pt-3.5 text-[12px]">
-            <span className="text-[var(--muted-foreground)]">
-              {t("quickSetup.activeCard.extraCapabilities")}
-            </span>
+          <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)] pt-3 text-[12px] text-[var(--muted-foreground)]">
+            <span>{t("quickSetup.activeCard.extraCapabilities")}</span>
             {SYNCABLE_EXTRA_SERVICES.map((item) => {
               const enabled = hasActiveService(catalog.services, item.service);
               const canOneClick =
@@ -639,14 +801,20 @@ export function QuickModelSetupWorkspace() {
               return (
                 <span
                   key={item.service}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
-                    enabled
-                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                      : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                  className={`inline-flex items-center gap-1.5 ${
+                    enabled ? "text-[var(--foreground)]" : ""
                   }`}
                 >
-                  {enabled && <Check size={12} />}
-                  {t(item.titleKey)}
+                  {enabled ? (
+                    <Check
+                      size={13}
+                      strokeWidth={2.2}
+                      className="text-emerald-600 dark:text-emerald-400"
+                    />
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--border)]" />
+                  )}
+                  <span>{t(item.titleKey)}</span>
                   {canOneClick && activeConnection && (
                     <button
                       type="button"
@@ -659,7 +827,7 @@ export function QuickModelSetupWorkspace() {
                           [item.service],
                         )
                       }
-                      className="ml-1 rounded bg-[var(--primary)]/15 px-1.5 py-0.5 text-[11px] font-medium text-[var(--primary)] hover:bg-[var(--primary)]/25"
+                      className="ml-0.5 font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-80"
                     >
                       {t("quickSetup.action.enableNow")}
                     </button>
@@ -671,18 +839,19 @@ export function QuickModelSetupWorkspace() {
         </section>
       )}
 
+      {/* Post-Setup Success Card + One-Key Multi-Service Sync */}
       {setupResult && (
-        <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.04] p-6">
+        <section className="rounded-xl border border-emerald-500/35 bg-[color-mix(in_srgb,#10b981_5%,var(--background))] p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 size={20} />
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 size={18} />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-[var(--foreground)]">
+                <h3 className="text-[15px] font-semibold text-[var(--foreground)]">
                   {t("quickSetup.success.title")}
                 </h3>
-                <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
+                <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                   {t("quickSetup.success.subtitle", {
                     provider: setupResult.providerLabel,
                     model: setupResult.modelName,
@@ -690,7 +859,7 @@ export function QuickModelSetupWorkspace() {
                 </p>
 
                 {setupResult.discoveredModels.length > 1 && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
                     <span className="text-[var(--muted-foreground)]">
                       {t("quickSetup.success.switchDiscovered", {
                         count: setupResult.discoveredModels.length,
@@ -702,7 +871,7 @@ export function QuickModelSetupWorkspace() {
                       onChange={(e) =>
                         void handleSwitchModelAfterSetup(e.target.value)
                       }
-                      className={`${selectClass} w-auto max-w-xs py-1 text-[12px]`}
+                      className={compactSelectClass}
                     >
                       {setupResult.discoveredModels.map((id) => (
                         <option key={id} value={id}>
@@ -717,10 +886,10 @@ export function QuickModelSetupWorkspace() {
 
             <Link
               href="/chat"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-[13px] font-semibold text-[var(--primary-foreground)] shadow-sm transition-opacity hover:opacity-90"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90"
             >
               {t("quickSetup.action.startChatNow")}
-              <ArrowRight size={15} />
+              <ArrowRight size={14} />
             </Link>
           </div>
 
@@ -734,21 +903,21 @@ export function QuickModelSetupWorkspace() {
             if (candidates.length === 0 && syncedServices.length === 0) return null;
 
             return (
-              <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+              <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
                 <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--foreground)]">
-                  <Zap size={15} className="text-amber-500" />
+                  <Zap size={14} strokeWidth={2} />
                   {t("quickSetup.sync.heading")}
                 </div>
 
                 {candidates.length > 0 && (
-                  <div className="mt-3 space-y-2.5">
+                  <div className="mt-3 space-y-2">
                     {candidates.map((item) => {
                       const svcSpec = target?.services[item.service];
                       const checked = selectedSyncServices.includes(item.service);
                       return (
                         <label
                           key={item.service}
-                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)]/70 p-3 transition-colors hover:bg-[var(--accent)]/40"
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color-mix(in_srgb,var(--border)_75%,transparent)] p-3 transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_35%,transparent)]"
                         >
                           <input
                             type="checkbox"
@@ -760,7 +929,7 @@ export function QuickModelSetupWorkspace() {
                                   : prev.filter((s) => s !== item.service),
                               );
                             }}
-                            className="mt-0.5 h-4 w-4 rounded accent-[var(--primary)]"
+                            className="mt-0.5 h-4 w-4 rounded accent-[var(--foreground)]"
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
@@ -771,7 +940,7 @@ export function QuickModelSetupWorkspace() {
                                 </span>
                               )}
                             </div>
-                            <p className="mt-0.5 text-[12px] text-[var(--muted-foreground)]">
+                            <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
                               {t(item.descKey)}
                             </p>
                           </div>
@@ -779,7 +948,7 @@ export function QuickModelSetupWorkspace() {
                       );
                     })}
 
-                    <div className="pt-1">
+                    <div className="pt-1.5">
                       <button
                         type="button"
                         disabled={
@@ -793,7 +962,7 @@ export function QuickModelSetupWorkspace() {
                             selectedSyncServices,
                           )
                         }
-                        className="inline-flex items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 py-2 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
                         {syncingExtras && (
                           <Loader2 size={14} className="animate-spin" />
@@ -805,7 +974,7 @@ export function QuickModelSetupWorkspace() {
                 )}
 
                 {syncedServices.length > 0 && (
-                  <p className="mt-3 flex items-center gap-1.5 text-[12px] font-medium text-emerald-700 dark:text-emerald-400">
+                  <p className="mt-3 flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 size={14} />
                     {t("quickSetup.sync.done", {
                       items: syncedServices
@@ -825,52 +994,52 @@ export function QuickModelSetupWorkspace() {
         </section>
       )}
 
+      {/* Main 1-Screen Quick Setup Flow */}
       {(showAddForm || !hasConfiguredLlm) && !setupResult && (
-        <div className="space-y-6">
-          <section className="space-y-3">
+        <div className="space-y-7">
+          {/* Step 1: Pick a Provider */}
+          <section className="space-y-3.5">
             <div>
-              <h2 className="text-[15px] font-semibold text-[var(--foreground)]">
+              <h2 className="text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
                 {t("quickSetup.step1.title")}
               </h2>
-              <p className="mt-0.5 text-[13px] text-[var(--muted-foreground)]">
+              <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t("quickSetup.step1.subtitle")}
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {FEATURED_DOMESTIC_PROVIDERS.map(renderProviderCard)}
+              {featuredProviders.map(renderProviderCard)}
             </div>
 
             <div>
               <button
                 type="button"
                 onClick={() => setShowMoreVendors((prev) => !prev)}
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
               >
                 {showMoreVendors ? (
-                  <ChevronUp size={15} />
+                  <ChevronUp size={14} />
                 ) : (
-                  <ChevronDown size={15} />
+                  <ChevronDown size={14} />
                 )}
                 {t("quickSetup.step1.moreProviders")}
               </button>
 
               {showMoreVendors && (
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {MORE_PROVIDERS.map(renderProviderCard)}
+                  {moreProviders.map(renderProviderCard)}
                 </div>
               )}
             </div>
           </section>
 
-          <form
-            onSubmit={handleQuickConnect}
-            className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 sm:p-6"
-          >
+          {/* Step 2: API Key & One-Click Connect */}
+          <form onSubmit={handleQuickConnect} className={`p-5 sm:p-6 ${subPanelClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
-                <ProviderIcon provider={selectedPreset.id} size={20} />
-                <h2 className="text-[15px] font-semibold text-[var(--foreground)]">
+                <ProviderIcon provider={selectedPreset.id} size={18} />
+                <h2 className="text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
                   {t("quickSetup.step2.title", {
                     provider: t(selectedPreset.nameKey),
                   })}
@@ -882,10 +1051,10 @@ export function QuickModelSetupWorkspace() {
                   href={selectedPreset.keyUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--primary)] hover:underline"
+                  className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
                 >
                   {t("quickSetup.step2.getKeyLink")}
-                  <ExternalLink size={13} />
+                  <ExternalLink size={12} />
                 </a>
               )}
             </div>
@@ -902,7 +1071,7 @@ export function QuickModelSetupWorkspace() {
                     value={customBaseUrl}
                     onChange={(e) => setCustomBaseUrl(e.target.value)}
                     placeholder="https://api.example.com/v1"
-                    className={inputClass}
+                    className={`${inputClass} bg-[var(--background)]`}
                   />
                 </label>
               )}
@@ -922,7 +1091,7 @@ export function QuickModelSetupWorkspace() {
                         : "sk-..."
                     }
                     autoComplete="off"
-                    className={`${inputClass} pr-10 font-mono text-[13px]`}
+                    className={`${inputClass} bg-[var(--background)] pr-10 font-mono text-[13px]`}
                   />
                   <button
                     type="button"
@@ -944,7 +1113,7 @@ export function QuickModelSetupWorkspace() {
                   <button
                     type="button"
                     onClick={() => setShowModelPicker((prev) => !prev)}
-                    className="inline-flex items-center gap-1 text-[12px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    className="inline-flex items-center gap-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                   >
                     {showModelPicker ? (
                       <ChevronUp size={13} />
@@ -972,7 +1141,7 @@ export function QuickModelSetupWorkspace() {
                       placeholder={
                         selectedPreset.recommendedModels[0] || "gpt-4o-mini"
                       }
-                      className={`${inputClass} font-mono text-[13px]`}
+                      className={`${inputClass} bg-[var(--background)] font-mono text-[13px]`}
                     />
                   </div>
                 )}
@@ -989,7 +1158,7 @@ export function QuickModelSetupWorkspace() {
                       <p className="font-semibold text-red-700 dark:text-red-300">
                         {t(errorState.titleKey)}
                       </p>
-                      <p className="mt-0.5 text-[12px] leading-relaxed text-red-700/90 dark:text-red-300/90">
+                      <p className="mt-0.5 text-[12.5px] leading-relaxed text-red-700/90 dark:text-red-300/90">
                         {t(errorState.detailKey)}
                       </p>
                       {errorState.raw && (
@@ -997,7 +1166,7 @@ export function QuickModelSetupWorkspace() {
                           <button
                             type="button"
                             onClick={() => setShowRawError((prev) => !prev)}
-                            className="text-[11px] underline opacity-80 hover:opacity-100"
+                            className="text-[11.5px] underline opacity-80 hover:opacity-100"
                           >
                             {showRawError
                               ? t("quickSetup.error.hideRaw")
@@ -1019,29 +1188,29 @@ export function QuickModelSetupWorkspace() {
                 <button
                   type="submit"
                   disabled={submitting || !catalogEditable}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-2.5 text-[14px] font-semibold text-[var(--primary-foreground)] shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--foreground)] px-5 text-[13.5px] font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={15} className="animate-spin" />
                       {t("quickSetup.action.verifying")}
                     </>
                   ) : (
                     <>
-                      <Zap size={15} />
+                      <Zap size={14} strokeWidth={2} />
                       {t("quickSetup.action.verifyAndEnable")}
                     </>
                   )}
                 </button>
 
-                <div className="flex items-center gap-3 text-[12px] text-[var(--muted-foreground)]">
+                <div className="flex flex-wrap items-center gap-4 text-[12px] text-[var(--muted-foreground)]">
                   {selectedTarget &&
                     getSyncableCapabilities(selectedPreset.id).length > 0 && (
                       <span>{t("quickSetup.step2.extraHint")}</span>
                     )}
                   <Link
                     href="/settings/connections"
-                    className="inline-flex items-center gap-1 hover:text-[var(--foreground)] hover:underline"
+                    className="inline-flex items-center gap-1 transition-colors hover:text-[var(--foreground)] hover:underline"
                   >
                     <SlidersHorizontal size={12} />
                     {t("quickSetup.step2.advancedLink")}

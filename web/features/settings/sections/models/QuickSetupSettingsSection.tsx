@@ -10,9 +10,7 @@ export default function QuickSetupSettingsSection() {
     <div>
       <SettingsPageHeader
         title={t("Quick setup")}
-        description={t(
-          "Pick a provider, paste your API key, and start chatting in seconds.",
-        )}
+        description={t("quickSetup.header.description")}
       />
       <QuickModelSetupWorkspace />
     </div>

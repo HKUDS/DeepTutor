@@ -210,6 +210,8 @@ function tableReasoningEffortOptions(
       includesAny(modelName, [
         "deepseek-reasoner",
         "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-flash",
         "qwen3",
         "qwen-3",
         "qwq",
@@ -361,4 +363,119 @@ export function dropUnvalidatedReasoningEffort<
   }
   const { reasoning_effort: _unvalidated, ...rest } = selection;
   return rest as T;
+}
+
+export type ReasoningControlMode =
+  | { kind: "none" }
+  | { kind: "toggle"; offValue: string; onValue: string }
+  | { kind: "levels"; options: ReasoningEffortOption[] };
+
+const TOGGLE_ONLY_PROVIDERS = new Set([
+  "deepseek",
+  "dashscope",
+  "volcengine",
+  "volcengine_coding_plan",
+  "byteplus",
+  "byteplus_coding_plan",
+  "siliconflow",
+  "zhipu",
+  "moonshot",
+  "custom",
+]);
+
+/**
+ * Auto-detect the chat composer's reasoning control mode for a selected model:
+ * 1. Live catalog `supported_reasoning_efforts` (e.g. Codex OAuth) -> multi-level menu.
+ * 2. Known multi-level families (OpenAI GPT-5/o-series, Gemini 2.5/3, Claude 3.7/4+,
+ *    GLM-5.3, MiniMax M3.1 Flash) -> multi-level menu.
+ * 3. Binary thinking vendors & general/custom fallback -> simple Thinking on/off toggle.
+ * 4. Models with no reasoning support -> hidden.
+ */
+export function resolveReasoningControl(
+  option: ReasoningEffortModelOption | null | undefined,
+): ReasoningControlMode {
+  if (!option || option.declared_reasoning === false) {
+    return { kind: "none" };
+  }
+
+  // 1. Live provider-advertised levels always take precedence.
+  if (option.supported_reasoning_efforts !== undefined) {
+    const valid = supportedReasoningEffortValues(option);
+    if (valid.length === 0) return { kind: "none" };
+    return {
+      kind: "levels",
+      options: reasoningEffortOptionsFromSupportedLevels(valid),
+    };
+  }
+
+  const canonical = (option.provider ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "_");
+  const provider = PROVIDER_ALIASES[canonical] ?? canonical;
+  const modelName = (option.model ?? "").trim().toLowerCase();
+
+  const valid = supportedReasoningEffortValues(option);
+
+  // 2. GLM-5.3 and MiniMax M3.1 Flash explicitly support multi-level effort.
+  const isGlm53 = modelName === "glm-5.3" || modelName.endsWith("/glm-5.3");
+  const isMiniMaxMulti =
+    ["minimax", "minimax_anthropic"].includes(provider) &&
+    modelName === "minimax-m3.1-flash";
+
+  const isMultiLevelProvider =
+    OPENAI_PROVIDERS.has(provider) ||
+    provider === "gemini" ||
+    provider === "anthropic" ||
+    provider === "custom_anthropic" ||
+    modelName.includes("gemini") ||
+    modelName.includes("claude") ||
+    isGlm53 ||
+    isMiniMaxMulti;
+
+  if (isMultiLevelProvider && valid.length > 0) {
+    return {
+      kind: "levels",
+      options: reasoningEffortOptionsFromSupportedLevels(valid),
+    };
+  }
+
+  // 3. Binary thinking vendors & general/custom models default to Thinking on/off toggle.
+  if (
+    TOGGLE_ONLY_PROVIDERS.has(provider) ||
+    provider === "minimax" ||
+    option.declared_reasoning === true
+  ) {
+    const isBinaryDomesticModel =
+      provider === "custom" ||
+      option.declared_reasoning === true ||
+      valid.length > 0 ||
+      includesAny(modelName, [
+        "deepseek",
+        "qwen3",
+        "qwen-3",
+        "qwq",
+        "qwen-plus",
+        "doubao",
+        "thinking",
+        "reasoner",
+        "r1",
+        "glm-4",
+        "glm-5",
+        "kimi",
+      ]);
+
+    if (isBinaryDomesticModel) {
+      const offValue = BINARY_THINKING_PROVIDERS.has(provider)
+        ? "minimal"
+        : "none";
+      return { kind: "toggle", offValue, onValue: "high" };
+    }
+  }
+
+  if (valid.length > 0) {
+    return { kind: "toggle", offValue: "none", onValue: "high" };
+  }
+
+  return { kind: "none" };
 }

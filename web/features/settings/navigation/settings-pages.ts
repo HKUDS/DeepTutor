@@ -9,24 +9,11 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import type { SettingsAccess } from './settings-access'
 
-export interface SettingsPageGroup {
-  label: string
-  keys: string[]
-  collapsible?: {
-    label: string
-    keys: string[]
-  }
-}
-
-export const SETTINGS_PAGE_GROUPS: SettingsPageGroup[] = [
+export const SETTINGS_PAGE_GROUPS: { label: string; keys: string[] }[] = [
   { label: 'Personal', keys: ['general', 'workspace', 'data-migration', 'appearance', 'usage'] },
   {
     label: 'Models & services',
     keys: ['quick-setup', 'connections', 'llm', 'task-models', 'embedding', 'search', 'voice', 'multimodal'],
-    collapsible: {
-      label: 'Advanced model settings',
-      keys: ['connections', 'llm', 'task-models', 'embedding', 'search', 'voice', 'multimodal'],
-    },
   },
   {
     label: 'Learning & conversation',

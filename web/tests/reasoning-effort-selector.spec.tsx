@@ -124,3 +124,31 @@ it("drops a stored value the selected model no longer supports (#641)", () => {
   fireEvent.click(screen.getByRole("button", { name: "Low" }));
   expect(onChange).toHaveBeenLastCalledWith("low");
 });
+
+it("renders a one-click Thinking toggle for binary domestic and custom models", () => {
+  const onChange = vi.fn();
+  const { rerender } = render(
+    <ReasoningEffortSelector
+      option={option({ provider: "deepseek", model: "deepseek-flash" })}
+      value={null}
+      onChange={onChange}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenLastCalledWith("high");
+
+  rerender(
+    <ReasoningEffortSelector
+      option={option({ provider: "deepseek", model: "deepseek-flash" })}
+      value="high"
+      onChange={onChange}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "Reasoning effort" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Reasoning effort" }));
+  expect(onChange).toHaveBeenLastCalledWith("minimal");
+});

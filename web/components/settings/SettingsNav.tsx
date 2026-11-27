@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronDown, ChevronRight, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useSettingsAccess } from '@/features/settings/navigation/SettingsAccessProvider'
@@ -26,7 +26,6 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
   const access = useSettingsAccess()
   const pages = visibleSettingsPages(access)
   const [query, setQuery] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const needle = query.trim().toLocaleLowerCase()
   const currentKey = pathname.split('/')[2] || 'general'
   const currentFamily = settingsPageFamily(currentKey)
@@ -62,20 +61,11 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
       .includes(needle)
   })
   const groups = needle
-    ? [{ label: 'Search results', pages: matches, collapsible: undefined }]
-    : SETTINGS_PAGE_GROUPS.map(group => {
-        const collapsibleKeySet = new Set(group.collapsible?.keys ?? [])
-        return {
-          label: group.label,
-          pages: resolveKeys(group.keys.filter(key => !collapsibleKeySet.has(key))),
-          collapsible: group.collapsible
-            ? {
-                label: group.collapsible.label,
-                pages: resolveKeys(group.collapsible.keys),
-              }
-            : undefined,
-        }
-      })
+    ? [{ label: 'Search results', pages: matches }]
+    : SETTINGS_PAGE_GROUPS.map(group => ({
+        label: group.label,
+        pages: resolveKeys(group.keys),
+      }))
 
   const renderPageLink = (page: SettingsLeaf) => {
     const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
@@ -125,52 +115,15 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-6">
         {groups
-          .filter(group => group.pages.length || group.collapsible?.pages.length)
-          .map(group => {
-            const collapsible = group.collapsible
-            const hasActiveCollapsible = Boolean(
-              collapsible?.pages.some(page => currentFamily.includes(page.key))
-            )
-            const isExpanded =
-              expandedGroups[group.label] ?? hasActiveCollapsible
-            return (
-              <div key={group.label} className="mb-0.5">
-                <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
-                  {t(group.label)}
-                </p>
-                <div className="space-y-0.5">
-                  {group.pages.map(renderPageLink)}
-                </div>
-                {collapsible && collapsible.pages.length > 0 && (
-                  <div className="mt-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedGroups(prev => ({
-                          ...prev,
-                          [group.label]: !isExpanded,
-                        }))
-                      }
-                      aria-expanded={isExpanded}
-                      className="flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-accent/50 hover:text-[var(--foreground)]"
-                    >
-                      {isExpanded ? (
-                        <ChevronDown size={13} strokeWidth={2} className="shrink-0" />
-                      ) : (
-                        <ChevronRight size={13} strokeWidth={2} className="shrink-0" />
-                      )}
-                      <span>{t(collapsible.label)}</span>
-                    </button>
-                    {isExpanded && (
-                      <div className="mt-0.5 space-y-0.5 border-l border-[var(--border)]/60 pl-2 ml-3">
-                        {collapsible.pages.map(renderPageLink)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          .filter(group => group.pages.length)
+          .map(group => (
+            <div key={group.label} className="mb-0.5">
+              <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
+                {t(group.label)}
+              </p>
+              <div className="space-y-0.5">{group.pages.map(renderPageLink)}</div>
+            </div>
+          ))}
         {needle && !matches.length && (
           <p className="px-2.5 py-5 text-[13px] text-[var(--muted-foreground)]">
             {t('No settings match “{{query}}”.', { query: query.trim() })}

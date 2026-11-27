@@ -7,6 +7,7 @@ import {
   normalizeReasoningEffort,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
+  resolveReasoningControl,
   setModelReasoningEffort,
   supportedReasoningEffortValues,
   VALID_REASONING_EFFORTS,
@@ -378,4 +379,38 @@ test("a restored xhigh override never reaches the wire once the model restricts 
   } = { profile_id: "p-alt", model_id: "m-alt" };
   assert.equal(dropUnvalidatedReasoningEffort(plain, null), plain);
   assert.equal(dropUnvalidatedReasoningEffort(null, option), null);
+});
+
+test("deepseek-flash and deepseek-v4-flash expose binary thinking controls in settings and chat", () => {
+  assert.deepEqual(values("deepseek", "deepseek-flash"), ["", "minimal", "high"]);
+  assert.deepEqual(values("deepseek", "deepseek-v4-flash"), ["", "minimal", "high"]);
+
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "deepseek", model: "deepseek-flash" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high" },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "custom", model: "gateway/unknown-model" }),
+    { kind: "toggle", offValue: "none", onValue: "high" },
+  );
+  assert.equal(
+    resolveReasoningControl({ provider: "openai", model: "gpt-5.2" }).kind,
+    "levels",
+  );
+  assert.equal(
+    resolveReasoningControl({
+      provider: "openai_codex",
+      model: "gpt-5.3-codex",
+      supported_reasoning_efforts: ["low", "medium", "high"],
+    }).kind,
+    "levels",
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "openai",
+      model: "gpt-4o",
+      declared_reasoning: false,
+    }),
+    { kind: "none" },
+  );
 });

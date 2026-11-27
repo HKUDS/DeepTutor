@@ -7655,5 +7655,22 @@
   "quickSetup.error.genericTitle": "Connection check failed",
   "quickSetup.error.genericDetail": "Verify your API key and network connection, or expand the raw error below.",
   "quickSetup.error.hideRaw": "Hide raw error",
-  "quickSetup.error.showRaw": "Show raw error"
+  "quickSetup.error.showRaw": "Show raw error",
+  "quickSetup.header.description": "Minimal setup to get chatting first. Full configuration for every model type remains available in the sections below.",
+  "quickSetup.progress.title": "Model setup overview",
+  "quickSetup.progress.scopeHint": "Synced automatically with Providers & Language models",
+  "quickSetup.progress.done": "Ready",
+  "quickSetup.progress.required": "Required",
+  "quickSetup.progress.recommended": "Recommended",
+  "quickSetup.progress.optional": "Optional",
+  "quickSetup.progress.step1Title": "1. Chat model (LLM)",
+  "quickSetup.progress.step1Desc": "Powers explanations, problem solving, practice, and deep research. Configure this first to start using DeepTutor.",
+  "quickSetup.progress.step2Title": "2. Knowledge base (Embedding)",
+  "quickSetup.progress.step2Desc": "Needed when uploading PDFs, slides, or notes for grounded Q&A. You can skip this until you use a knowledge base.",
+  "quickSetup.progress.configureEmbedding": "Configure embedding",
+  "quickSetup.progress.step3Title": "3. Task model & optional extras",
+  "quickSetup.progress.step3Desc": "Task model generates chat titles and suggestions (a small model saves cost; follows chat model by default). Search, voice, and multimodal are optional.",
+  "reasoning.toggle.label": "Thinking",
+  "reasoning.toggle.onHint": "Thinking is enabled (click to turn off)",
+  "reasoning.toggle.offHint": "Thinking is off (click to enable)"
 }

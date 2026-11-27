@@ -126,6 +126,40 @@ export const ALL_QUICK_PROVIDERS: QuickProviderPreset[] = [
   ...MORE_PROVIDERS,
 ];
 
+const GLOBAL_FEATURED_IDS = [
+  "openai",
+  "anthropic",
+  "gemini",
+  "openrouter",
+  "deepseek",
+  "custom",
+];
+
+/**
+ * Return featured + overflow provider lists tailored to the UI locale:
+ * Chinese locales prioritize domestic providers; non-Chinese locales
+ * prioritize international providers.
+ */
+export function getQuickProviderGroups(language: string): {
+  featured: QuickProviderPreset[];
+  more: QuickProviderPreset[];
+} {
+  const isZh = language.toLowerCase().startsWith("zh");
+  if (isZh) {
+    return {
+      featured: FEATURED_DOMESTIC_PROVIDERS,
+      more: MORE_PROVIDERS,
+    };
+  }
+  const byId = new Map(ALL_QUICK_PROVIDERS.map((item) => [item.id, item]));
+  const featured = GLOBAL_FEATURED_IDS.map((id) => byId.get(id)).filter(
+    (item): item is QuickProviderPreset => Boolean(item),
+  );
+  const featuredSet = new Set(featured.map((item) => item.id));
+  const more = ALL_QUICK_PROVIDERS.filter((item) => !featuredSet.has(item.id));
+  return { featured, more };
+}
+
 export function findQuickPreset(providerId: string): QuickProviderPreset | undefined {
   return ALL_QUICK_PROVIDERS.find((item) => item.id === providerId);
 }
