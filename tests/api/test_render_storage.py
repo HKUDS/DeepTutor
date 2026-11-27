@@ -131,6 +131,56 @@ def test_unrelated_and_missing_originals_are_not_cleanable(render_api):
     assert client.get(item.url).content == b"final video"
 
 
+@pytest.fixture
+def visualize_render_api(workspace_api, monkeypatch: pytest.MonkeyPatch):
+    """Publish a visualize artifact: the current capability directory for Manim renders."""
+    client, service = workspace_api
+    from deeptutor.api.routers import render_storage
+    from deeptutor.services import session
+
+    monkeypatch.setattr(render_storage, "get_content_workspace_service", lambda: service)
+    store = SimpleNamespace(list_nonterminal_turns=AsyncMock(return_value=[]))
+    monkeypatch.setattr(session, "get_session_store", lambda: store)
+    binding = service.current_binding(ensure_output=True)
+    turn = binding.root / "outputs/visualize/session/turn"
+    artifact = turn / "artifacts/movie.mp4"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"final video")
+    cache = turn / "media/segment.mp4"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(b"temporary render")
+    item = service.publish(binding, [{"path": service.relative_path(binding, artifact)}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+    return client, service, item, turn
+
+
+def test_visualize_capability_artifacts_accept_render_storage(visualize_render_api):
+    """The current ``visualize`` capability directory supports inspect + clean like math_animator."""
+    client, service, item, turn = visualize_render_api
+    preview = client.get(item.url + "/render-storage")
+    assert preview.status_code == 200, preview.json()
+    assert preview.json()["file_path"] == str(turn / "artifacts/movie.mp4")
+    assert preview.json()["cache_files"] == 1
+    cleaned = client.post(
+        item.url + "/clean-render-cache", json={"fingerprint": preview.json()["fingerprint"]}
+    )
+    assert cleaned.status_code == 200
+    assert (turn / "artifacts/movie.mp4").read_bytes() == b"final video"
+
+
+def test_other_capability_dirs_still_reject_render_storage(visualize_render_api):
+    """Only math_animator / visualize artifact paths pass the guard; chat etc. stay 404."""
+    client, service, _, _ = visualize_render_api
+    binding = service.current_binding()
+    for cap in ("chat", "video_lesson", "ask_questions"):
+        path = binding.root / f"outputs/{cap}/session/turn/artifacts/x.mp4"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"x")
+        entry = service.publish(binding, [{"path": service.relative_path(binding, path)}])[0]
+        entry = replace(entry, url=urlsplit(entry.url).path)
+        assert client.get(entry.url + "/render-storage").status_code == 404
+
+
 def test_reveal_requires_local_origin_and_uses_validated_path(render_api, monkeypatch):
     from deeptutor.api.routers import render_storage
 

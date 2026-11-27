@@ -90,10 +90,13 @@ def _render_paths(
 ) -> tuple[Path, Path]:
     _, item = service.resolve_published_item(workspace_id, item_id)
     parts = PurePosixPath(item.relative_path).parts
+    # visualize: 当前能力；math_animator: 历史产物。两者目录结构一致，media 均在 .../<turn>/media。
+    _RENDER_CAPABILITY_DIRS = ("math_animator", "visualize")
     if (
         not item.generated
         or len(parts) != 6
-        or parts[:2] != ("outputs", "math_animator")
+        or len(parts) < 2 or parts[0] != "outputs"
+        or parts[1] not in _RENDER_CAPABILITY_DIRS
         or parts[4] != "artifacts"
         or any(part in {".", ".."} for part in parts)
     ):
