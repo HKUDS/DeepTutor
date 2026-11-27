@@ -6617,6 +6617,17 @@
             ],
             "title": "Max Concurrent Files"
           },
+          "reranker_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reranker Model"
+          },
           "response_type": {
             "anyOf": [
               {
@@ -28337,7 +28348,7 @@
         ]
       },
       "put": {
-        "description": "Persist LightRAG's knobs.\n\nQuery knobs (``top_k``, ``response_type``) take effect on the next query;\nthe indexing knobs shape how a KB is built, so they apply to the next\nbuild or rebuild.",
+        "description": "Persist LightRAG's knobs.\n\nThe next query uses the saved ``top_k``, ``response_type`` and ``reranker_model``.\nIndexing settings apply to the next build or rebuild.",
         "operationId": "update_lightrag_pipeline_config_api_knowledge_bases_rag_pipelines_lightrag_config_put",
         "parameters": [
           {

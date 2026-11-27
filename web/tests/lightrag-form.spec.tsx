@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import { newRoleModels } from "@/components/knowledge/LightRagRoleModelsEditor";
 import {
   LightRagForm,
   LightRagModelsForm,
@@ -18,6 +19,8 @@ const fixture = vi.hoisted(() => ({
   llmTimeout: 240,
   profileId: "",
   modelId: "",
+  rerankerModel: "",
+  savedRoles: false,
   save: vi.fn(),
 }));
 vi.mock("react-i18next", () => ({
@@ -56,6 +59,10 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
     version: fixture.version,
     llm_profile_id: fixture.profileId,
     llm_model_id: fixture.modelId,
+    reranker_model: fixture.rerankerModel,
+    ...(fixture.savedRoles && {
+      role_models: newRoleModels({ profile_id: "vision", model_id: "large" }),
+    }),
     top_k: 60,
     response_type: "Multiple Paragraphs",
     max_concurrent_files: 1,
@@ -74,6 +81,8 @@ beforeEach(() => {
   fixture.llmTimeout = 240;
   fixture.profileId = "";
   fixture.modelId = "";
+  fixture.rerankerModel = "";
+  fixture.savedRoles = false;
   fixture.save.mockClear();
 });
 
@@ -115,6 +124,23 @@ it.each([
     });
   },
 );
+
+it.each([
+  [2, "", "BAAI/bge-reranker-base"],
+  [1, "BAAI/bge-reranker-base", ""],
+] as const)("changes the v%s reranker from %j to %j", async (version, initial, next) => {
+  fixture.version = version;
+  fixture.rerankerModel = initial;
+  fixture.savedRoles = version === 2;
+  render(<LightRagModelsForm onChanged={vi.fn()} onError={vi.fn()} />);
+  const field = await screen.findByRole("textbox", { name: /^Reranker model/ });
+  expect(field).toHaveValue(initial);
+  fireEvent.change(field, { target: { value: next } });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(fixture.save).toHaveBeenCalledOnce());
+  const payload = fixture.save.mock.calls[0][0];
+  expect(payload).toEqual({ reranker_model: next });
+});
 
 it("preserves the legacy base concurrency when creating role settings", async () => {
   fixture.version = 1;

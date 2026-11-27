@@ -96,6 +96,7 @@ def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
     )
     loaded = RuntimeSettingsService(tmp_path, process_env={}).load_lightrag()
     assert loaded["top_k"] == 25
+    assert loaded["reranker_model"] == ""
     assert loaded["max_concurrent_files"] == 1
     assert loaded["llm_model_max_async"] == 4
     assert loaded["entity_extract_max_gleaning"] == 1

@@ -11,6 +11,11 @@ Shared engine settings require administrator access when authentication is enabl
 | QUERY | Answer generation | Base or explicit model |
 | VLM | Requested image analysis | Disabled, base or explicit vision model |
 
+The Models section also accepts an optional SentenceTransformers cross-encoder,
+such as `BAAI/bge-reranker-base`. Install the `rag-rerank` extra to use it.
+The model scores retrieved chunks on the next query, including queries against
+existing indexes. Clear the field to disable reranking.
+
 Fresh settings are distinguished from historical settings. Choose and save a
 LightRAG base in Settings before querying or creating a knowledge base.
 New role configurations disable VLM by default. Inheriting the base for VLM

@@ -146,6 +146,7 @@ export interface LightRagIndexingSelection {
 
 export interface LightRagConfig {
   role_models?: LightRagRoleModels;
+  reranker_model: string;
   version: number;
   top_k: number;
   response_type: string;

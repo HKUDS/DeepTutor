@@ -2873,6 +2873,7 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
 
     initial = client.get("/api/knowledge-bases/rag-pipelines/lightrag/config")
     assert initial.status_code == 200
+    assert initial.json()["reranker_model"] == ""
     for key in ("top_k", "response_type", "max_concurrent_files", "llm_model_max_async"):
         assert key in initial.json(), f"{key} missing from the payload the UI reads"
 
@@ -2881,6 +2882,7 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
         json={
             "top_k": 42,
             "response_type": "Single Paragraph",
+            "reranker_model": " BAAI/bge-reranker-base ",
             "max_concurrent_files": 4,
             "llm_model_max_async": 8,
             "entity_extract_max_gleaning": 2,
@@ -2896,6 +2898,14 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
     assert again["max_concurrent_files"] == 4
     assert again["entity_extract_max_gleaning"] == 2
     assert again["top_k"] == 42
+    assert again["reranker_model"] == "BAAI/bge-reranker-base"
+
+    cleared = client.put(
+        "/api/knowledge-bases/rag-pipelines/lightrag/config", json={"reranker_model": ""}
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["reranker_model"] == ""
+    assert cleared.json()["top_k"] == 42
 
 
 def test_lightrag_server_defaults_are_redacted_and_reused_for_probe(

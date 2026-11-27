@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from pathlib import Path
 import types
+from unittest.mock import Mock
 
 import pytest
 
@@ -102,6 +104,50 @@ def test_global_dedicated_selection_drives_query_roles_not_embedding(
     assert embedding_calls == [{}]
 
 
+def test_query_reranks_chunks_by_index_and_partitions_cached_answers(monkeypatch, tmp_path):
+    from lightrag.utils import apply_rerank_if_enabled
+
+    from deeptutor.services.rag.pipelines.lightrag import rerank
+
+    _stub_build(monkeypatch)
+    settings = {}
+    monkeypatch.setattr("deeptutor.services.config.load_lightrag_settings", lambda: settings)
+    disabled = engine.build_rag(tmp_path).kwargs
+    assert "rerank_model_func" not in disabled
+
+    encoder = Mock()
+    encoder.rank.return_value = [{"corpus_id": 1, "score": 0.9}]
+    load_model = Mock(return_value=encoder)
+    monkeypatch.setattr(rerank, "_load_model", load_model)
+
+    async def run_inline(func, *args, **kwargs):
+        return func(*args)
+
+    monkeypatch.setattr(rerank.to_process, "run_sync", run_inline)
+    settings["reranker_model"] = "first-model"
+    first = engine.build_rag(tmp_path).kwargs
+    chunks = [{"chunk_id": "a", "content": "same"}, {"chunk_id": "b", "content": "same"}]
+    ranked = asyncio.run(apply_rerank_if_enabled("query", chunks, first, top_n=1))
+    assert [(row["chunk_id"], row["rerank_score"]) for row in ranked] == [("b", 0.9)]
+    load_model.assert_called_once_with("first-model")
+    encoder.rank.assert_called_once_with(
+        "query", ["same", "same"], top_k=1, show_progress_bar=False
+    )
+
+    settings["reranker_model"] = "second-model"
+    second = engine.build_rag(tmp_path).kwargs
+    assert (
+        first["role_llm_configs"]["query"].metadata != second["role_llm_configs"]["query"].metadata
+    )
+    assert (
+        first["role_llm_configs"]["keyword"].metadata
+        == second["role_llm_configs"]["keyword"].metadata
+    )
+    load_model.side_effect = OSError("model unavailable")
+    assert asyncio.run(apply_rerank_if_enabled("query", chunks, second, top_n=1)) == chunks
+    load_model.assert_called_with("second-model")
+
+
 def test_constructor_forwards_captured_embedding_config(monkeypatch, tmp_path: Path) -> None:
     from deeptutor.services.embedding.config import EmbeddingConfig
 
@@ -146,6 +192,9 @@ def test_indexing_uses_frozen_roles_without_resolving_query_models(
     monkeypatch, tmp_path: Path
 ) -> None:
     _stub_build(monkeypatch)
+    monkeypatch.setattr(
+        "deeptutor.services.config.load_lightrag_settings", lambda: {"reranker_model": "query-only"}
+    )
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
     llm_calls: list[dict[str, object]] = []
@@ -178,6 +227,7 @@ def test_indexing_uses_frozen_roles_without_resolving_query_models(
     assert llm_calls[1] == {"llm_config": snapshot.config, "owner": snapshot.owner}
     assert vision_calls == [{"llm_config": snapshot.config, "owner": snapshot.owner}]
     assert rag.kwargs["llm_model_func"] == "llm-2"
+    assert "rerank_model_func" not in rag.kwargs
     assert rag.kwargs["role_llm_configs"]["extract"].func == "llm-1"
     assert rag.kwargs["role_llm_configs"]["vlm"].func == "vision"
     assert set(rag.kwargs["role_llm_configs"]) == {"extract", "vlm"}
