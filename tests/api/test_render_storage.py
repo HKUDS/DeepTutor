@@ -284,3 +284,68 @@ def test_chat_output_actions_reject_symlinked_paths(chat_output_api, tmp_path: P
     output.symlink_to(external)
     assert client.get(item.url + "/file-storage").status_code == 404
     assert external.read_text() == "leave intact"
+
+@pytest.fixture
+def visualize_render_api(workspace_api, monkeypatch: pytest.MonkeyPatch):
+    """Same layout as the render fixture, but under the current ``visualize``
+    capability directory instead of its historical ``math_animator`` name."""
+    from deeptutor.api.routers import render_storage
+    from deeptutor.services import session
+
+    client, service = workspace_api
+    monkeypatch.setattr(render_storage, "get_content_workspace_service", lambda: service)
+    store = SimpleNamespace(list_nonterminal_turns=AsyncMock(return_value=[]))
+    monkeypatch.setattr(session, "get_session_store", lambda: store)
+    binding = service.current_binding(ensure_output=True)
+    turn = binding.root / "outputs/visualize/session/turn"
+    artifact = turn / "artifacts/movie.mp4"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"final video")
+    cache = turn / "media/videos/partial_movie_files/segment.mp4"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(b"temporary render")
+    item = service.publish(binding, [{"path": service.relative_path(binding, artifact)}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+    return client, service, item, turn
+
+
+def test_visualize_artifacts_support_render_cleanup(visualize_render_api):
+    """Regression: renders moved from ``math_animator`` to ``visualize``; the
+    storage preview kept matching only the old directory name and answered 404
+    for every newly generated video."""
+    client, _, item, turn = visualize_render_api
+    preview = client.get(item.url + "/render-storage")
+    assert preview.status_code == 200, preview.json()
+    assert preview.json()["file_path"] == str(turn / "artifacts/movie.mp4")
+    assert preview.json()["cache_bytes"] == len(b"temporary render")
+    assert preview.json()["cache_files"] == 1
+
+    cleaned = client.post(
+        item.url + "/clean-render-cache", json={"fingerprint": preview.json()["fingerprint"]}
+    )
+    assert cleaned.status_code == 200
+    assert not (turn / "media").exists()
+    assert (turn / "artifacts/movie.mp4").read_bytes() == b"final video"
+
+
+def test_render_cleanup_still_rejects_unknown_capability_dirs(workspace_api, monkeypatch):
+    """The allowlist must stay closed: a chat output shaped like a render dir
+    (six parts, ``artifacts`` in place) must not reach the media sweep."""
+    from deeptutor.api.routers import render_storage
+    from deeptutor.services import session
+
+    client, service = workspace_api
+    monkeypatch.setattr(render_storage, "get_content_workspace_service", lambda: service)
+    store = SimpleNamespace(list_nonterminal_turns=AsyncMock(return_value=[]))
+    monkeypatch.setattr(session, "get_session_store", lambda: store)
+    binding = service.current_binding(ensure_output=True)
+    turn = binding.root / "outputs/chat/session/turn"
+    artifact = turn / "artifacts/report.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("chat output")
+    item = service.publish(binding, [{"path": service.relative_path(binding, artifact)}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+
+    preview = client.get(item.url + "/render-storage")
+    assert preview.status_code == 404
+    assert "render artifacts" in preview.json()["detail"]

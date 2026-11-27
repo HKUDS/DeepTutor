@@ -85,6 +85,16 @@ def remove_chat_exec_output(
     return {"removed": True, "file_bytes": preview["file_bytes"]}
 
 
+# Capability directories whose published artifacts keep a rebuildable ``media``
+# sibling. ``visualize`` is the current capability; ``math_animator`` is its
+# historical name, and both share the same layout:
+#   outputs/<capability>/<session>/<turn>/artifacts/<file>
+#   outputs/<capability>/<session>/<turn>/media/
+# Anything else (chat, exec, cli) has different cleanup semantics and must not
+# reach the media sweep below.
+_RENDER_CAPABILITY_DIRS = ("math_animator", "visualize")
+
+
 def _render_paths(
     service: ContentWorkspaceService, workspace_id: str, item_id: str
 ) -> tuple[Path, Path]:
@@ -93,11 +103,12 @@ def _render_paths(
     if (
         not item.generated
         or len(parts) != 6
-        or parts[:2] != ("outputs", "math_animator")
+        or parts[0] != "outputs"
+        or parts[1] not in _RENDER_CAPABILITY_DIRS
         or parts[4] != "artifacts"
         or any(part in {".", ".."} for part in parts)
     ):
-        raise WorkspaceError("Only published Math Animator artifacts support render cleanup.")
+        raise WorkspaceError("Only published render artifacts support render cleanup.")
     binding = service.binding_by_id(workspace_id)
     cursor = binding.root
     for part in parts:
