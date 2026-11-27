@@ -456,13 +456,13 @@ function Store({
       <div className="relative">
         <Search
           size={14}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+          className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
         />
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={t("Search CLI apps…")}
-          className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 pl-9 pr-3 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--ring)]"
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 ps-9 pe-3 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--ring)]"
           spellCheck={false}
         />
       </div>
@@ -944,14 +944,14 @@ function TabButton({
     >
       {label}
       {typeof count === "number" && (
-        <span className="ml-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
+        <span className="ms-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
           {count}
         </span>
       )}
       {active && (
         <span
           aria-hidden
-          className="absolute -bottom-px left-0 right-0 h-[2px] bg-[var(--foreground)]"
+          className="absolute -bottom-px start-0 end-0 h-[2px] bg-[var(--foreground)]"
         />
       )}
     </button>

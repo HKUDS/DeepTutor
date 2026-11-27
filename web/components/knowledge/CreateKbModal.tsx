@@ -1073,7 +1073,7 @@ function NewModeFields({
         <div>
           <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             {t("Index mode")}
-            <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+            <span className="ms-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
               · {t("optional")}
             </span>
           </label>
@@ -1103,11 +1103,11 @@ function NewModeFields({
         <div>
           <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             {t("Initial documents")}
-            <span className="ml-1 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+            <span className="ms-1 normal-case tracking-normal text-[var(--muted-foreground)]/80">
               ({t("optional")})
             </span>
             {(isPageIndexCloud || isPageIndexOSS) && (
-              <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+              <span className="ms-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
                 ·{" "}
                 {isPageIndexOSS
                   ? t(
@@ -1203,7 +1203,7 @@ function LightRagServerFields({
       <div>
         <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           {t("API key")}
-          <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+          <span className="ms-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
             · {t("optional")}
           </span>
         </label>
@@ -1354,13 +1354,13 @@ function WeKnoraFields({
           {t("WeKnora knowledge base ID")}
         </label>
         <div className="relative">
-          <Database className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          <Database className="pointer-events-none absolute start-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <input
             value={knowledgeBaseId}
             onChange={(event) => setKnowledgeBaseId(event.target.value)}
             disabled={submitting}
             placeholder={t("WeKnora knowledge base ID")}
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-2 pl-9 pr-3 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-2 ps-9 pe-3 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
           />
         </div>
       </div>

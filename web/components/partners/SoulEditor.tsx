@@ -35,14 +35,14 @@ export default function SoulEditor({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] transition-colors focus-within:border-[var(--ring)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/40 py-1.5 pl-4 pr-1.5">
+      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/40 py-1.5 ps-4 pe-1.5">
         <span className="font-mono text-[11px] tracking-wide text-[var(--muted-foreground)]">
           SOUL.md
         </span>
         <div className="relative grid grid-cols-2 rounded-lg bg-[var(--muted)] p-0.5">
           <span
             aria-hidden
-            className={`pointer-events-none absolute bottom-0.5 left-0.5 top-0.5 w-[calc(50%-2px)] rounded-[6px] bg-[var(--background)] shadow-sm transition-transform duration-200 ease-out ${
+            className={`pointer-events-none absolute bottom-0.5 start-0.5 top-0.5 w-[calc(50%-2px)] rounded-[6px] bg-[var(--background)] shadow-sm transition-transform duration-200 ease-out ${
               mode === "preview" ? "translate-x-full" : ""
             }`}
           />

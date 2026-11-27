@@ -487,7 +487,7 @@ function SpaceSubsection({
           className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100"
         />
       </Link>
-      <ul className="ml-[21px] border-l border-[color-mix(in_srgb,var(--border)_70%,transparent)] pl-2">{children}</ul>
+      <ul className="ms-[21px] border-s border-[color-mix(in_srgb,var(--border)_70%,transparent)] ps-2">{children}</ul>
     </div>
   );
 }

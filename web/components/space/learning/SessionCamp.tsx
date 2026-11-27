@@ -58,7 +58,7 @@ export function SessionCamp({
           <button
             type="button"
             onClick={() => openStudy()}
-            className="dt-quiet-button is-icon -mr-2 h-7 w-7"
+            className="dt-quiet-button is-icon -me-2 h-7 w-7"
             aria-label={t("Start a new learning session")}
           >
             <Plus className="h-3.5 w-3.5" />

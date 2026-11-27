@@ -84,7 +84,7 @@ export default function ModelThinkingCard({
           <Loader2
             size={11}
             strokeWidth={1.8}
-            className="ml-1 animate-spin text-[var(--muted-foreground)]/70"
+            className="ms-1 animate-spin text-[var(--muted-foreground)]/70"
           />
         )}
       </summary>

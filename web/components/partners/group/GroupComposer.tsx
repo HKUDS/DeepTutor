@@ -121,7 +121,7 @@ export default function GroupComposer({
     <div className="border-t border-[var(--border)] bg-[var(--background)] px-4 py-3 sm:px-8">
       <div className="relative mx-auto max-w-3xl">
         {suggestions.length > 0 ? (
-          <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-xl">
+          <div className="absolute bottom-full start-0 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-xl">
             {suggestions.map((member, index) => (
               <button
                 key={member.partner_id}

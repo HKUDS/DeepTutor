@@ -17,10 +17,10 @@ export default function TimelineBlock({ block }: TimelineBlockProps) {
   if (events.length === 0) return null;
   return (
     <div className="rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.028)] p-4">
-      <ol className="relative ml-3 space-y-4 border-l border-[rgb(var(--dt-ink,55_53_47)/0.12)] pl-4">
+      <ol className="relative ms-3 space-y-4 border-s border-[rgb(var(--dt-ink,55_53_47)/0.12)] ps-4">
         {events.map((ev, idx) => (
           <li key={idx} className="relative">
-            <span className="absolute -left-[19px] top-1 inline-flex h-3 w-3 rounded-full border-2 border-[var(--card)] bg-[var(--primary)]" />
+            <span className="absolute -start-[19px] top-1 inline-flex h-3 w-3 rounded-full border-2 border-[var(--card)] bg-[var(--primary)]" />
             <div className="text-xs font-mono uppercase tracking-wider text-[var(--muted-foreground)]">
               {ev.date || ""}
             </div>

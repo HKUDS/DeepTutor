@@ -115,7 +115,7 @@ export default function PartnerModelPicker({
     : undefined;
 
   return (
-    <div className="max-h-[340px] space-y-1.5 overflow-y-auto pr-1">
+    <div className="max-h-[340px] space-y-1.5 overflow-y-auto pe-1">
       <Row
         title={t("System default")}
         subtitle={

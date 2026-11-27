@@ -248,13 +248,13 @@ export function ProvidersWorkspace() {
                       {formatConfiguredProviderName(p.provider, p.name, uiLanguage)}
                     </span>
                   </span>
-                  <span className="mt-1 block pl-[24px] text-[12px] text-[var(--muted-foreground)]">
+                  <span className="mt-1 block ps-[24px] text-[12px] text-[var(--muted-foreground)]">
                     {t("{{count}} configured models", {
                       count: providerUsage(draft, p),
                     })}
                     {!savedIds.has(p.id) && ` · ${t("Not saved")}`}
                   </span>
-                  <span className="mt-2 flex flex-wrap gap-1 pl-6">
+                  <span className="mt-2 flex flex-wrap gap-1 ps-6">
                     {PROVIDER_SERVICES.filter(service => providerServiceSupport(p, service, connectionTargets, providers).enabled).map(service => <span key={service} className="rounded bg-[var(--muted)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">{t(SERVICE_TITLES[service])}</span>)}
                   </span>
                 </button>
@@ -415,7 +415,7 @@ export function ProvidersWorkspace() {
                           setSelected(null);
                           syncQuery({ provider: null });
                         }}
-                        className={`${registryDanger} ml-auto`}
+                        className={`${registryDanger} ms-auto`}
                       >
                         <Trash2 size={13} />
                         {t("Remove provider")}

@@ -55,7 +55,7 @@ export default function SelectedResources({
                   disabled={!item.onClick}
                   onClick={item.onClick}
                   aria-label={`${item.kind} · ${item.label}`}
-                  className="flex min-w-0 items-center gap-1.5 text-left disabled:cursor-default"
+                  className="flex min-w-0 items-center gap-1.5 text-start disabled:cursor-default"
                 >
                   {item.thumbnailUrl ? (
                     <img

@@ -456,7 +456,7 @@ function ConnectionRow({
                 type={showKey ? "text" : "password"}
                 autoComplete="new-password"
                 spellCheck={false}
-                className={`${inputClass} pr-10 font-mono`}
+                className={`${inputClass} pe-10 font-mono`}
                 aria-label={t("API Key")}
                 value={connection.api_key}
                 onChange={(event) => onField("api_key", event.target.value)}
@@ -466,7 +466,7 @@ function ConnectionRow({
                 type="button"
                 onClick={() => setShowKey((value) => !value)}
                 aria-label={showKey ? t("Hide API key") : t("Show API key")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                className="absolute end-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
                 {showKey ? (
                   <EyeOff className="h-4 w-4" />
@@ -573,11 +573,11 @@ function AddConnectionPanel({
               <ProviderIcon
                 provider={provider}
                 size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2"
               />
             )}
             <select
-              className={`${selectClass} ${provider ? "pl-9" : ""}`}
+              className={`${selectClass} ${provider ? "ps-9" : ""}`}
               aria-label={t("Provider")}
               value={provider}
               onChange={(event) => choose(event.target.value)}
@@ -595,7 +595,7 @@ function AddConnectionPanel({
                 </option>
               ))}
             </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+            <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
           </div>
         </div>
         <div>
@@ -622,7 +622,7 @@ function AddConnectionPanel({
               type={showKey ? "text" : "password"}
               autoComplete="new-password"
               spellCheck={false}
-              className={`${inputClass} pr-10 font-mono`}
+              className={`${inputClass} pe-10 font-mono`}
               aria-label={t("API Key")}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
@@ -632,7 +632,7 @@ function AddConnectionPanel({
               type="button"
               onClick={() => setShowKey((value) => !value)}
               aria-label={showKey ? t("Hide API key") : t("Show API key")}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              className="absolute end-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               {showKey ? (
                 <EyeOff className="h-4 w-4" />

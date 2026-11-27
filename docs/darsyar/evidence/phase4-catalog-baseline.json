@@ -1,0 +1,128 @@
+{
+  "_note": "Phase 4 catalog seed and verification evidence on the live Supabase project.",
+  "captured_at": "2026-11-17T22:45:00Z",
+  "phase": 4,
+  "project": {
+    "provider": "supabase",
+    "ref": "jmqgzaqydvkjysqlaloe",
+    "postgres_version": "17.11.0.019",
+    "schema": "public"
+  },
+  "migration": {
+    "version": 6,
+    "name": "academic_catalog",
+    "checksum": "e27fcfc57351ad3018f84acb3e38d914",
+    "statements": 18,
+    "tables": 10,
+    "indexes": 7
+  },
+  "catalog_seed": {
+    "curriculum_systems": 3,
+    "curriculum_stages": 3,
+    "curriculum_grades": 12,
+    "curriculum_tracks": 2,
+    "curriculum_majors": 5,
+    "curriculum_subjects": 16,
+    "catalog_sources": 1
+  },
+  "systems": [
+    {
+      "code": "current",
+      "title": "نظام آموزشی فعلی",
+      "status": "current",
+      "enrollable": true
+    },
+    {
+      "code": "pre_university",
+      "status": "archived",
+      "enrollable": false
+    },
+    {
+      "code": "old_secondary",
+      "status": "archived",
+      "enrollable": false
+    }
+  ],
+  "tracks": [
+    {
+      "code": "theoretical",
+      "kind": "theoretical",
+      "majors": [
+        "math_physics",
+        "experimental",
+        "humanities"
+      ]
+    },
+    {
+      "code": "vocational",
+      "kind": "vocational",
+      "majors": [
+        "accounting",
+        "computer"
+      ]
+    }
+  ],
+  "subject_scope_grade_10": {
+    "shared_all_majors": 6,
+    "math_physics": 3,
+    "experimental": 3,
+    "humanities": 4
+  },
+  "constraint_proofs": [
+    {
+      "violation": "duplicate subject with major_code = NULL",
+      "result": "rejected",
+      "error": {
+        "code": "23505",
+        "constraint": "uq_curriculum_subjects_identity"
+      },
+      "detail": "Key (code, grade_number, COALESCE(major_code, ''::text))=(probe_farsi, 7, ) already exists.",
+      "significance": "Without COALESCE the duplicate would have been ACCEPTED, because SQL treats NULL as distinct from NULL. Same bug family as V0005."
+    }
+  ],
+  "publication_gate": {
+    "source_created_with_rights_unknown": {
+      "publicly_retrievable": 0,
+      "visible_count": 0
+    },
+    "after_approve": {
+      "rights_status": "cleared",
+      "review_status": "approved",
+      "publicly_retrievable": 1,
+      "visible_count": 1
+    },
+    "after_archive": {
+      "review_status": "archived",
+      "publicly_retrievable": 0,
+      "visible_count": 0,
+      "row_still_present": true
+    },
+    "after_restore": {
+      "review_status": "in_review",
+      "publicly_retrievable": 0
+    }
+  },
+  "http_evidence": {
+    "GET /api/catalog/grades": 200,
+    "GET /api/catalog/enrolment?grade=10&major=math_physics": 200,
+    "GET /api/catalog/enrolment?grade=10 (no major)": 422,
+    "POST /api/catalog/admin/sources": 201,
+    "POST .../review approve": 200,
+    "POST .../review approve twice": 409,
+    "POST .../review restore (never archived)": 409,
+    "GET unknown source": 404
+  },
+  "bugs_found_this_phase": [
+    "UNIQUE over nullable columns enforces nothing (curriculum_subjects, catalog_sources) -> fixed with COALESCE expression indexes",
+    "Source id built from a Persian title contained a space and non-ASCII bytes -> source was created but unreachable through /sources/{id}/review -> fixed with ASCII slug + digest",
+    "Router bound get_database_settings at import time, making the settings impossible to redirect in a test",
+    "Three test modules hardcoded migration versions/counts, so every new migration broke them"
+  ],
+  "untested_debt": [
+    "psycopg network path still never exercised",
+    "no bulk importer exists yet",
+    "no admin UI for review",
+    "209 [postgres]-parametrised tests skip in CI",
+    "learner_profile.grade_level is still free text, not linked to the catalog"
+  ]
+}

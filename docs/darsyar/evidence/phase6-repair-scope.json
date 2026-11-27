@@ -1,0 +1,53 @@
+{
+  "phase": "6 (repair)",
+  "branch": "arena/95b78b58-deeptutor",
+  "base_commit": "ef59915",
+  "bugs_fixed": [
+    {
+      "id": "race-concurrent-submit",
+      "where": "deeptutor/db/repositories/exam.py::submit_exam",
+      "cause": "the existing attempt was read with db.read() outside the insert transaction, so concurrent identical submissions both saw 'no attempt' and the loser died on uq_exam_attempt_identity",
+      "reproduction_before": "4 concurrent identical submissions -> 3 ok / 1 DatabaseError: UNIQUE constraint failed: exam_attempts.exam_id, exam_attempts.user_id, exam_attempts.attempt_no",
+      "fix": "the insert is extracted into _insert_attempt; a DatabaseError naming the identity index re-reads and returns the winner's attempt as duplicate=True, or raises attempt_already_submitted when the answers differ",
+      "proof_sqlite": "5 trials x 6 threads -> 0 errors, 1 distinct attempt id each",
+      "proof_http": "8 concurrent POST /api/exam/exams/{id}/submit -> 8x 200, 0 5xx, 1 distinct attempt",
+      "regression_test": "tests/db/test_exam_scope.py::test_concurrent_identical_submissions_all_succeed (fails with the recovery removed: 2 DatabaseError)"
+    },
+    {
+      "id": "no-scope-on-exams",
+      "where": "submit_exam, get_published_exam, list_published (and the same class of hole in ingestion search/browse/validate/catalogue)",
+      "cause": "grade_number and major_code were read from the query string and used as the scope; the docstrings claimed they must match the resolved enrolment, but no code compared anything",
+      "reproduction_before": "create_exam(grade_number=12, major_code='math_physics') + submit_exam(user_id='grade7_student') -> status=graded, score=3.0",
+      "fix": "deeptutor/services/exam/scope.py: resolve_enrolment reads the stored learner_profile (authoritative), caller_id takes identity from the session when auth is on, require_scope_reaches refuses a mismatched grade or major with 403",
+      "proof_http": [
+        "grade7 -> grade12 exam submit: 403 scope_mismatch (grade_number)",
+        "grade7 -> grade12 exam read:   403 scope_mismatch (grade_number)",
+        "grade7 listing with ?grade_number=12: 200 count=0, scope.grade_number=7",
+        "grade12 major match submit: 200 graded 3.0",
+        "grade12 retry: 200 duplicate=True"
+      ],
+      "regression_tests": "tests/db/test_exam_scope.py (17) + 7 in test_exam_http.py + 6 in test_grounding_http.py"
+    },
+    {
+      "id": "catalogue-major-widening",
+      "where": "deeptutor/api/routers/ingestion.py::catalogue",
+      "cause": "the predicate was (s.major_code IS NULL OR ? IS NULL OR s.major_code = ?), so a caller who passed no major matched every major's books -- the widening scope_sql forbids, reintroduced in one line",
+      "fix": "the major predicate now mirrors retrieval: no major means only books with no major",
+      "regression_test": "tests/db/test_grounding_http.py::test_the_catalogue_does_not_widen_when_no_major_is_given"
+    }
+  ],
+  "verification": {
+    "pytest_tests_db": "621 passed, 364 skipped",
+    "pytest_full_suite": "13955 passed, 132 skipped, 1 failed (environment-only: test_doctor_cli secrets test trips on the literal string 'user' in /tmp/pytest-of-user/)",
+    "pytest_router_loader": "5 passed",
+    "ruff": "clean",
+    "lint_imports": "3 kept, 0 broken",
+    "router_index": "65 routers, 785 routes"
+  },
+  "new_tests": {
+    "tests/db/test_exam_scope.py": 17,
+    "test_exam_http.py_added": 7,
+    "test_grounding_http.py_added": 6
+  },
+  "mutation_evidence": "with require_scope_reaches neutralised, 5 scope tests fail (DID NOT RAISE ScopeError); with the collision recovery removed, the concurrency test fails with 2 UNIQUE constraint errors"
+}

@@ -283,7 +283,7 @@ export default function QuizFollowupTabBody({
                         {message.quotes?.map((quote, qi) => (
                           <div
                             key={qi}
-                            className="mb-1.5 line-clamp-3 border-l-2 border-[color-mix(in_srgb,var(--primary-foreground)_45%,transparent)] pl-2.5 text-[12.5px] opacity-80"
+                            className="mb-1.5 line-clamp-3 border-s-2 border-[color-mix(in_srgb,var(--primary-foreground)_45%,transparent)] ps-2.5 text-[12.5px] opacity-80"
                           >
                             {quote}
                           </div>

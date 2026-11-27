@@ -212,7 +212,7 @@ export default function AboutSettingsPage() {
       <section className="relative mb-10 overflow-hidden border-y border-[var(--border)]/60 py-7">
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full border-[28px] border-[var(--foreground)]/[0.025]"
+          className="pointer-events-none absolute -end-12 -top-16 h-40 w-40 rounded-full border-[28px] border-[var(--foreground)]/[0.025]"
         />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -267,7 +267,7 @@ export default function AboutSettingsPage() {
       </section>
 
       {error && (
-        <div className="mb-7 flex items-start gap-2 border-l-2 border-red-500/70 py-1 pl-3 text-[12.5px] leading-relaxed text-red-600 dark:text-red-400">
+        <div className="mb-7 flex items-start gap-2 border-s-2 border-red-500/70 py-1 ps-3 text-[12.5px] leading-relaxed text-red-600 dark:text-red-400">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>

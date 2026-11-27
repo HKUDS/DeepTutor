@@ -125,7 +125,7 @@ export default function MathAnimatorViewer({
                   alt={item.label || item.filename}
                   className="max-h-[280px] w-full object-contain"
                 />
-                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="absolute end-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                   <Expand size={12} />
                   {t("Fullscreen")}
                 </span>

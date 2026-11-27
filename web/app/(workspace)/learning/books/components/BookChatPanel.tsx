@@ -523,7 +523,7 @@ export default function BookChatPanel({
       className="relative flex h-full shrink-0 flex-col bg-[rgb(var(--dt-ink,55_53_47)/0.022)]"
       style={{ width }}
     >
-      <div className="absolute inset-y-0 left-0 z-10 flex w-2">
+      <div className="absolute inset-y-0 start-0 z-10 flex w-2">
         <Tooltip label={t("Drag to resize")}>
           <div
             role="separator"
@@ -610,7 +610,7 @@ export default function BookChatPanel({
                   }
                 >
                   {m.role === "user" && (
-                    <div className="mb-1 text-right text-[10px] font-medium uppercase tracking-wide opacity-75">
+                    <div className="mb-1 text-end text-[10px] font-medium uppercase tracking-wide opacity-75">
                       {t("You")}
                     </div>
                   )}

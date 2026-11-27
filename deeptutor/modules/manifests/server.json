@@ -23,6 +23,17 @@
       "order": 542
     },
     {
+      "reference": "deeptutor.api.routers.auth_otp:router",
+      "options": {
+        "prefix": "/api/auth",
+        "tags": [
+          "auth-otp"
+        ]
+      },
+      "auth": "public",
+      "order": 542
+    },
+    {
       "reference": "deeptutor.api.routers.outputs:router",
       "options": {
         "prefix": "/files/outputs",
@@ -339,6 +350,127 @@
       },
       "auth": "public",
       "order": 842
+    },
+    {
+      "reference": "deeptutor.api.routers.platform_health:router",
+      "options": {
+        "prefix": "/api/platform",
+        "tags": [
+          "platform-health"
+        ]
+      },
+      "auth": "public",
+      "order": 846
+    },
+    {
+      "reference": "deeptutor.api.routers.platform_health:admin_router",
+      "options": {
+        "prefix": "/api/platform/admin",
+        "tags": [
+          "platform-health-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 847
+    },
+    {
+      "reference": "deeptutor.api.routers.catalog:router",
+      "options": {
+        "prefix": "/api/catalog",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "auth": "learning",
+      "order": 848
+    },
+    {
+      "reference": "deeptutor.api.routers.catalog:admin_router",
+      "options": {
+        "prefix": "/api/catalog/admin",
+        "tags": [
+          "catalog-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 849
+    },
+    {
+      "reference": "deeptutor.api.routers.ingestion:router",
+      "options": {
+        "prefix": "/api/grounding",
+        "tags": [
+          "grounding"
+        ]
+      },
+      "auth": "learning",
+      "order": 850
+    },
+    {
+      "reference": "deeptutor.api.routers.ingestion:admin_router",
+      "options": {
+        "prefix": "/api/grounding/admin",
+        "tags": [
+          "grounding-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 851
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:router",
+      "options": {
+        "prefix": "/api/exam",
+        "tags": [
+          "exam"
+        ]
+      },
+      "auth": "learning",
+      "order": 852
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:admin_router",
+      "options": {
+        "prefix": "/api/exam/admin",
+        "tags": [
+          "exam-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 853
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:review_router",
+      "options": {
+        "prefix": "/api/exam/review",
+        "tags": [
+          "exam-review"
+        ]
+      },
+      "auth": "admin",
+      "order": 854
+    },
+    {
+      "reference": "deeptutor.api.routers.studio:router",
+      "options": {
+        "prefix": "/api/studio",
+        "tags": [
+          "studio"
+        ]
+      },
+      "auth": "learning",
+      "order": 862
+    },
+    {
+      "reference": "deeptutor.api.routers.studio:admin_router",
+      "options": {
+        "prefix": "/api/studio/admin",
+        "tags": [
+          "studio-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 863
     }
   ],
   "commands": [],

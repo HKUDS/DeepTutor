@@ -15,6 +15,10 @@ export function getLocale(lang: Language): string {
   if (lang === "ko") return "ko-KR";
   if (lang === "it") return "it-IT";
   if (lang === "hu") return "hu-HU";
+  // Persian formats against Iran: the region selects the Persian calendar,
+  // Persian digits and right-to-left date order. `fa` alone would leave the
+  // calendar up to the runtime's CLDR default.
+  if (lang === "fa") return "fa-IR";
   return "en-US";
 }
 

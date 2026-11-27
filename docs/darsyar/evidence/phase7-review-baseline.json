@@ -1,0 +1,123 @@
+{
+  "phase": 7,
+  "title": "Mastery, Flashcards & Personalized Review",
+  "branch": "arena/8c8a9451-deeptutor",
+  "base_commit": "f1c991ca",
+  "audit": {
+    "existing_mastery": "deeptutor/learning/ (mastery.py, scheduler.py FSRS-like, storage.py, service.py); API at /api/mastery-paths with 30+ routes",
+    "existing_flashcards": "deeptutor/book/blocks/flash_cards.py ONLY -- an LLM book-generation block. No persistence, no dedup, no provenance, no review history. Unsuitable for review.",
+    "reused_not_rebuilt": [
+      "learning.mastery.compute_mastery -- the 0..1 mastery policy (recency weights + confidence cap)",
+      "learning.scheduler.SpacedRepetitionScheduler -- interval sequences and stability model",
+      "learning.models.KnowledgeType / RepetitionState",
+      "services.scope -- enrolment resolution and the 403 guard from Phase 6"
+    ]
+  },
+  "delivered": {
+    "migration": "V0009__flashcards_review.sql (flashcard_decks, flashcards, flashcard_reviews)",
+    "services/review/schedule.py": "pure deterministic scheduler; now is a parameter",
+    "services/review/mastery.py": "chapter/topic grouping, evidence extraction, practice suggestions",
+    "db/repositories/flashcards.py": "decks, cards, review events, mistake bridge",
+    "api/routers/flashcards.py": "15 routes under /api/flashcards (mastery module, learning policy)",
+    "identity_unification": "user_id on exam attempt/mistakes/list endpoints now resolves via caller_id"
+  },
+  "acceptance": {
+    "no_deck_or_card_outside_scope": {
+      "verdict": "PASS",
+      "tests": [
+        "test_a_grade_scoped_deck_cannot_be_created_outside_the_enrolment",
+        "test_another_students_deck_is_not_found",
+        "test_another_students_card_is_not_found",
+        "test_listing_another_students_cards_is_refused",
+        "test_a_card_cannot_be_added_to_someone_elses_deck",
+        "test_a_review_cannot_be_recorded_for_someone_elses_card",
+        "test_another_students_attempt_cannot_be_mined",
+        "test_the_queue_is_per_student"
+      ]
+    },
+    "progress_survives_restart": {
+      "verdict": "PASS",
+      "proof": "two separate PROCESSES over one file-backed DB: step1 wrote a deck, a card and 2 reviews; step2 (fresh interpreter) read back reviews=2, lapses=1, card_count=1, and the full review history",
+      "http_proof": "server on :3821 wrote 2 cards + 1 review; killed; a NEW server on :3822 returned {'cards':2,'due':1,'reviews':1,'by_rating':{'good':1}} and the deck with card_count=2"
+    },
+    "deterministic_review_algorithm": {
+      "verdict": "PASS",
+      "tests": [
+        "test_the_same_review_at_the_same_moment_gives_the_same_schedule",
+        "test_replaying_a_history_reproduces_the_state",
+        "test_a_different_rating_gives_a_different_schedule"
+      ],
+      "design": "now is always a parameter; no clock read inside schedule()"
+    },
+    "deduplication": {
+      "verdict": "PASS",
+      "key": "sha256(normalised front | provenance kind | provenance id), UNIQUE (user_id, content_key)",
+      "folding": "whitespace, case, ZWNJ/ZWJ, Arabic-Indic + Persian digits, Arabic yeh/kaf",
+      "tests": [
+        "test_the_same_card_twice_is_one_card",
+        "test_deduplication_ignores_spacing_and_arabic_letters",
+        "test_the_same_question_from_two_chapters_is_two_cards",
+        "test_two_students_wrong_on_the_same_question_each_get_a_card",
+        "test_concurrent_identical_adds_all_succeed",
+        "test_regenerating_from_the_same_attempt_adds_nothing"
+      ]
+    },
+    "citation_provenance": {
+      "verdict": "PASS",
+      "fields": [
+        "provenance_kind",
+        "source_id",
+        "chapter_title",
+        "citation",
+        "origin_attempt_id",
+        "origin_question_id"
+      ],
+      "tests": [
+        "test_a_card_records_where_it_came_from",
+        "test_wrong_answers_become_cards"
+      ]
+    },
+    "existing_mastery_regression_tests": {
+      "verdict": "PASS",
+      "note": "deeptutor/learning/tests/* untouched and green; compute_mastery reused, not replaced"
+    },
+    "evidence_not_model_estimate": {
+      "verdict": "PASS",
+      "design": "mastery from stored exam item outcomes + review events; group with no evidence is ABSENT (None), never 0.0",
+      "tests": [
+        "test_a_chapter_with_no_evidence_is_absent_not_zero",
+        "test_suggestions_come_from_observed_mistakes",
+        "test_a_voided_item_is_not_evidence"
+      ]
+    }
+  },
+  "gate7": {
+    "verdict": "PASS",
+    "claim": "progress continuity and user isolation both proven, at process-restart and HTTP level"
+  },
+  "verification": {
+    "pytest_tests_db_plus_api_plus_modules": "773 passed, 416 skipped",
+    "pytest_full_suite": "14659 passed, 548 skipped, 1 failed (environment-only: test_doctor_cli on the literal 'user' in /tmp/pytest-of-user/)",
+    "ruff": "clean",
+    "lint_imports": "3 kept, 0 broken",
+    "module_isolation": "tests/modules 25 passed (flashcards+review owned by the mastery module)",
+    "router_index": "66 routers, 800 routes"
+  },
+  "bugs_found_and_fixed_during_the_phase": [
+    {
+      "where": "flashcards.py::_answer_text",
+      "what": "choices are newline-delimited TEXT, not a list; iterating the string produced 'ت' instead of 'تهران'",
+      "fix": "_choices_of() splits on newline"
+    },
+    {
+      "where": "module boundaries",
+      "what": "the new router imported deeptutor.learning, which the server module may not depend on",
+      "fix": "flashcard/review paths moved to the mastery manifest, which already owns deeptutor/learning"
+    },
+    {
+      "where": "draft scope call",
+      "what": "an early version passed the exam's own grade as the caller's claim, making the guard compare a value with itself",
+      "fix": "removed before it shipped; only the caller's claim reaches resolve_enrolment"
+    }
+  ]
+}

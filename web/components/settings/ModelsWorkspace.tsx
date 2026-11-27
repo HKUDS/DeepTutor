@@ -481,7 +481,7 @@ export function ModelsWorkspace({
                       </span>
                     )}
                   </span>
-                  <span className="mt-1 flex items-center gap-1.5 pl-[23px] text-[12px] text-[var(--muted-foreground)]">
+                  <span className="mt-1 flex items-center gap-1.5 ps-[23px] text-[12px] text-[var(--muted-foreground)]">
                     <span className="max-w-[45%] truncate">{providerName}</span>
                     {row.model?.model && (
                       <>
@@ -491,7 +491,7 @@ export function ModelsWorkspace({
                     )}
                   </span>
                   {(page === "voice" || page === "multimodal" || row.service === "task") && (
-                    <span className="mt-1.5 ml-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">
+                    <span className="mt-1.5 ms-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">
                       {t(SERVICE_TITLES[row.service])}
                     </span>
                   )}
@@ -1022,7 +1022,7 @@ function ModelEditor({
               aria-label={t(service === "search" ? "settings.serviceConfig.removeSearch" : "Remove model")}
               disabled={applying || managed || assignedToTask}
               onClick={() => void remove()}
-              className={`${registryDanger} ml-auto`}
+              className={`${registryDanger} ms-auto`}
             >
               <Trash2 size={14} />
             </button>

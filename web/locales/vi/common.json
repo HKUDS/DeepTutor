@@ -41,5 +41,7 @@
   "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Ví dụ: Tôi đang học đại số tuyến tính. Hãy giải thích ý nghĩa hình học trước khi giới thiệu công thức và đưa ra gợi ý trước lời giải đầy đủ.",
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.": "Áp dụng cho Trò chuyện, Giải bài, Đặt câu hỏi, Học có hướng dẫn, Đọc và các dạng trực quan hóa tiêu chuẩn. Thay đổi có hiệu lực từ lượt tiếp theo.",
   "Clear instructions": "Xóa hướng dẫn",
-  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} ký tự"
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} ký tự",
+  "language.persian": "فارسی",
+  "language.korean": "한국어 (일부 번역)"
 }

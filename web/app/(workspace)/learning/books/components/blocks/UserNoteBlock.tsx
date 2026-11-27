@@ -67,7 +67,7 @@ export default function UserNoteBlock({
   };
 
   return (
-    <aside className="group/note flex gap-3 border-l-[3px] border-dashed border-[var(--primary)]/50 bg-[var(--primary)]/[0.04] py-2 pl-4 pr-3">
+    <aside className="group/note flex gap-3 border-s-[3px] border-dashed border-[var(--primary)]/50 bg-[var(--primary)]/[0.04] py-2 ps-4 pe-3">
       <StickyNote className="mt-[3px] h-4 w-4 shrink-0 text-[var(--primary)]" />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center justify-between gap-2">
@@ -142,7 +142,7 @@ export default function UserNoteBlock({
             type="button"
             onClick={() => editable && setEditing(true)}
             disabled={!editable}
-            className="text-left text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:cursor-default disabled:hover:text-[var(--muted-foreground)]"
+            className="text-start text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:cursor-default disabled:hover:text-[var(--muted-foreground)]"
           >
             {editable
               ? t("Empty note — click to start writing your own annotation.")

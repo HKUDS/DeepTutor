@@ -200,7 +200,7 @@ export function PdfZoomControls({
             role="menu"
             aria-label={t("Zoom level")}
             ref={menuRef}
-            className="absolute bottom-full left-1/2 mb-2 min-w-[132px] -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl"
+            className="absolute bottom-full start-1/2 mb-2 min-w-[132px] -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl"
           >
             {(
               [
@@ -220,7 +220,7 @@ export function PdfZoomControls({
                   onSelect({ mode: row.mode });
                   setOpen(false);
                 }}
-                className="flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[12px] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+                className="flex h-8 w-full items-center rounded-lg px-2.5 text-start text-[12px] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
               >
                 {row.label}
               </button>
@@ -241,7 +241,7 @@ export function PdfZoomControls({
                   onSelect({ mode: "fixed", scale });
                   setOpen(false);
                 }}
-                className="flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[12px] tabular-nums hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+                className="flex h-8 w-full items-center rounded-lg px-2.5 text-start text-[12px] tabular-nums hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
               >
                 {`${percentFor(scale)}%`}
               </button>

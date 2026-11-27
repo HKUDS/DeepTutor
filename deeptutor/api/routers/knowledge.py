@@ -69,7 +69,7 @@ from deeptutor.multi_user.knowledge_access import (
 from deeptutor.multi_user.knowledge_access import (
     list_visible_knowledge_bases as list_visible_kb_access,
 )
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import PROJECT_ROOT, load_main_config
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
@@ -111,10 +111,13 @@ from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 from deeptutor.utils.file_types import FileTypeRouter
 
-# Initialize logger with config
-config = load_config_with_main("main.yaml", PROJECT_ROOT)
-log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
+
+
+def _main_config() -> dict:
+    """Load ``main.yaml`` on demand instead of at import time (R-12)."""
+    return load_main_config()
+
 
 router = APIRouter()
 ws_router = APIRouter()

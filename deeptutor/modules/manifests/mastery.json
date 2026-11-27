@@ -17,7 +17,10 @@
     "deeptutor/api/routers/mastery_path.py",
     "deeptutor/tools/mastery_nav.py",
     "deeptutor/tools/mastery_tool.py",
-    "deeptutor/services/mastery_hints.py"
+    "deeptutor/services/mastery_hints.py",
+    "deeptutor/services/review",
+    "deeptutor/api/routers/flashcards.py",
+    "deeptutor/db/repositories/flashcards.py"
   ],
   "capabilities": {
     "mastery_path": {
@@ -166,6 +169,17 @@
       },
       "auth": "public",
       "order": 623
+    },
+    {
+      "reference": "deeptutor.api.routers.flashcards:router",
+      "options": {
+        "prefix": "/api/flashcards",
+        "tags": [
+          "flashcards"
+        ]
+      },
+      "auth": "learning",
+      "order": 861
     }
   ],
   "commands": [],
