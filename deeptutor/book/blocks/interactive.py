@@ -71,28 +71,8 @@ def _offset(text: str, position: tuple[int, int]) -> int:
     return offset + column
 
 
-def _budget_hint(max_tokens: int | None) -> str:
-    """How to fix output that ran out of room, for whoever reads the error.
-
-    A reasoning model pays for its hidden thinking out of the same budget, so
-    it can return nothing at all or stop halfway through the page. The two
-    settings below are the only things the user can change about that.
-    """
-    budget = f"the {max_tokens}-token" if max_tokens else "the"
-    return (
-        f" If the model reasons before answering, it may have spent {budget} "
-        "output budget on thinking: raise Max tokens in "
-        "Settings → Capabilities → Visualize, or turn off thinking for this model "
-        "(Reasoning effort → None)."
-    )
-
-
-def _normalize_interactive_html(code: str, *, max_tokens: int | None = None) -> str:
+def _normalize_interactive_html(code: str) -> str:
     text = (code or "").strip()
-    if not text:
-        raise GenerationFailure(
-            "interactive generation returned no code." + _budget_hint(max_tokens)
-        )
     start = _HTML_START.search(text)
     if start is None:
         raise GenerationFailure(
@@ -109,7 +89,7 @@ def _normalize_interactive_html(code: str, *, max_tokens: int | None = None) -> 
         where = "inside a <script>" if parser.open_scripts else "before its closing </html>"
         raise GenerationFailure(
             f"interactive html is incomplete: it stops {where} "
-            "(the model output was probably cut off)." + _budget_hint(max_tokens)
+            "(the model output was probably cut off)."
         )
     if parser.open_scripts or parser.extra_closes:
         raise GenerationFailure("interactive html contains unpaired <script> tags.")
@@ -118,17 +98,6 @@ def _normalize_interactive_html(code: str, *, max_tokens: int | None = None) -> 
     if end is None:  # pragma: no cover - the parser only reports real end tags
         raise GenerationFailure("interactive html has an unreadable </html> tag.")
     return text[: end.end()]
-
-
-def _visualize_max_tokens() -> int | None:
-    """The budget the code-generation call ran with, or None if unreadable."""
-    try:
-        from deeptutor.services.config.capabilities_settings import get_visualize_params
-
-        return int(get_visualize_params()["max_tokens"])
-    except Exception:  # pragma: no cover - only used to word an error
-        logger.debug("Could not read the visualize budget", exc_info=True)
-        return None
 
 
 class InteractiveGenerator(BlockGenerator):
@@ -197,7 +166,7 @@ class InteractiveGenerator(BlockGenerator):
             logger.warning(f"InteractiveGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"interactive generation failed: {exc}") from exc
 
-        code = _normalize_interactive_html(code, max_tokens=_visualize_max_tokens())
+        code = _normalize_interactive_html(code)
         ok, validation_error = validate_visualization(code, "html")
         if not ok:
             raise GenerationFailure(f"interactive html failed validation: {validation_error}")
