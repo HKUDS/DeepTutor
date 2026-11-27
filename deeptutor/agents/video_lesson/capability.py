@@ -85,6 +85,8 @@ class VideoLessonCapability(TurnCapability):
                         stage="code_generation",
                     )
                     draft = await (writer if attempt == 1 else fixer).write(attempt=attempt)
+                    # A new draft has no build yet, even when the preceding attempt succeeded.
+                    build = None
                 timings["code_generation"] += round(time.perf_counter() - started, 3)
                 if not draft.code:
                     attempts.append(
@@ -132,8 +134,11 @@ class VideoLessonCapability(TurnCapability):
                     # Keep the working bundle: a layout fix that then fails to compile
                     # must not cost the learner a lesson that already played.
                     shutil.copyfile(base_dir / "source" / "player.js", good_bundle)
-                    good = (draft, build)
+                    good = (draft, build, narrated, voice_module(clips))
                     if attempt >= MAX_ATTEMPTS or layout_rounds >= MAX_LAYOUT_ROUNDS:
+                        attempts.append(
+                            {"attempt": attempt, "stage": "layout_unchecked", "errors": []}
+                        )
                         break
                     layout_rounds += 1
                     await stream.progress(
@@ -152,6 +157,26 @@ class VideoLessonCapability(TurnCapability):
                         )
                         break
                     if not issues:
+                        from deeptutor.agents.video_lesson.layout_check import (
+                            sample_frames,
+                            scene_sample_points,
+                            valid_scene_lengths,
+                        )
+
+                        total = max((f.get("frame", 0) for f in build.frames), default=0) + 1
+                        lengths = getattr(build, "scene_lengths", None)
+                        fully_sampled = valid_scene_lengths(lengths, total) and scene_sample_points(
+                            lengths
+                        ).issubset(sample_frames(total, scene_lengths=lengths))
+                        attempts.append(
+                            {
+                                "attempt": attempt,
+                                "stage": "layout_sampled_clean"
+                                if fully_sampled
+                                else "layout_coverage_limited",
+                                "errors": [],
+                            }
+                        )
                         break
                     attempts.append({"attempt": attempt, "stage": "layout", "errors": issues})
                     await stream.progress(
@@ -184,7 +209,8 @@ class VideoLessonCapability(TurnCapability):
             await asyncio.gather(runtime_ready, return_exceptions=True)
 
         if good is not None and (build is None or not build.ok):
-            draft, build = good
+            draft, build, narrated, voice = good
+            prepare_workdir(base_dir / "source", draft.code, voice=voice)
             shutil.copyfile(good_bundle, base_dir / "source" / "player.js")
         good_bundle.unlink(missing_ok=True)
 
@@ -244,7 +270,11 @@ class VideoLessonCapability(TurnCapability):
     @staticmethod
     def _layout_issues(base_dir: Path, build: Any, language: str) -> list[str] | None:
         """Browser layout check of the freshly built bundle; empty when clean, None when unavailable."""
-        from deeptutor.agents.video_lesson.layout_check import check_layout, sample_frames
+        from deeptutor.agents.video_lesson.layout_check import (
+            check_layout,
+            sample_frames,
+            valid_scene_lengths,
+        )
         from deeptutor.agents.video_lesson.runtime import write_page
 
         total = max((f.get("frame", 0) for f in build.frames), default=0) + 1
@@ -253,7 +283,14 @@ class VideoLessonCapability(TurnCapability):
             write_page(
                 base_dir / "source" / "player.js", page, title="layout check", language=language
             )
-            return check_layout(page, sample_frames(total))
+            lengths = getattr(build, "scene_lengths", None)
+            lengths = lengths if valid_scene_lengths(lengths, total) else None
+            return check_layout(
+                page,
+                sample_frames(total, scene_lengths=lengths),
+                require_player_frame=True,
+                expected_scene_lengths=lengths,
+            )
         except Exception:  # the check is advisory; a broken probe must not fail the lesson
             return None
         finally:
