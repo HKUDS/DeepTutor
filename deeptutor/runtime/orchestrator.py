@@ -15,12 +15,15 @@ from typing import Any, AsyncIterator
 import uuid
 
 from deeptutor.capabilities.protocol import AGENT_OUTPUT, EVENT_METADATA
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.events.event_bus import Event, EventType, get_event_bus
 from deeptutor.runtime.registry.capability_registry import get_capability_registry
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus, register_bus, unregister_bus
+from deeptutor.services.prompt.lookup import prompt_text
+from deeptutor.services.prompt.manager import get_prompt_manager
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +72,15 @@ class ChatOrchestrator:
             context.session_id = str(uuid.uuid4())
 
         try:
-            from deeptutor.services.rag.pipelines.pageindex import (
-                validate_pageindex_oss_selection,
-            )
+            if context.knowledge_bases:
+                from deeptutor.modules.catalog import require_module
 
-            validate_pageindex_oss_selection(context.knowledge_bases)
+                require_module("knowledge")
+                from deeptutor.services.rag.pipelines.pageindex import (
+                    validate_pageindex_oss_selection,
+                )
+
+                validate_pageindex_oss_selection(context.knowledge_bases)
         except ValueError as exc:
             bus = StreamBus()
             await bus.error(
@@ -93,8 +100,18 @@ class ChatOrchestrator:
                 yield event
             return
 
-        cap_name = context.active_capability or "chat"
-        capability = self._cap_registry.get(cap_name)
+        capability: TurnCapability | None
+        if context.runtime.answer_by:
+            # The turn belongs to someone else: a partner or a connected agent
+            # answers in place of the selected mode. Not a registry entry —
+            # it is never a mode a learner picks, only who replies.
+            from deeptutor.capabilities.handoff import HandoffCapability
+
+            cap_name = "handoff"
+            capability = HandoffCapability()
+        else:
+            cap_name = context.active_capability or "chat"
+            capability = self._cap_registry.get(cap_name)
 
         if capability is None:
             bus = StreamBus()
@@ -133,12 +150,40 @@ class ChatOrchestrator:
         async def _run() -> None:
             from deeptutor.services.llm.metrics import TurnUsage, current_usage
 
-            turn_usage = TurnUsage(session_id=context.session_id, turn_id=_turn_id, source=cap_name)
-            usage_token = current_usage.set(turn_usage)
+            turn_usage = current_usage.get()
+            usage_token = None
+            if (
+                turn_usage is None
+                or not _turn_id
+                or turn_usage.turn_id != _turn_id
+                or turn_usage.session_id != context.session_id
+            ):
+                turn_usage = TurnUsage(
+                    session_id=context.session_id, turn_id=_turn_id, source=cap_name
+                )
+                usage_token = current_usage.set(turn_usage)
             status = "completed"
             terminal_error_metadata: dict[str, Any] = {}
             try:
                 await capability.run(context, bus)
+                if bus.result_completion is False:
+                    status = "failed"
+                    terminal_error_metadata = {
+                        "error_code": "capability_incomplete",
+                        "retryable": True,
+                    }
+                    prompts = get_prompt_manager().load_prompts(
+                        "capabilities", "turn_status", language=context.language
+                    )
+                    await bus.error(
+                        prompt_text(prompts, ("notices", "capability_incomplete")),
+                        source=cap_name,
+                        metadata={
+                            "turn_terminal": True,
+                            "status": status,
+                            **terminal_error_metadata,
+                        },
+                    )
             except Exception as exc:
                 status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
@@ -177,7 +222,8 @@ class ChatOrchestrator:
                         },
                     )
                 )
-                current_usage.reset(usage_token)
+                if usage_token is not None:
+                    current_usage.reset(usage_token)
                 await bus.close()
                 if _turn_id:
                     unregister_bus(_turn_id)

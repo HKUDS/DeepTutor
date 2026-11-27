@@ -20,6 +20,7 @@ from deeptutor.api.contracts.turn_protocol import (
     ClientCommand,
     StartTurnCommand,
 )
+from deeptutor.services.session.protocol import NoLlmAccess
 from deeptutor.services.workspace.models import WorkspaceError
 
 router = APIRouter()
@@ -226,6 +227,13 @@ async def unified_websocket(ws: WebSocket) -> None:
                             if key not in {"type", "protocol_version"}
                         }
                     )
+                except NoLlmAccess as exc:
+                    await send_protocol_error(
+                        str(exc),
+                        error_code="no_llm_access",
+                        session_id=str(msg.get("session_id") or ""),
+                    )
+                    continue
                 except (RuntimeError, WorkspaceError) as exc:
                     await send_error(
                         str(exc),
@@ -290,7 +298,10 @@ async def unified_websocket(ws: WebSocket) -> None:
                 if not turn_id:
                     await send_error("Missing turn_id.", error_code="missing_turn_id")
                     continue
-                accepted = await turns.cancel_turn(turn_id, command_id=str(msg["command_id"]))
+                # A successful Stop ACK must mean ownership has been released.
+                accepted = await turns.cancel_turn_and_wait(
+                    turn_id, command_id=str(msg["command_id"])
+                )
                 if not accepted:
                     await send_command_ack(
                         msg,
@@ -355,6 +366,7 @@ async def unified_websocket(ws: WebSocket) -> None:
                     turn_id,
                     str(msg.get("content") or ""),
                     command_id=str(msg["command_id"]),
+                    withdraw=str(msg.get("withdraw") or "") or None,
                 )
                 if not accepted:
                     await send_command_ack(

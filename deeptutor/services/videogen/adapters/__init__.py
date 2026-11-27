@@ -11,11 +11,13 @@ from __future__ import annotations
 from deeptutor.services.generation_http import GenerationProviderError
 from deeptutor.services.videogen.adapters.async_task import AsyncTaskVideogenAdapter
 from deeptutor.services.videogen.adapters.dashscope import DashScopeVideogenAdapter
+from deeptutor.services.videogen.adapters.xai import XaiVideogenAdapter
 from deeptutor.services.videogen.base import BaseVideogenAdapter
 
 VIDEOGEN_ADAPTERS: dict[str, BaseVideogenAdapter] = {
     "async_task": AsyncTaskVideogenAdapter(),
     "dashscope": DashScopeVideogenAdapter(),
+    "xai": XaiVideogenAdapter(),
 }
 
 

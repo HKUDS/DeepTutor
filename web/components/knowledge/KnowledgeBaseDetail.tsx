@@ -1,5 +1,6 @@
 "use client";
 
+import { KnowledgeBaseCrumb } from "@/components/layout/instance-crumbs";
 import Tooltip from "@/shared/ui/Tooltip";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
@@ -42,6 +43,7 @@ import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
 import KbStatusBadge from "./KbStatusBadge";
 import KbTaskLogs from "./KbTaskLogs";
+import KbIndexingRun from "./KbIndexingRun";
 import KbFilesTab from "./KbFilesTab";
 import KbDocumentsSection from "./KbDocumentsSection";
 import KbIndexVersionsSection from "./KbIndexVersionsSection";
@@ -204,6 +206,7 @@ export default function KnowledgeBaseDetail({
 
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden bg-[var(--background)]">
+      <KnowledgeBaseCrumb id={kb.name} label={kb.name} />
       {/* Header */}
       <div className="border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
         <div className="flex items-start justify-between gap-3">
@@ -221,7 +224,7 @@ export default function KnowledgeBaseDetail({
                 <button
                   type="button"
                   onClick={onBack}
-                  className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  className="dt-section-back mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   {t("Knowledge bases")}
@@ -311,6 +314,7 @@ export default function KnowledgeBaseDetail({
 
       {/* Body */}
       <KbTaskLogs key={knowledgeBaseRef(kb)} kb={kb} task={task} />
+      <KbIndexingRun key={`run-${knowledgeBaseRef(kb)}`} kbName={knowledgeBaseRef(kb)} readOnly={kb.read_only} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {activeSection === "files" ? (
           <KbFilesTab key={knowledgeBaseRef(kb)} kb={kb} task={task} />

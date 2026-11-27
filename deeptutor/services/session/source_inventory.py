@@ -34,7 +34,6 @@ import hashlib
 import logging
 from typing import Any, Sequence
 
-from deeptutor.reading.references import resolve_reading_sources
 from deeptutor.services.session.protocol import SessionStoreProtocol
 
 logger = logging.getLogger(__name__)
@@ -117,7 +116,7 @@ async def build_inventory(
     store: SessionStoreProtocol,
     *,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     current_turn_ordinal: int,
     fresh_attachment_records: Sequence[dict[str, Any]],
     fresh_notebook_records: Sequence[dict[str, Any]],
@@ -448,7 +447,7 @@ async def _add_historical(
     *,
     store: SessionStoreProtocol,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     language: str = "en",
 ) -> None:
     """Walk the active branch's ancestor user messages and pull in
@@ -663,7 +662,7 @@ async def _collect_from_user_message(
 async def _load_lineage(
     store: SessionStoreProtocol,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
 ) -> list[dict[str, Any]]:
     """Return the active branch's ancestor user/assistant messages in
     chronological order. When ``leaf_message_id`` is ``None`` (legacy
@@ -676,21 +675,21 @@ async def _load_lineage(
     all_msgs = await store.get_messages(session_id)
     if leaf_message_id is None:
         return all_msgs
-    by_id: dict[int, dict[str, Any]] = {}
+    by_id: dict[str, dict[str, Any]] = {}
     for m in all_msgs:
         mid = m.get("id")
         if mid is not None:
-            by_id[int(mid)] = m
+            by_id[str(mid)] = m
     chain: list[dict[str, Any]] = []
-    current: int | None = int(leaf_message_id)
+    current: str | None = str(leaf_message_id)
     safety = 10_000
     while current is not None and safety > 0:
-        m = by_id.get(int(current))
+        m = by_id.get(current)
         if m is None:
             break
         chain.append(m)
         parent = m.get("parent_message_id")
-        current = int(parent) if parent is not None else None
+        current = str(parent) if parent is not None else None
         safety -= 1
     chain.reverse()
     return chain
@@ -713,7 +712,7 @@ async def collect_prior_image_attachments(
     store: SessionStoreProtocol,
     *,
     session_id: str,
-    leaf_message_id: int | None,
+    leaf_message_id: int | str | None,
     exclude_urls: set[str] | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
@@ -725,6 +724,10 @@ async def collect_prior_image_attachments(
     re-attaches the result (URL-only; the multimodal layer resolves the bytes
     from the attachment store at request time). Text attachments are not
     collected here: they are re-served by the inventory's own historical walk.
+
+    Each record is marked ``historical=True`` with the originating
+    ``source_message_id`` (#2632) so the multimodal assembly can tell the
+    model these images came from earlier messages, not the current one.
     """
     if limit is None:
         from deeptutor.services.config import get_prior_image_reinject_limit
@@ -755,6 +758,8 @@ async def collect_prior_image_attachments(
                     "base64": "",
                     "filename": str(att.get("filename", "") or ""),
                     "mime_type": str(att.get("mime_type", "") or ""),
+                    "historical": True,
+                    "source_message_id": str(msg.get("id", "") or ""),
                 }
             )
             if len(collected) >= limit:
@@ -778,6 +783,14 @@ def _add_reading_sources(
     preserves user isolation and makes a deleted material disappear from later
     turns instead of leaving a stale or spoofable copy in session metadata.
     """
+
+    if not references:
+        return
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("reading"):
+        return
+    from deeptutor.reading.references import resolve_reading_sources
 
     for source in resolve_reading_sources(list(references)):
         if source.source_id in inv and not fresh:
@@ -821,6 +834,10 @@ def _resolve_book_section(book_reference: dict[str, Any]) -> tuple[str, str]:
     reference is rendered independently (so the per-book ``bk-{book_id}``
     source id stays stable). Returns ``("", "")`` on failure.
     """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("books"):
+        return "", ""
     from deeptutor.book.context import build_book_context
 
     try:

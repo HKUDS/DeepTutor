@@ -13,6 +13,18 @@ from typing import Any
 
 MODEL_TURN_KEY = "model_turn"
 MODEL_TURN_VERSION = 1
+# Structured Little Tutor source, written beside ``model_turn`` on the
+# assistant row. Unlike the prompt text, it is a stable identity: the backfill
+# can read it without parsing localized instructions.
+SOURCE_MESSAGE_METADATA_KEY = "selection_source"
+# Exact legacy runtime envelope, not a general delimiter in user text.
+_MASTERY_SNAPSHOT_NOTICE = (
+    "[Current-turn mastery_status snapshot]\n"
+    "The runtime has already read mastery_status for this turn and active path. "
+    "Use this result directly; do not call mastery_status again just to begin. "
+    "Refresh with mastery_status after changing the path, mode, outline, or progress "
+    "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+)
 _MESSAGE_KEYS = frozenset(
     {
         "role",
@@ -24,6 +36,7 @@ _MESSAGE_KEYS = frozenset(
         "thinking_blocks",
         "_provider_response_state",
         "_context_snapshot",
+        "_lesson_packet",
     }
 )
 
@@ -121,6 +134,34 @@ def history_groups(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     return groups
 
 
+def _without_completed_thinking(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop prefix-bound Anthropic thoughts only at the durable turn boundary.
+
+    Current-turn tool rounds never pass through history replay. Keep their
+    signed state intact, and leave the stored transcript and other providers'
+    replay state untouched.
+    """
+    result = deepcopy(messages)
+    for message in result:
+        if message.get("role") != "assistant":
+            continue
+        message.pop("thinking_blocks", None)
+        state = message.get("_provider_response_state")
+        if isinstance(state, dict):
+            state.pop("thinking_blocks", None)
+            if not state:
+                message.pop("_provider_response_state", None)
+        content = message.get("content")
+        if isinstance(content, list):
+            message["content"] = [
+                block
+                for block in content
+                if not isinstance(block, dict)
+                or block.get("type") not in {"thinking", "redacted_thinking"}
+            ]
+    return result
+
+
 def replay_group(
     rows: list[dict[str, Any]], route: dict[str, str] | None = None
 ) -> list[dict[str, Any]]:
@@ -131,6 +172,23 @@ def replay_group(
         record = model_turn(rows[-1])
         if record is not None:
             messages = record["messages"]
+            original_input = str(rows[0].get("content") or "")
+            for message in messages:
+                content = message.get("content")
+                if message.get("role") != "user" or not isinstance(content, str):
+                    continue
+                # Older prepared inputs fused a fresh status read with the
+                # learner's words. Remove only that exact valid suffix, never
+                # a literal quotation present in the original user message.
+                if _MASTERY_SNAPSHOT_NOTICE not in original_input:
+                    prefix, separator, payload = content.rpartition(_MASTERY_SNAPSHOT_NOTICE)
+                    if separator:
+                        try:
+                            state = json.loads(payload)
+                        except (ValueError, TypeError):
+                            state = None
+                        if isinstance(state, dict) and isinstance(state.get("path_id"), str):
+                            message["content"] = prefix.rstrip()
             if route and record.get("route") and record["route"] != route:
                 # Signed thinking/encrypted response items belong to the route
                 # that produced them. Tool evidence and public text are portable.
@@ -139,7 +197,7 @@ def replay_group(
                         message.pop(key, None)
                     for call in message.get("tool_calls") or []:
                         call.pop("extra_content", None)
-            return messages
+            return _without_completed_thinking(messages)
     messages = []
     for row in rows:
         expanded = expand_message_context(row)
@@ -151,7 +209,23 @@ def replay_group(
             if state:
                 expanded[-1]["_provider_response_state"] = state
         messages.extend(expanded)
-    return messages
+    return _without_completed_thinking(messages)
+
+
+#: Snapshot name the rolling summary rides under when it is replayed.
+SUMMARY_SNAPSHOT_NAME = "conversation_summary"
+
+
+def summary_snapshot(summary: str) -> dict[str, Any] | None:
+    """Render the rolling summary as a replayable trailing context snapshot."""
+    cleaned = (summary or "").strip()
+    if not cleaned:
+        return None
+    return {
+        "role": "user",
+        "content": f"[Conversation summary]\n{cleaned}",
+        "_context_snapshot": SUMMARY_SNAPSHOT_NAME,
+    }
 
 
 def replay_history(
@@ -159,11 +233,20 @@ def replay_history(
     summary: str = "",
     route: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    messages = (
-        [{"role": "system", "content": f"[Conversation summary]\n{summary}"}] if summary else []
-    )
+    """Replay the retained model turns. ``summary`` is *not* injected here.
+
+    The rolling summary is delivered by the answer loop as a trailing runtime
+    snapshot instead (see :data:`SUMMARY_SNAPSHOT_NAME`, emitted from
+    ``context.metadata["conversation_summary"]``). Prepending it — or even
+    appending it to this list — would still place it ahead of the newest turn's
+    own messages, so a later rewrite would invalidate everything behind it.
+    Emitted as a snapshot after those bytes, a rewrite is a plain append and
+    the previous request stays a cache hit.
+    """
+    messages: list[dict[str, Any]] = []
     for group in history_groups(rows):
         messages.extend(replay_group(group, route))
+    # Preserve the sent prefix, including snapshots superseded by later updates.
     return messages
 
 

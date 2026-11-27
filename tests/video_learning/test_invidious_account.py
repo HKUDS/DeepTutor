@@ -534,7 +534,7 @@ def test_router_authorize_callback_status_and_disconnect(
         follow_redirects=False,
     )
     assert callback.status_code == 303
-    assert callback.headers["location"] == "/watching?account=connected"
+    assert callback.headers["location"] == "/reading?account=connected"
     assert callback.headers["cache-control"] == "no-store"
     assert "v1:test-session" not in callback.text
 
@@ -577,7 +577,7 @@ def test_unknown_callback_redirects_without_calling_invidious(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/watching?account=authorization_expired"
+    assert response.headers["location"] == "/reading?account=authorization_expired"
     assert "forged" not in response.text
     assert "v1:test-session" not in response.text
 
@@ -730,7 +730,7 @@ async def test_unauthenticated_callback_clears_credentials_from_destination():
 
     response = await selective_access_log(request, denied)
     assert response.status_code == 303
-    assert response.headers["location"] == "/watching?account=authorization_login_required"
+    assert response.headers["location"] == "/reading?account=authorization_login_required"
     assert "secret" not in str(dict(response.headers))
 
 
@@ -761,7 +761,7 @@ def test_real_invidious_callback_encoding(
         follow_redirects=False,
     )
     assert callback.status_code == 303
-    assert callback.headers["location"] == "/watching?account=connected"
+    assert callback.headers["location"] == "/reading?account=connected"
     assert account_storage.read_account("u_ada")["token"] == raw
     assert client.get("/api/video-learning/invidious/account/status").json()["connected"]
     repeated = client.get(
@@ -769,7 +769,7 @@ def test_real_invidious_callback_encoding(
         params={"state": state, "token": serialized},
         follow_redirects=False,
     )
-    assert repeated.headers["location"] == "/watching?account=authorization_expired"
+    assert repeated.headers["location"] == "/reading?account=authorization_expired"
 
 
 def test_token_decoding_is_bounded_and_does_not_decode_literal_json():

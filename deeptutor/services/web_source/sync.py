@@ -80,8 +80,8 @@ async def _rebuild_index_after_removal(
     base_dir: str,
 ) -> int:
     """Rebuild the bound provider so removed pages cannot remain retrievable."""
-    from deeptutor.services.rag.file_routing import FileTypeRouter
     from deeptutor.services.rag.service import RAGService
+    from deeptutor.utils.file_types import FileTypeRouter
 
     files = FileTypeRouter.collect_supported_files(raw_dir, recursive=True)
     if not files:

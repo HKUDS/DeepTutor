@@ -1,5 +1,6 @@
 "use client";
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { resourceUsage } from "@/lib/workspaces-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -399,7 +400,6 @@ export default function SkillsSection() {
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={Wand2}
         title={t("Skills")}
         description={t(
           "Capability playbooks the model reads on demand. Built-in and preset skills are read-only.",
@@ -614,7 +614,7 @@ export default function SkillsSection() {
           {t("No skills match this filter.")}
         </div>
       ) : (
-        <ul className="grid gap-3 md:grid-cols-2">
+        <ul className={pageGridClass(2)}>
           {filteredSkills.map((skill) => {
             const readOnly = Boolean(skill.read_only);
             const sourceBadge =

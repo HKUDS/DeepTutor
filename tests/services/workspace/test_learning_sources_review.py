@@ -1,4 +1,4 @@
-"""Discovery spans workspaces; material reads and review writes keep their origin."""
+"""Discovery reads one workspace; saved material references and reviews keep their origin."""
 
 import asyncio
 import time
@@ -45,17 +45,23 @@ async def test_selected_materials_are_read_from_their_origin_without_moving_dest
         await seed_question(scope, text)
     with workspace_context(other):
         catalog = await dashboard.get_source_library("practice")
-        assert catalog["unavailable_workspaces"] == []
-        assert len(catalog["items"]) == 2
-        assert {row["id"] for row in catalog["items"]} == {1}
+        assert [(row["id"], row["content_workspace_id"]) for row in catalog["items"]] == [
+            (1, other)
+        ]
+        # A reference saved earlier still names its origin store.
         refs = [
             {
                 "kind": "question_bank",
-                "source_id": str(row["id"]),
-                "label": row["question"],
-                "metadata": {"content_workspace_id": row["content_workspace_id"]},
-            }
-            for row in catalog["items"]
+                "source_id": "1",
+                "label": "Original",
+                "metadata": {"content_workspace_id": ""},
+            },
+            {
+                "kind": "question_bank",
+                "source_id": str(catalog["items"][0]["id"]),
+                "label": catalog["items"][0]["question"],
+                "metadata": {"content_workspace_id": other},
+            },
         ]
         materials = await asyncio.to_thread(
             build_topic_materials, [TopicSource(id=str(i), **row) for i, row in enumerate(refs)]
@@ -115,22 +121,17 @@ def test_recent_system_assessed_correct_question_is_scheduled_for_later(account)
         assert repo.queue("UTC", now=now + 4 * 86400) == [entry["id"]]
 
 
-def test_all_workspace_review_keeps_duplicate_ids_distinct_and_updates_only_the_source(
-    account, scoped_client
-):
+def test_review_reads_and_updates_only_the_request_workspace(account, scoped_client):
     scoped_client.app.include_router(practice.router, prefix="/practice")
     other = account.create_workspace("Other")["workspace_id"]
     for scope in ("", other):
         asyncio.run(seed_question(scope, f"Question in {scope or 'default'}"))
-    query = {"all_workspaces": "true", "dt_workspace": other}
+    query = {"dt_workspace": other}
     rows = scoped_client.get("/practice/queue", params=query).json()
-    assert {(row["content_workspace_id"], row["entry"]["id"]) for row in rows} == {
-        ("", 1),
-        (other, 1),
-    }
-    assert scoped_client.get("/practice/summary", params=query).json()["due"] == 2
+    assert [(row["content_workspace_id"], row["entry"]["id"]) for row in rows] == [(other, 1)]
+    assert scoped_client.get("/practice/summary", params=query).json()["due"] == 1
     response = scoped_client.post(
-        "/practice/questions/1/review?dt_workspace=",
+        f"/practice/questions/1/review?dt_workspace={other}",
         json={
             "request_id": "known_by_learner_0001",
             "version": 0,
@@ -142,18 +143,9 @@ def test_all_workspace_review_keeps_duplicate_ids_distinct_and_updates_only_the_
     assert response.status_code == 200, response.text
     assert response.json()["correct"] is None  # Self-report is not fabricated grading evidence.
     assert response.json()["mastered"] is True
-    summary = scoped_client.get("/practice/summary", params=query).json()
-    assert summary["due"] == 1 and summary["total"] == 2
-    assert [
-        row["content_workspace_id"]
-        for row in scoped_client.get("/practice/queue", params=query).json()
-    ] == [other]
+    assert scoped_client.get("/practice/summary", params=query).json()["due"] == 0
+    assert scoped_client.get("/practice/summary", params={"dt_workspace": ""}).json()["due"] == 1
     with workspace_context(""):
-        repo = PracticeStore(get_sqlite_session_store().db_path)
-        due = response.json()["due_at"]
-        assert repo.queue("UTC", now=due - 1) == []
-        assert repo.queue("UTC", now=due + 1) == [1]
-    with workspace_context(other):
         assert PracticeStore(get_sqlite_session_store().db_path).state(1)["review_count"] == 0
 
 
@@ -172,9 +164,7 @@ def test_correct_answers_leave_queue_and_forgotten_questions_return_soon(account
 
 
 @pytest.mark.parametrize("endpoint", ["summary", "queue", "analytics"])
-def test_all_workspace_queries_validate_timezone_before_aggregating(
-    account, scoped_client, endpoint
-):
+def test_practice_queries_validate_timezone(account, scoped_client, endpoint):
     scoped_client.app.include_router(practice.router, prefix="/practice")
-    result = scoped_client.get(f"/practice/{endpoint}?all_workspaces=true&timezone=invalid")
+    result = scoped_client.get(f"/practice/{endpoint}?timezone=invalid")
     assert result.status_code == 422

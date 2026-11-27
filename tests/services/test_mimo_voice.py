@@ -74,16 +74,17 @@ class MiMoTTSTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_pcm_alias_and_default_voice(self) -> None:
+    async def test_pcm_alias_preserves_explicit_voice(self) -> None:
         config = self.config()
         config.base_url += "/chat/completions"
         config.response_format = "pcm"
+        config.voice = "account-voice"
         result, requests = await self.invoke(
             config, {"choices": [{"message": {"audio": {"data": "AAABAA=="}}}]}
         )
         self.assertEqual(result, (b"\x00\x00\x01\x00", "audio/pcm;rate=24000;channels=1"))
         self.assertEqual(
-            json.loads(requests[0].content)["audio"], {"format": "pcm16", "voice": "mimo_default"}
+            json.loads(requests[0].content)["audio"], {"format": "pcm16", "voice": "account-voice"}
         )
         self.assertEqual(str(requests[0].url), config.base_url)
 
@@ -152,12 +153,12 @@ class MiMoTTSTests(unittest.IsolatedAsyncioTestCase):
             config = resolve_tts_runtime_config(catalog, service=service)
         self.assertEqual(config.provider_name, "xiaomi_mimo")
         self.assertEqual(config.adapter, "mimo_tts")
-        self.assertEqual(config.voice, "mimo_default")
+        self.assertEqual(config.voice, "")
         self.assertEqual(config.response_format, "wav")
         self.assertEqual(config.api_key, "test-key")
         self.assertIsInstance(get_tts_adapter(config.adapter), MiMoTTSAdapter)
         options = voice_model_options("xiaomi_mimo", "tts", config.model)
-        self.assertIn("苏打", [v["id"] for v in options["voices"]])
+        self.assertEqual(options["voices"], [])
         self.assertTrue(options["instructions"])
 
 

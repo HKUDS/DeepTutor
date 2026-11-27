@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import json
 import sys
 import time
@@ -72,6 +73,30 @@ class TestComputeNextRun:
         now = _now_ms()
         result = compute_next_run(CronSchedule(kind="cron", expr="0 9 * * *"), now)
         assert result is not None and result > now
+
+    @pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs time.tzset (POSIX)")
+    @pytest.mark.parametrize(
+        ("now", "expected"),
+        [
+            # US DST starts Sun 2026-03-08 and ends Sun 2026-11-01.
+            ((2026, 3, 7, 10, 0), (2026, 3, 8, 9, 0)),
+            ((2026, 10, 31, 10, 0), (2026, 11, 1, 9, 0)),
+        ],
+    )
+    def test_cron_without_tz_keeps_local_wall_clock_across_dst(
+        self, monkeypatch: pytest.MonkeyPatch, now, expected
+    ):
+        pytest.importorskip("croniter")
+        monkeypatch.setenv("TZ", "EST5EDT,M3.2.0,M11.1.0")
+        time.tzset()
+        try:
+            now_ms = int(datetime(*now).timestamp() * 1000)
+            result = compute_next_run(CronSchedule(kind="cron", expr="0 9 * * *"), now_ms)
+            assert result is not None
+            assert datetime.fromtimestamp(result / 1000) == datetime(*expected)
+        finally:
+            monkeypatch.undo()
+            time.tzset()
 
     def test_bad_cron_expression_raises(self):
         pytest.importorskip("croniter")

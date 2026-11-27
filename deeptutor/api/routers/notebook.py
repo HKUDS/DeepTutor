@@ -397,6 +397,15 @@ async def remove_record(notebook_id: str, record_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/notebooks/records/{record_id}/location")
+async def locate_record(record_id: str, notebook_id: str = ""):
+    """Resolve a source citation after a collection move, within the active workspace."""
+    location = notebook_manager.locate_record(record_id, notebook_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+    return {"notebook_id": location, "record_id": record_id}
+
+
 @router.put("/notebooks/{notebook_id}/records/{record_id}")
 async def update_record(notebook_id: str, record_id: str, request: UpdateRecordRequest):
     """Update an existing notebook record in place."""
@@ -407,6 +416,11 @@ async def update_record(notebook_id: str, record_id: str, request: UpdateRecordR
         # of renaming it; the service's sentinel default only works if an
         # omitted field never reaches it.
         changes = request.model_dump(exclude_unset=True)
+        if "output" in changes or "user_query" in changes:
+            raise HTTPException(
+                status_code=400,
+                detail="Favorites preserve their original content. Add this record to a note to edit it.",
+            )
         if not changes:
             raise HTTPException(status_code=400, detail="No fields to update")
         updated = notebook_manager.update_record(
@@ -453,6 +467,8 @@ async def move_record(notebook_id: str, record_id: str, request: MoveRecordReque
         raise
     except NotebookCorruptedError as exc:
         raise _unreadable(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

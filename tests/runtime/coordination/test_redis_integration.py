@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import copy
 import os
 import uuid
 
@@ -7,8 +9,69 @@ import pytest
 import pytest_asyncio
 
 from deeptutor.runtime.coordination import RedisCoordinator
+from deeptutor.runtime.coordination.recovery import TurnRecoveryService
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.redis_integration]
+
+
+async def test_redis_event_json_types_survive_publication_and_replay(coordinator) -> None:
+    """Redis must not reinterpret empty arrays or round JSON payload integers."""
+    event = {
+        "type": "tool_result",
+        "metadata": {
+            "tool_metadata": {
+                "workspace_items": [],
+                "artifacts": [],
+                "object": {},
+                "nested": [[], {}, {"items": [], "objects": [{}]}],
+                "null": None,
+                "integer": 2**53 + 1,
+                "text": '中文 "seq":123 }',
+            }
+        },
+    }
+    original = copy.deepcopy(event)
+    published = await coordinator.publish_event("turn-json", event)
+
+    assert published == {**event, "turn_id": "turn-json", "seq": 1}
+    assert event == original
+    assert await coordinator.read_events("turn-json") == [published]
+    assert await coordinator.publish_event("turn-json", published) == published
+    assert len(await coordinator.read_events("turn-json")) == 1
+    with pytest.raises(ValueError, match="Turn event conflict"):
+        await coordinator.publish_event("turn-json", {**published, "metadata": {}})
+
+
+@pytest.mark.parametrize("event", [{}, {"turn_id": ""}, {"turn_id": None}])
+async def test_redis_event_defaults_turn_id_without_mutating_input(coordinator, event) -> None:
+    """Even an empty event is a valid JSON object after adding its sequence."""
+    original = dict(event)
+    published = await coordinator.publish_event("turn-default", event)
+    assert published == {"turn_id": "turn-default", "seq": 1}
+    assert event == original
+    assert await coordinator.publish_event("turn-default", {**event, "seq": 1}) == published
+
+
+async def test_redis_explicit_event_sequence_keeps_arrays_and_advances_counter(coordinator) -> None:
+    """Explicit replay sequences still determine the next automatic sequence."""
+    event = {"seq": 7, "turn_id": "turn-explicit", "items": []}
+    assert await coordinator.publish_event("turn-explicit", event) == event
+    next_event = await coordinator.publish_event("turn-explicit", {"items": []})
+    assert next_event == {"seq": 8, "turn_id": "turn-explicit", "items": []}
+    assert await coordinator.read_events("turn-explicit", after_seq=7) == [next_event]
+
+
+async def test_redis_concurrent_events_keep_json_arrays(coordinator) -> None:
+    """Payload preservation must retain atomic allocation under concurrent writes."""
+    events = await asyncio.gather(
+        *(coordinator.publish_event("turn-concurrent", {"items": []}) for _ in range(20))
+    )
+    assert sorted(event["seq"] for event in events) == list(range(1, 21))
+    assert all(event["items"] == [] for event in events)
+    assert await coordinator.read_events("turn-concurrent") == sorted(
+        events, key=lambda event: event["seq"]
+    )
 
 
 @pytest_asyncio.fixture
@@ -103,3 +166,34 @@ async def test_two_redis_coordinators_share_turn_and_background_streams(coordina
         assert await coordinator.release_turn(lease) is True
     finally:
         await second.close()
+
+
+async def test_recovery_preserves_shared_events_and_live_owner(coordinator, tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "recovery.db")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("recover-me", session["id"], "worker")
+    assert lease is not None
+    await store.begin_turn(
+        session["id"],
+        "chat",
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    content = await coordinator.publish_event(lease.turn_id, {"type": "content", "content": "kept"})
+    recovery = TurnRecoveryService(coordinator, store)
+    assert await recovery.recover_once() == 0
+    assert (await store.get_turn(lease.turn_id))["status"] == "running"
+    # Simulate lease expiry, not a graceful release (which removes the
+    # expired-candidate index). Keep the shared event stream intact.
+    await coordinator.client.pexpire(coordinator._key("lease", "turn", lease.turn_id), 1)
+    await coordinator.client.zadd(coordinator._key("leases", "turns"), {lease.turn_id: 0})
+    await asyncio.sleep(0.02)
+    assert await recovery.recover_once() == 1
+    events = await store.get_events(lease.turn_id)
+    assert [event["type"] for event in events] == ["content", "error", "done"]
+    assert [event["seq"] for event in events] == [1, 2, 3]
+    assert events[0]["content"] == content["content"]
+    assert [event["seq"] for event in await coordinator.read_events(lease.turn_id)] == [1, 2, 3]
+    assert (await store.get_turn(lease.turn_id))["failure_code"] == "worker_lost"
+    assert await recovery.recover_once() == 0

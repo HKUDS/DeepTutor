@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from collections import deque
 from io import BytesIO
+import logging
 import re
 from typing import Any, Iterator
 import zipfile
+
+logger = logging.getLogger(__name__)
 
 _OOXML_MAGIC = b"PK\x03\x04"
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0"
@@ -24,6 +27,7 @@ _MAX_MARKDOWN_CHARS = 600_000
 _HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _CODE_FONTS = {"consolas", "courier new", "courier", "menlo", "monaco", "cascadia mono"}
 _CODE_FONT = "Consolas"
+_XML_INVALID_TEXT = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
 _HEADING_STYLES = {
@@ -60,6 +64,8 @@ _MD_QUOTE_RE = re.compile(r"^>\s?(.*)$")
 _MD_HR_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})$")
 _MD_TABLE_SEP_RE = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 _MD_FENCE_RE = re.compile(r"^```")
+
+_UNPARSEABLE_ROW_CELL = "(unparseable row)"
 _INLINE_RE = re.compile(
     r"\[(?P<link_text>[^\]\n]*)\]\((?P<link_href>[^)\s]*)\)"
     r"|`(?P<code>[^`\n]+)`"
@@ -68,7 +74,9 @@ _INLINE_RE = re.compile(
     r"|__(?P<b2>[^\n]+?)__"
     r"|~~(?P<strike>[^\n]+?)~~"
     r"|\*(?P<i1>[^\n]+?)\*"
-    r"|_(?P<i2>[^\n]+?)_"
+    # ``_`` emphasis only at a word boundary (CommonMark): ``snake_case_word``
+    # is literal, not italic ``case``. ``*`` above may still emphasise intra-word.
+    r"|(?<!\w)_(?!_)(?P<i2>[^\n]+?)(?<!_)_(?!\w)"
 )
 # Characters we escape when emitting markdown, and honour when parsing it.
 _ESCAPABLE = set("\\`*_[]~|<>#+-.!()")
@@ -120,7 +128,14 @@ def docx_to_markdown(data: bytes, filename: str = "document.docx") -> str:
         docx = _docx_module()
         document = docx.Document(BytesIO(data))
         numbering = _numbering_formats(document)
-        blocks = [_block_to_markdown(block, numbering) for block in _iter_blocks(document)]
+        tables_seen = 0
+        blocks = []
+        for block in _iter_blocks(document):
+            table_ordinal = None
+            if type(block).__name__ == "Table":
+                table_ordinal = tables_seen
+                tables_seen += 1
+            blocks.append(_block_to_markdown(block, numbering, table_ordinal))
         markdown = _join_blocks(blocks)
     except DocxConversionError:
         raise
@@ -223,9 +238,13 @@ def _iter_blocks(document: Any) -> Iterator[Any]:
             yield docx.table.Table(child, document)
 
 
-def _block_to_markdown(block: Any, numbering: dict[tuple[str, str], str]) -> str:
+def _block_to_markdown(
+    block: Any,
+    numbering: dict[tuple[str, str], str],
+    table_ordinal: int | None = None,
+) -> str:
     if type(block).__name__ == "Table":
-        return _table_to_markdown(block)
+        return _table_to_markdown(block, table_ordinal)
     return _paragraph_to_markdown(block, numbering)
 
 
@@ -348,12 +367,21 @@ def _run_to_markdown(run: Any) -> str:
     return out
 
 
-def _table_to_markdown(table: Any) -> str:
+def _table_to_markdown(table: Any, table_ordinal: int | None = None) -> str:
     rows: list[list[str]] = []
-    for row in table.rows:
+    for row_index, row in enumerate(table.rows):
         try:
             cells = [_cell_text(cell) for cell in row.cells]
-        except Exception:
+        except Exception as exc:
+            where = f"row #{row_index + 1}"
+            if table_ordinal is not None:
+                where = f"table #{table_ordinal + 1} {where}"
+            logger.warning(
+                "DOCX %s could not be parsed; kept a placeholder row (%s)",
+                where,
+                exc,
+            )
+            rows.append([_UNPARSEABLE_ROW_CELL])
             continue
         if any(cell.strip() for cell in cells):
             rows.append(cells)
@@ -433,7 +461,8 @@ def markdown_to_docx(content: str, title: str = "") -> bytes:
     del title  # any heading already lives in the markdown body
     docx = _docx_module()
     document = docx.Document()
-    lines = (content or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    content = _XML_INVALID_TEXT.sub("", content or "")
+    lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -599,6 +628,10 @@ def _unmask(fragment: str, saved: deque[str]) -> str:
 
 
 def _add_inline_runs(paragraph: Any, text: str) -> None:
+    # A literal NUL in the input collides with the escape sentinel ``_MASK``
+    # and would make ``_unmask`` pop a saved char that was never stored. NUL is
+    # not valid XML text content anyway, so drop it before masking.
+    text = _XML_INVALID_TEXT.sub("", text)
     masked, saved = _mask_escapes(text)
     cursor = 0
     for match in _INLINE_RE.finditer(masked):

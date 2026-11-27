@@ -5,8 +5,8 @@ import { Fragment, memo, useMemo } from "react";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
 import { useReading } from "@/context/ReadingContext";
+import { contentLang } from "@/lib/content-lang";
 import type { StreamEvent } from "@/features/chat/model/protocol";
-import { useWatching } from "@/context/WatchingContext";
 import {
   hasVisibleMarkdownContent,
   repairChineseEmphasis,
@@ -18,7 +18,6 @@ import {
   verifiedReadingLocators,
 } from "@/lib/reading-citations";
 import { linkifyMediaTimestamps } from "@/lib/reading-media-citations";
-import { linkifyVideoTimestamps } from "@/lib/watching-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 
@@ -55,7 +54,6 @@ function AssistantResponseImpl({
   // currently open material is used only for an extra range check; it never
   // supplies identity for a historical answer.
   const { material } = useReading();
-  const watching = useWatching();
   const verifiedLocators = useMemo(
     () =>
       verifiedReadingLocators(
@@ -66,9 +64,6 @@ function AssistantResponseImpl({
     [events, readingMaterialId, readingMaterialRevision],
   );
   const citedContent = useMemo(() => {
-    if (watching.active && watching.material) {
-      return linkifyVideoTimestamps(displayContent);
-    }
     if (
       material?.unit === "segment" &&
       (!readingMaterialId || material.material_id === readingMaterialId) &&
@@ -95,8 +90,6 @@ function AssistantResponseImpl({
     readingMaterialId,
     readingMaterialRevision,
     verifiedLocators,
-    watching.active,
-    watching.material,
   ]);
   const segments = useMemo(
     () => parseModelThinkingSegments(stripArtifactAnnotations(citedContent)),
@@ -120,13 +113,16 @@ function AssistantResponseImpl({
   // structured landmark. aria-live="polite" + aria-atomic="false" announces
   // streamed-in content as the user pauses, without re-reading the whole
   // bubble each token. Together this is the minimal pattern that turns a
-  // silent stream into an audible one.
+  // silent stream into an audible one. ``lang`` scopes the reply's language
+  // to the message text so the ``:lang()`` CJK font stacks in globals.css
+  // apply to chat prose without touching surrounding chrome.
   return (
     <div
       role="article"
       aria-live="polite"
       aria-atomic="false"
       className={className}
+      lang={contentLang(language)}
     >
       {segments.map((segment, index) => {
         if (segment.kind === "think") {
@@ -154,6 +150,7 @@ function AssistantResponseImpl({
             key={`text-${index}`}
             content={repairedContent}
             variant="prose"
+            learningTextSize={16}
             className="text-[var(--foreground)]"
           />
         );

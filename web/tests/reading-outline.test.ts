@@ -186,6 +186,29 @@ test("page headings are searchable from the workspace navigator", () => {
   assert.doesNotMatch(textReader, /segmentTextByQuotes|<mark/);
 });
 
+test("fenced examples do not swallow the headings that follow them", () => {
+  const nested = [
+    "# Guide",
+    "````md",
+    "```py",
+    "# Not a heading",
+    "```",
+    "````",
+    "## Next",
+  ].join("\n");
+  const infoString = ["# Guide", "```", "```py", "# Not a heading", "```", "## Next"].join(
+    "\n",
+  );
+  const inline = "# Guide\n```inline``` code.\n## Next";
+
+  for (const sourceText of [nested, infoString, inline]) {
+    assert.deepEqual(
+      extractReaderHeadings([sourceText], 1).map((heading) => heading.title),
+      ["Guide", "Next"],
+    );
+  }
+});
+
 test("lines inside a fenced code block are flagged so the renderer skips Markdown", () => {
   const sourceText = "Intro paragraph.\n```md\n**not bold**\n```\nAfter.";
   const lines = readerLinesWithHeadings(sourceText, []);
@@ -195,4 +218,18 @@ test("lines inside a fenced code block are flagged so the renderer skips Markdow
     [false, true, true, true, false],
   );
   assert.equal(lines.map((line) => line.text).join("\n"), sourceText);
+});
+
+
+test("tab-indented fence markers do not open or close fenced blocks", () => {
+  for (const text of [
+    "\t```md\n# Visible\n",
+    "```md\n\t```\n# Hidden\n```\n# Visible",
+  ]) {
+    const headings = extractReaderHeadings([text], 1);
+    assert.deepEqual(headings.map((heading) => heading.title), ["Visible"]);
+    const lines = readerLinesWithHeadings(text, headings);
+    assert.deepEqual(lines.filter((line) => line.heading).map((line) => line.heading?.title), ["Visible"]);
+    assert.equal(lines.map((line) => line.text).join("\n"), text);
+  }
 });

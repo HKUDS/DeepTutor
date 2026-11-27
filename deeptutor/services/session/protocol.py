@@ -7,7 +7,23 @@ allowing the rest of the codebase to be store-agnostic.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, Sequence, runtime_checkable
+
+# Internal admission fields shared by the store and turn runtime. The runtime
+# consumes them before returning a public turn receipt (#1793).
+SUBMISSION_REPLAY_FIELD = "_submission_replay"
+SUBMISSION_USER_FIELD = "_submission_user_message_id"
+SUBMISSION_ASSISTANT_FIELD = "_submission_assistant_message_id"
+SUBMISSION_PREVIOUS_TURN_FIELD = "_submission_previous_turn_id"
+
+
+class NoLlmAccess(RuntimeError):
+    """The current user has no usable LLM assigned."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No LLM model is assigned to your account. Please contact an administrator."
+        )
 
 
 class ActiveTurnConflict(RuntimeError):
@@ -210,6 +226,8 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
 
     async def delete_message(self, message_id: int | str) -> bool: ...
 
+    async def get_message_role(self, session_id: str, message_id: int | str) -> str | None: ...
+
     async def get_last_message(
         self, session_id: str, role: str | None = None
     ) -> dict[str, Any] | None: ...
@@ -240,11 +258,29 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
         session_ids: list[str],
     ) -> list[dict[str, Any]]: ...
 
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool: ...
+    async def update_summary(
+        self, session_id: str, summary: str, up_to_msg_id: int | str
+    ) -> bool: ...
 
     async def update_session_preferences(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool: ...
+
+    async def update_session_preferences_if_unset(
+        self,
+        session_id: str,
+        preferences: dict[str, Any],
+        *,
+        unset: Sequence[str],
+        touch: bool = True,
+    ) -> bool:
+        """Merge only while every key in ``unset`` is still empty.
+
+        A conditional write for derived metadata (the legacy tutor-thread
+        backfill): it must never overwrite an anchor a live turn moved, or
+        resurrect one the learner detached after the caller's snapshot.
+        """
+        ...
 
     async def get_session_with_messages(self, session_id: str) -> dict[str, Any] | None: ...
 

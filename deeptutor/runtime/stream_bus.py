@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 import json
+from threading import Lock
 from typing import Any, AsyncIterator
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -46,7 +47,8 @@ class StreamBus:
         ] = []
         self._closed = False
         self._history: list[StreamEvent] = []
-        self._input_listeners: list[asyncio.Queue[str]] = []
+        self._input_listeners: list[tuple[asyncio.Queue[str], asyncio.AbstractEventLoop]] = []
+        self._input_lock = Lock()
         # ``None`` keeps the full history (turn-scoped buses live and die with
         # one turn). Long-lived buses pass a bound so replay stays useful
         # without growing without limit.
@@ -58,6 +60,38 @@ class StreamBus:
     def latest_seq(self) -> int:
         """Largest sequence issued by this bus, or zero before its first event."""
         return self._next_seq - 1 if self._assign_seq else 0
+
+    @property
+    def result_completion(self) -> bool | None:
+        """Read the final result's explicit completion claim, without mutable events.
+
+        A normal return from a capability is not proof that its requested work
+        completed. Older capabilities omit the field and retain their existing
+        lifecycle. Nested/tool results are not capability RESULT events.
+        """
+        for event in reversed(self._history):
+            if event.type == StreamEventType.RESULT:
+                completed = event.metadata.get("completed")
+                return completed if isinstance(completed, bool) else None
+        return None
+
+    def public_content_snapshot(
+        self, *, source: str, stage: str
+    ) -> tuple[tuple[int, float, str], ...]:
+        """Read already published answer text, without exposing mutable events.
+
+        Reasoning, sources and tool results are not assistant explanations.
+        Taking a snapshot never subscribes, waits for future output or emits an
+        event. Sequence zero remains zero for direct callers without sequencing.
+        """
+        return tuple(
+            (event.seq, event.timestamp, event.content)
+            for event in self._history
+            if event.type == StreamEventType.CONTENT
+            and event.source == source
+            and event.stage == stage
+            and event.content
+        )
 
     async def emit(self, event: StreamEvent) -> None:
         """Push *event* to every active subscriber."""
@@ -323,29 +357,40 @@ class StreamBus:
         Pass ``timeout=None`` (the default) to wait indefinitely for interactive
         clients; pass a finite value for headless/CLI entry points.
         """
-        await self.emit(
-            StreamEvent(
-                type=StreamEventType.WAIT_FOR_INPUT,
-                source=source,
-                stage=stage,
-                content=prompt,
-            )
-        )
         input_queue: asyncio.Queue[str] = asyncio.Queue()
-        self._input_listeners.append(input_queue)
+        listener = (input_queue, asyncio.get_running_loop())
+        with self._input_lock:
+            self._input_listeners.append(listener)
         try:
+            await self.emit(
+                StreamEvent(
+                    type=StreamEventType.WAIT_FOR_INPUT,
+                    source=source,
+                    stage=stage,
+                    content=prompt,
+                )
+            )
             return await asyncio.wait_for(input_queue.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return ""
         finally:
-            if input_queue in self._input_listeners:
-                self._input_listeners.remove(input_queue)
+            with self._input_lock:
+                if listener in self._input_listeners:
+                    self._input_listeners.remove(listener)
 
     def submit_input(self, content: str) -> None:
         """Receive user input from the frontend/WS and deliver to waiters."""
-        for q in self._input_listeners:
-            q.put_nowait(content)
-        self._input_listeners.clear()
+        with self._input_lock:
+            listeners = self._input_listeners[:]
+            self._input_listeners.clear()
+        for q, loop in listeners:
+            try:
+                if loop.is_running():
+                    loop.call_soon_threadsafe(q.put_nowait, content)
+                elif not loop.is_closed():
+                    q.put_nowait(content)
+            except RuntimeError:
+                continue
 
     # ---- consumer adapters ----
 

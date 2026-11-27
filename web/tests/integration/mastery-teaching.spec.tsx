@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { ChatMessageList } from '@/features/chat/messages'
 import type { StreamEvent } from '@/features/chat/model/protocol'
 import { compactTracePreview } from '@/features/chat/trace/memory'
-import { WatchingProvider } from '@/context/WatchingContext'
 import { initI18n } from '@/i18n/init'
 
 initI18n('en')
@@ -57,14 +56,14 @@ function lessonEvents(extraTool: boolean, legacyCard: boolean): StreamEvent[] {
 
 function conversation(events: StreamEvent[], isStreaming: boolean) {
   return (
-    <WatchingProvider>
+
       <ChatMessageList
         messages={[{ id: 1, role: 'assistant', content: preamble + teaching, parentMessageId: null, events }]}
         isStreaming={isStreaming}
         onCopyAssistantMessage={async () => undefined}
         onRegenerateMessage={() => undefined}
       />
-    </WatchingProvider>
+
   )
 }
 
@@ -73,12 +72,12 @@ describe('mastery teaching beside a question', () => {
     { extraTool: false, legacyCard: false },
     { extraTool: true, legacyCard: false },
     { extraTool: false, legacyCard: true },
-  ])('keeps teaching visible through completion and reload: %j', ({ extraTool, legacyCard }) => {
+  ])('keeps teaching visible through completion and reload: %j', async ({ extraTool, legacyCard }) => {
     const live = lessonEvents(extraTool, legacyCard)
     const { rerender } = render(conversation(live, true))
-    const assertTeaching = () => {
+    const assertTeaching = async () => {
       const prose = screen.getByText(teaching)
-      const card = screen.getByText(question)
+      const card = await screen.findByText(question)
       // jsdom does not lay out the grid collapse. Check the actual fold
       // wrapper as well as visibility, so 0fr cannot produce a false pass.
       expect(prose.closest('.grid')).toBeNull()
@@ -87,11 +86,11 @@ describe('mastery teaching beside a question', () => {
       expect(prose.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(screen.getAllByText(teaching)).toHaveLength(1)
     }
-    assertTeaching()
+    await assertTeaching()
 
     const completed = [...live, event('done', { status: 'completed' })]
     rerender(conversation(completed, false))
-    assertTeaching()
+    await assertTeaching()
     expect(screen.getByText(preamble.trim()).closest('.opacity-0')).not.toBeNull()
     if (extraTool) {
       expect(screen.getByText('Record mastery grade').closest('.opacity-0')).not.toBeNull()
@@ -101,7 +100,7 @@ describe('mastery teaching beside a question', () => {
     const preview = compactTracePreview(completed).events
     expect(preview.some((item) => item.type === 'content')).toBe(false)
     rerender(conversation(preview, false))
-    assertTeaching()
+    await assertTeaching()
     expect(screen.getByText(preamble.trim()).closest('.opacity-0')).not.toBeNull()
   })
 

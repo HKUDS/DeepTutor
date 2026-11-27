@@ -3,7 +3,7 @@
 import type { LearningOrigin } from '@/lib/learning-library'
 import { apiFetch, apiUrl } from '@/lib/api'
 import { scopedUrl } from '@/lib/workspace-scope'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SUBAGENT_KB_TYPE } from '@/lib/knowledge-helpers'
 import type { TopicSourceInput, TopicSourceKind } from '@/lib/learning-api'
@@ -61,11 +61,18 @@ export interface SourceLibrary {
   chats: SourceCandidate[]
   /** Questions from every workspace, each carrying its origin. */
   questionSets: SourceCandidate[]
+  questionPage?: { hasMore: boolean; loading: boolean; search: (query: string) => void; more: () => void }
   /** Co-Writer drafts — the learner's own writing on the subject. */
   drafts: SourceCandidate[]
   /** Study partners and partner groups; their transcripts load on open. */
   partners: SourceCandidate[]
   failures: string[]
+  /**
+   * Library fields whose request has not settled yet. Each kind lands on its
+   * own, so a ready knowledge base is selectable while a large question bank
+   * is still loading. Absent on a fully-resolved library built by hand.
+   */
+  loadingKinds?: string[]
 }
 
 /** What one expandable row's child list is doing right now. */
@@ -92,105 +99,224 @@ const EMPTY_LIBRARY: SourceLibrary = {
 //: Entries listed under one question-bank category.
 const MAX_CATEGORY_ENTRIES = 50
 
-type Translate = (cn: string, en: string) => string
+/** A library field, also used as the picker's tab key. */
+type SourceField =
+  | 'books'
+  | 'notebooks'
+  | 'knowledgeBases'
+  | 'chats'
+  | 'questionSets'
+  | 'drafts'
+  | 'partners'
+
+/** The dashboard source-library endpoint kinds, in fetch order. */
+type SourceRequestKind = 'books' | 'notebooks' | 'knowledge' | 'chats' | 'practice' | 'drafts'
+
+const SOURCE_REQUEST_KINDS: SourceRequestKind[] = [
+  'books',
+  'notebooks',
+  'knowledge',
+  'chats',
+  'practice',
+  'drafts',
+]
+
+const KIND_FIELD: Record<SourceRequestKind, SourceField> = {
+  books: 'books',
+  notebooks: 'notebooks',
+  knowledge: 'knowledgeBases',
+  chats: 'chats',
+  practice: 'questionSets',
+  drafts: 'drafts',
+}
+
+const SOURCE_FIELDS: SourceField[] = [
+  'books',
+  'notebooks',
+  'knowledgeBases',
+  'chats',
+  'questionSets',
+  'drafts',
+  'partners',
+]
+
+//: Every field starts out loading; each clears as its own request settles.
+const INITIAL_LIBRARY: SourceLibrary = { ...EMPTY_LIBRARY, loadingKinds: [...SOURCE_FIELDS] }
+
+type Translate = (cn: string, en: string, vars?: Record<string, string | number>) => string
+
+/**
+ * Chinese keeps its inline text; every other language looks the English text up
+ * in its catalog. Callers used to pass i18next's `t` here, which read the
+ * Chinese text as the key and showed English even in Chinese.
+ */
+export function catalogTranslate(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  zh: boolean
+): Translate {
+  return (cn, en, vars) =>
+    zh ? cn.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(vars?.[name] ?? '')) : t(en, vars)
+}
+
+function questionCandidate(row: Record<string, unknown>, tr: Translate): SourceCandidate {
+  return { key: JSON.stringify([row.content_workspace_id ?? '', 'question_bank', row.id]), kind: 'question_bank', sourceId: String(row.id), label: String(row.question || tr('未命名', 'Untitled')), detail: '', excerpt: String(row.question || ''), content_workspace_id: String(row.content_workspace_id ?? ''), content_workspace_name: String(row.content_workspace_name ?? ''), available: row.available !== false && !row.unreadable }
+}
 
 export function useTopicSourceLibrary(tr: Translate) {
-  const [library, setLibrary] = useState<SourceLibrary>(EMPTY_LIBRARY)
+  const [library, setLibrary] = useState<SourceLibrary>(INITIAL_LIBRARY)
   const [loading, setLoading] = useState(true)
+  const [questionPage, setQuestionPage] = useState({ query: '', offset: 0, total: 0, loading: false })
+  const [questionSeen, setQuestionSeen] = useState<Record<string, SourceCandidate>>({})
+  const questionEpoch = useRef(0)
+  const loadQuestions = useCallback(async (query: string, offset = 0) => {
+    const epoch = ++questionEpoch.current
+    setQuestionPage(previous => ({ ...previous, query, loading: true }))
+    try {
+      const params = new URLSearchParams({ search: query, offset: String(offset), limit: '50' })
+      const value = await sourceRequest<{ items: Record<string, unknown>[]; total: number }>(`/api/dashboard/source-library/practice?${params}`)
+      if (epoch !== questionEpoch.current) return
+      const rows = value.items.map(row => questionCandidate(row, tr))
+      setQuestionSeen(previous => ({ ...previous, ...Object.fromEntries(rows.map(row => [row.key, row])) }))
+      setLibrary(previous => ({ ...previous, loadingKinds: (previous.loadingKinds ?? []).filter(kind => kind !== 'questionSets'), questionSets: offset ? [...previous.questionSets, ...rows.filter(row => !previous.questionSets.some(old => old.key === row.key))] : rows, failures: previous.failures.filter(value => value !== 'practice') }))
+      setQuestionPage({ query, offset: offset + rows.length, total: value.total, loading: false })
+    } catch {
+      if (epoch !== questionEpoch.current) return
+      setLibrary(previous => ({ ...previous, loadingKinds: (previous.loadingKinds ?? []).filter(kind => kind !== 'questionSets'), failures: [...new Set([...previous.failures, 'practice'])] }))
+      setQuestionPage(previous => ({ ...previous, loading: false }))
+    }
+  }, [tr])
+  const searchQuestions = useCallback((query: string) => { void loadQuestions(query) }, [loadQuestions])
+  const moreQuestions = useCallback(() => { if (!questionPage.loading) void loadQuestions(questionPage.query, questionPage.offset) }, [loadQuestions, questionPage])
 
   useEffect(() => {
     let disposed = false
-    const kinds = ['books', 'notebooks', 'knowledge', 'chats', 'practice', 'drafts'] as const
-    Promise.all([
-      Promise.allSettled(
-        kinds.map(kind =>
-          sourceRequest<{ items: Record<string, unknown>[]; unavailable_workspaces: string[] }>(
-            `/api/dashboard/source-library/${kind}`,
-            ''
-          )
-        )
-      ),
-      listPartners().catch(() => []),
-      listPartnerGroups().catch(() => []),
-    ]).then(([results, partners, groups]) => {
-      if (disposed) return
-      const failures: string[] = []
-      const rows = (index: number) => {
-        const result = results[index]
-        if (result.status === 'rejected') {
-          failures.push(kinds[index])
-          return []
-        }
-        if (result.value.unavailable_workspaces.length) failures.push(kinds[index])
-        return result.value.items
-      }
-      const candidate = (
-        row: Record<string, unknown>,
-        kind: SourceCandidateKind,
-        id: unknown,
-        label: unknown,
-        detail: unknown = ''
-      ): SourceCandidate => ({
-        key: JSON.stringify([row.content_workspace_id ?? '', kind, id]),
-        kind,
-        sourceId: String(id),
-        label: String(label || tr('Untitled', 'Untitled')),
-        detail: String(detail || ''),
-        content_workspace_id: String(row.content_workspace_id ?? ''),
-        content_workspace_name: String(row.content_workspace_name || ''),
-        available: row.available !== false && !row.unreadable,
-      })
-      setLibrary({
-        books: rows(0).map(row => candidate(row, 'book', row.id, row.title)),
-        notebooks: rows(1).map(row => candidate(row, 'notebook', row.id, row.name)),
-        knowledgeBases: rows(2)
-          .filter(
-            row => (row.metadata as Record<string, unknown> | undefined)?.type !== SUBAGENT_KB_TYPE
-          )
-          .map(row => ({
-            ...candidate(row, 'knowledge_base', row.id || row.name, row.name),
-            expandable: true,
-          })),
-        chats: rows(3).map(row => ({
-          ...candidate(row, 'chat', row.session_id, row.title),
-          excerpt: String(row.last_message || ''),
-        })),
-        questionSets: rows(4).map(row => ({
-          ...candidate(row, 'question_bank', row.id, row.question),
-          excerpt: String(row.question || ''),
-        })),
-        drafts: rows(5).map(row => ({
-          ...candidate(row, 'cowriter', row.id, row.title),
-          excerpt: String(row.preview || ''),
-        })),
-        partners: [
-          ...partners.map(row => ({
-            key: `partner:${row.partner_id}`,
-            kind: 'partner' as const,
-            sourceId: row.partner_id,
-            label: row.name,
-            detail: '',
-            available: true,
-            selectable: false,
-            expandable: true,
-          })),
-          ...groups.map(row => ({
-            key: `partner_group_root:${row.group_id}`,
-            kind: 'partner_group_root' as const,
-            sourceId: row.group_id,
-            label: row.name,
-            detail: '',
-            available: true,
-            selectable: false,
-            expandable: true,
-          })),
-        ],
-        failures,
-      })
-      setLoading(false)
+    const questionVersion = ++questionEpoch.current
+    setQuestionSeen({})
+    setLibrary(INITIAL_LIBRARY)
+    setLoading(true)
+
+    const candidate = (
+      row: Record<string, unknown>,
+      kind: SourceCandidateKind,
+      id: unknown,
+      label: unknown,
+      detail: unknown = ''
+    ): SourceCandidate => ({
+      key: JSON.stringify([row.content_workspace_id ?? '', kind, id]),
+      kind,
+      sourceId: String(id),
+      label: String(label || tr('未命名', 'Untitled')),
+      detail: String(detail || ''),
+      content_workspace_id: String(row.content_workspace_id ?? ''),
+      content_workspace_name: String(row.content_workspace_name || ''),
+      available: row.available !== false && !row.unreadable,
     })
+
+    const mapRows = (
+      kind: SourceRequestKind,
+      items: Record<string, unknown>[]
+    ): SourceCandidate[] => {
+      switch (kind) {
+        case 'books':
+          return items.map(row => candidate(row, 'book', row.id, row.title))
+        case 'notebooks':
+          return items.map(row => candidate(row, 'notebook', row.id, row.name))
+        case 'knowledge':
+          return items
+            .filter(
+              row => (row.metadata as Record<string, unknown> | undefined)?.type !== SUBAGENT_KB_TYPE
+            )
+            .map(row => ({
+              ...candidate(row, 'knowledge_base', row.id || row.name, row.name),
+              expandable: true,
+            }))
+        case 'chats':
+          return items.map(row => ({
+            ...candidate(row, 'chat', row.session_id, row.title),
+            excerpt: String(row.last_message || ''),
+          }))
+        case 'practice':
+          return items.map(row => questionCandidate(row, tr))
+        case 'drafts':
+          return items.map(row => ({
+            ...candidate(row, 'cowriter', row.id, row.title),
+            excerpt: String(row.preview || ''),
+          }))
+      }
+    }
+
+    // Each kind lands in its own slice as its request settles, so a ready
+    // knowledge base is selectable while a large question bank is still loading
+    // (or has failed) instead of waiting on the slowest kind.
+    const land = (field: SourceField, rows: SourceCandidate[], failure?: string) => {
+      if (disposed) return
+      setLibrary(previous => {
+        const next: SourceLibrary = {
+          ...previous,
+          loadingKinds: (previous.loadingKinds ?? []).filter(kind => kind !== field),
+          failures:
+            failure && !previous.failures.includes(failure)
+              ? [...previous.failures, failure]
+              : previous.failures,
+        }
+        next[field] = rows
+        return next
+      })
+    }
+
+    const tasks: Promise<void>[] = SOURCE_REQUEST_KINDS.map(kind =>
+      sourceRequest<{ items: Record<string, unknown>[]; unavailable_workspaces: string[]; total?: number }>(
+        `/api/dashboard/source-library/${kind}`
+      )
+        .then(value => {
+          if (disposed || (kind === 'practice' && questionVersion !== questionEpoch.current)) return
+          const rows = mapRows(kind, value.items)
+          if (kind === 'practice') {
+            setQuestionPage({ query: '', offset: rows.length, total: value.total ?? rows.length, loading: false })
+            setQuestionSeen(Object.fromEntries(rows.map(row => [row.key, row])))
+          }
+          land(KIND_FIELD[kind], rows, value.unavailable_workspaces.length ? kind : undefined)
+        })
+        .catch(() => land(KIND_FIELD[kind], [], kind))
+    )
+
+    tasks.push(
+      Promise.all([listPartners().catch(() => []), listPartnerGroups().catch(() => [])]).then(
+        ([partners, groups]) =>
+          land('partners', [
+            ...partners.map(row => ({
+              key: `partner:${row.partner_id}`,
+              kind: 'partner' as const,
+              sourceId: row.partner_id,
+              label: row.name,
+              detail: '',
+              available: true,
+              selectable: false,
+              expandable: true,
+            })),
+            ...groups.map(row => ({
+              key: `partner_group_root:${row.group_id}`,
+              kind: 'partner_group_root' as const,
+              sourceId: row.group_id,
+              label: row.name,
+              detail: '',
+              available: true,
+              selectable: false,
+              expandable: true,
+            })),
+          ])
+      )
+    )
+
+    // The aggregate still reports when everything has settled, for callers that
+    // gate on the whole library; the per-field slices above are already usable.
+    Promise.allSettled(tasks).then(() => {
+      if (!disposed) setLoading(false)
+    })
+
     return () => {
       disposed = true
+      questionEpoch.current += 1
     }
   }, [tr])
 
@@ -240,16 +366,16 @@ export function useTopicSourceLibrary(tr: Translate) {
         ...library.notebooks,
         ...library.knowledgeBases,
         ...library.chats,
-        ...library.questionSets,
+        ...Object.values(questionSeen),
         ...library.drafts,
         ...library.partners,
         ...Object.values(childLists).flatMap(entry => entry.candidates),
         // Containers are opened, never chosen — keeping them out here means
         // neither the selection nor hydration has to know about them.
       ].filter(candidate => candidate.selectable !== false),
-    [library, childLists]
+    [library, childLists, questionSeen]
   )
-  return { library, loading, candidates, childLists, loadChildren }
+  return { library: { ...library, questionPage: { hasMore: questionPage.offset < questionPage.total, loading: questionPage.loading, search: searchQuestions, more: moreQuestions } }, loading, candidates, childLists, loadChildren }
 }
 
 /** One expandable row's children, by kind. Throws so the caller can show why. */
@@ -276,7 +402,7 @@ async function fetchChildren(
           kind: 'file' as const,
           sourceId: entry.name,
           label: entry.name,
-          detail: tr(`${kbName} 中的文件`, `File in ${kbName}`),
+          detail: tr('{{name}} 中的文件', 'File in {{name}}', { name: kbName }),
           available: true,
           kbName,
           path: entry.name,
@@ -312,7 +438,7 @@ async function fetchChildren(
       // The reference form chat's own transcript reader understands.
       sourceId: `partner:${candidate.sourceId}:${session.session_key}`,
       label: session.title || tr('未命名对话', 'Untitled conversation'),
-      detail: tr(`${session.message_count} 条消息`, `${session.message_count} messages`),
+      detail: tr('{{count}} 条消息', '{{count}} messages', { count: session.message_count }),
       available: true,
       excerpt: session.last_message || '',
       parentKey,
@@ -325,7 +451,7 @@ async function fetchChildren(
       kind: 'partner_group' as const,
       sourceId: `${candidate.sourceId}:${session.session_key}`,
       label: session.title || tr('未命名讨论', 'Untitled discussion'),
-      detail: tr(`${session.message_count} 条消息`, `${session.message_count} messages`),
+      detail: tr('{{count}} 条消息', '{{count}} messages', { count: session.message_count }),
       available: true,
       parentKey,
     }))
@@ -472,7 +598,7 @@ async function hydrateSource(candidate: SourceCandidate): Promise<TopicSourceInp
   }
 }
 
-export async function sourceRequest<T>(path: string, workspaceId = ''): Promise<T> {
+export async function sourceRequest<T>(path: string, workspaceId?: string): Promise<T> {
   const response = await apiFetch(apiUrl(scopedUrl(path, workspaceId)), { cache: 'no-store' })
   if (!response.ok) throw new Error(`Could not load source (${response.status})`)
   return response.json() as Promise<T>

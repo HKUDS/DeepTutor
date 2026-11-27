@@ -17,15 +17,17 @@ class TurnEngine:
     async def execute(self, context: UnifiedContext) -> AsyncIterator[StreamEvent]:
         # Lazy loading avoids provider/plugin import side effects at process
         # boot and leaves one stable patch point for tests and embedders.
+        from deeptutor.runtime.memory_reclaim import interactive_memory_scope
         from deeptutor.runtime.orchestrator import ChatOrchestrator
 
-        orchestrator = (
-            ChatOrchestrator()
-            if self.capability_registry is None
-            else ChatOrchestrator(capability_registry=self.capability_registry)
-        )
-        async for event in orchestrator.handle(context):
-            yield event
+        with interactive_memory_scope():
+            orchestrator = (
+                ChatOrchestrator()
+                if self.capability_registry is None
+                else ChatOrchestrator(capability_registry=self.capability_registry)
+            )
+            async for event in orchestrator.handle(context):
+                yield event
 
 
 _default_engine: TurnEngine | None = None

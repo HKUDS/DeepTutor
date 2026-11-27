@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import { act } from "@testing-library/react";
 import type {
   Catalog,
   SettingsContextValue,
@@ -19,7 +20,10 @@ import {
   providerRegistry,
   providerProbeInput,
   reconcileRegistrySave,
+  providerServiceSupport,
+  updateProvider,
 } from "@/lib/provider-registry";
+import { AddProviderPanel } from "@/components/settings/AddProviderPanel";
 import { modelTestFingerprint } from "@/lib/model-settings";
 
 const mocks = vi.hoisted(() => ({
@@ -121,10 +125,31 @@ const xai = () => ({
   api_version: "",
 });
 let live: Catalog;
+const minimaxProviders: Partial<SettingsContextValue["providers"]> = {
+  llm: [
+    { value: "custom", label: "Custom", base_url: "" },
+    { value: "custom_anthropic", label: "Custom (Anthropic API)", status: "legacy", api_formats: ["anthropic"], default_api_format: "anthropic" },
+    {
+      value: "minimax", label: "MiniMax", status: "supported",
+      base_url: "https://api.minimax.io/v1",
+      api_formats: ["auto", "openai_chat", "openai_responses", "anthropic"],
+      default_api_format: "auto",
+      base_urls: { auto: "https://api.minimax.io/v1", openai_chat: "https://api.minimax.io/v1", anthropic: "https://api.minimax.io/anthropic" },
+    },
+    {
+      value: "minimax_anthropic", label: "MiniMax (Anthropic)", status: "legacy",
+      base_url: "https://api.minimax.io/anthropic",
+      api_formats: ["anthropic"], default_api_format: "anthropic",
+    },
+  ],
+  tts: [{ value: "minimax", label: "MiniMax", base_url: "https://api.minimax.io/v1" }],
+};
 function Harness({
   page,
+  providerOptions,
 }: {
   page: "llm" | "embedding" | "search" | "multimodal" | "voice" | "providers";
+  providerOptions?: Partial<SettingsContextValue["providers"]>;
 }) {
   const [draft, setDraft] = useState(() => structuredClone(live));
   // The mocked `useSettings` has to see this render's draft, so the harness
@@ -147,6 +172,7 @@ function Harness({
       stt: [],
       imagegen: [],
       videogen: [],
+      ...providerOptions,
     },
     connectionTargets: [],
     mutateCatalog: (change: (c: Catalog) => void) =>
@@ -170,6 +196,63 @@ beforeEach(() => {
   mocks.save.mockReset();
   window.history.replaceState(null, "", "/settings/llm");
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
+});
+
+it("offers one MiniMax vendor with protocol choices instead of legacy provider aliases", () => {
+  render(<Harness page="providers" providerOptions={minimaxProviders} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+  expect(screen.queryByRole("radio", { name: "MiniMax (Anthropic)" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "Custom (Anthropic API)" })).toBeNull();
+  fireEvent.change(screen.getByRole("searchbox", { name: "settings.providerServices.search" }), { target: { value: "MiniMax" } });
+  expect(screen.getAllByRole("radio")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("radio", { name: "MiniMax" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(mocks.settings.draft.connections?.at(-1)).toMatchObject({ provider: "minimax", api_format: "auto", base_url: "" });
+  const protocol = screen.getByRole("combobox", { name: "settings.providerServices.protocol" });
+  expect(within(protocol).getByRole("option", { name: "OpenAI Chat Completions" })).toBeTruthy();
+  expect(within(protocol).getByRole("option", { name: "Anthropic Messages" })).toBeTruthy();
+});
+
+it("switches MiniMax default endpoints and probes with the chosen protocol while preserving custom URLs", async () => {
+  live.connections = [{ id: "minimax", name: "MiniMax account", provider: "minimax", source_service: "llm", api_key: "test-key", base_url: "", api_version: "", api_format: "auto" }];
+  const stored = structuredClone(live);
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [] }) });
+  render(<Harness page="providers" providerOptions={minimaxProviders} />);
+  fireEvent.click(screen.getByRole("button", { name: /MiniMax account/ }));
+  const protocol = screen.getByLabelText("settings.providerServices.protocol");
+  const url = screen.getByLabelText("Provider URL") as HTMLInputElement;
+  expect(url.placeholder).toBe("https://api.minimax.io/v1");
+  fireEvent.change(protocol, { target: { value: "anthropic" } });
+  expect(url.placeholder).toBe("https://api.minimax.io/anthropic");
+  expect(url.value).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("settings.providerServices.catalogListed"));
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ binding: "minimax", api_format: "anthropic", base_url: "https://api.minimax.io/anthropic" });
+  fireEvent.change(protocol, { target: { value: "openai_chat" } });
+  expect(url.placeholder).toBe("https://api.minimax.io/v1");
+  fireEvent.change(url, { target: { value: "https://gateway.test/minimax" } });
+  fireEvent.change(protocol, { target: { value: "anthropic" } });
+  expect(url.value).toBe("https://gateway.test/minimax");
+  fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("settings.providerServices.catalogListed"));
+  expect(JSON.parse(mocks.fetch.mock.calls[1][1].body)).toMatchObject({ binding: "minimax", api_format: "anthropic", base_url: "https://gateway.test/minimax" });
+  expect(mocks.settings.draft.services).toEqual(stored.services);
+  expect(live).toEqual(stored);
+});
+
+it("keeps existing MiniMax Anthropic accounts and their models editable without changing identity", () => {
+  const profile = live.services.llm.profiles[0];
+  Object.assign(profile, { binding: "minimax_anthropic", base_url: "", api_format: "anthropic" });
+  const stored = structuredClone(live);
+  render(<Harness page="providers" providerOptions={minimaxProviders} />);
+  fireEvent.click(screen.getByRole("button", { name: /My account/ }));
+  expect((screen.getByLabelText("Provider URL") as HTMLInputElement).placeholder).toBe("https://api.minimax.io/anthropic");
+  const protocol = screen.getByLabelText("settings.providerServices.protocol");
+  expect(within(protocol).getAllByRole("option").map(o => o.textContent)).toEqual(["Anthropic Messages"]);
+  fireEvent.click(screen.getByRole("button", { name: "Rename provider" }));
+  fireEvent.change(screen.getByLabelText("Rename provider"), { target: { value: "Renamed MiniMax" } });
+  expect(mocks.settings.draft.services.llm.profiles[0]).toEqual({ ...stored.services.llm.profiles[0], name: "Renamed MiniMax" });
+  expect(live).toEqual(stored);
 });
 
 it("projects old accounts and models without rewriting stored data or combining accounts", () => {
@@ -209,17 +292,22 @@ it("keeps a flat model list, shows the selected identity, and never exposes cred
     "two",
   );
 });
-it("stages a new model and defaults its display name to the typed model ID", async () => {
+it("requires a model ID before creating the row and names it after that ID", async () => {
   render(<Harness page="llm" />);
   fireEvent.click(screen.getByRole("button", { name: "Add model" }));
   fireEvent.change(screen.getByLabelText("Configured provider"), {
     target: { value: "llm:legacy" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-  const editor = screen.getByRole("region", { name: "Model settings" });
-  fireEvent.change(within(editor).getByLabelText("Model ID"), {
+  // A row created with an empty ID used to reach the draft and could only be
+  // fixed from a page the user might not be on when Apply failed.
+  const continueButton = screen.getByRole("button", { name: "Continue" });
+  expect(continueButton).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Model ID"), {
     target: { value: "custom/model-id" },
   });
+  expect(continueButton).not.toBeDisabled();
+  fireEvent.click(continueButton);
+  const editor = screen.getByRole("region", { name: "Model settings" });
   expect(
     within(editor).getByRole("heading", { name: "custom/model-id" }),
   ).toBeTruthy();
@@ -228,6 +316,65 @@ it("stages a new model and defaults its display name to the typed model ID", asy
   const added = mocks.settings.draft.services.llm.profiles.flatMap(p => p.models).find(m => m.model === "custom/model-id");
   expect(added).toMatchObject({ model: "custom/model-id", name: "custom/model-id", provider_ref: expect.objectContaining({ profile_id: "legacy" }) });
   expect(live.services.llm.profiles.flatMap(p => p.models).some(m => m.model === "custom/model-id")).toBe(false);
+});
+
+it("prefills the add panel with the provider's default model", () => {
+  render(
+    <Harness
+      page="llm"
+      providerOptions={{
+        llm: [{ value: "custom", label: "Custom", base_url: "", default_model: "auto-model" }],
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), {
+    target: { value: "llm:legacy" },
+  });
+  expect(screen.getByLabelText("Model ID")).toHaveValue("auto-model");
+  expect(screen.getByRole("button", { name: "Continue" })).not.toBeDisabled();
+});
+
+it("restores the add panel from the URL so a refresh shows the same surface", () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/settings/llm?add=1&provider=llm%3Alegacy",
+  );
+  render(<Harness page="llm" />);
+  expect(screen.getByRole("region", { name: "Add model" })).toBeTruthy();
+  expect(screen.getByLabelText("Configured provider")).toHaveValue("llm:legacy");
+});
+
+it("opens exactly the model named by profile and model query parameters", () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/settings/llm?profile=legacy&model=two",
+  );
+  render(<Harness page="llm" />);
+  const editor = screen.getByRole("region", { name: "Model settings" });
+  expect(within(editor).getByRole("heading", { name: "Two" })).toBeTruthy();
+  expect(within(editor).getByLabelText("Model ID")).toHaveValue("model-two");
+});
+
+it("marks a blank model ID in the editor and blocks making it the default", () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/settings/llm?profile=legacy&model=two",
+  );
+  render(<Harness page="llm" />);
+  const editor = screen.getByRole("region", { name: "Model settings" });
+  fireEvent.change(within(editor).getByLabelText("Model ID"), {
+    target: { value: "" },
+  });
+  expect(within(editor).getByRole("alert").textContent).toBe(
+    "Model ID is required.",
+  );
+  expect(
+    within(editor).getByRole("button", { name: "Set as default" }),
+  ).toBeDisabled();
 });
 it("provider settings contain connections only and direct links to each model page", () => {
   window.history.replaceState(
@@ -256,35 +403,26 @@ it("search is a flat engine configuration without a fake context or model ID", (
   expect(screen.queryByLabelText("Model ID")).toBeNull();
   expect(screen.queryByLabelText("Context length (tokens)")).toBeNull();
 });
-it("offers a provider with no search API and leaves the rejection to the search test", () => {
+it("only offers search engines with a supported adapter", () => {
   live.connections = [xai()];
   render(<Harness page="search" />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Add search configuration" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Add search configuration" }));
   const select = screen.getByLabelText("Configured provider");
-  // Nothing says xAI runs a search API, and that is not a veto either: it is
-  // offered, grouped apart, and the search test is what rejects it.
-  expect(within(select).getByRole("option", { name: "xAI" })).toBeTruthy();
-  fireEvent.change(select, { target: { value: "connection:x" } });
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-  const profile = mocks.settings.draft.services.search.profiles.at(-1)!;
-  // Staged under the vendor's own name: search has no OpenAI-compatible
-  // fallback, so `custom` here would only hide which engine was meant.
-  expect(profile.provider).toBe("xai");
-  expect(
-    screen.getByRole("region", { name: "Model connection test" }),
-  ).toBeTruthy();
+  expect(within(select).queryByRole("option", { name: "xAI" })).toBeNull();
+  expect(within(select).getByRole("option", { name: "Search account" })).toBeTruthy();
 });
-it("offers embedding providers with no adapter on record and leaves the verdict to the test", async () => {
+it("offers unverified embedding providers after opting into custom integration", async () => {
   live.connections = [xai()];
   render(<Harness page="embedding" />);
   fireEvent.click(screen.getByRole("button", { name: "Add model" }));
   const select = screen.getByLabelText("Configured provider");
-  // Nothing on the backend claims xAI serves embeddings, and that is not a
-  // veto: it is offered, grouped apart, and settled by the model test.
+  expect(within(select).queryByRole("option", { name: "xAI" })).toBeNull();
+  fireEvent.click(screen.getByLabelText("settings.serviceConfig.custom"));
   expect(within(select).getByRole("option", { name: "xAI" })).toBeTruthy();
   fireEvent.change(select, { target: { value: "connection:x" } });
+  fireEvent.change(screen.getByLabelText("Model ID"), {
+    target: { value: "text-embedding-3-small" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
   const profile = mocks.settings.draft.services.embedding.profiles.at(-1)!;
   // `custom` is the OpenAI-compatible binding, whose embedding endpoint the
@@ -449,12 +587,12 @@ it("adds a provider over plain HTTP, where crypto.randomUUID does not exist", ()
   try {
     render(<Harness page="providers" />);
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    fireEvent.change(screen.getByLabelText("Provider type"), {
-      target: { value: "custom" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText("settings.providerServices.name"), { target: { value: "My gateway" } });
+    fireEvent.change(screen.getByLabelText("Provider URL"), { target: { value: "http://gateway.test/v1" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     const staged = (mocks.settings.draft.connections ?? []).at(-1)!;
-    expect(staged).toMatchObject({ provider: "custom", api_key: "" });
+    expect(staged).toMatchObject({ provider: "custom", api_key: "", name: "My gateway", base_url: "http://gateway.test/v1", api_format: "auto" });
     expect(staged.id).toMatch(/^conn-[0-9a-f-]{36}$/);
     expect(
       screen.getByRole("region", { name: "Provider settings" }),
@@ -462,4 +600,270 @@ it("adds a provider over plain HTTP, where crypto.randomUUID does not exist", ()
   } finally {
     if (webCrypto) webCrypto.randomUUID = original;
   }
+});
+
+it("enabling speech on a provider makes it selectable and keeps the chosen service adapter", () => {
+  window.history.replaceState(null, "", "/settings/connections?provider=llm%3Alegacy");
+  const view = render(<Harness page="providers" />);
+  fireEvent.click(screen.getByRole("checkbox", { name: /Text-to-Speech/ }));
+  expect(mocks.settings.draft.services.llm.profiles[0].service_overrides?.tts).toEqual({ enabled: true, binding: "custom" });
+  view.rerender(<Harness page="voice" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  const select = screen.getByLabelText("Configured provider");
+  expect(within(select).getByRole("option", { name: "My account" })).toBeTruthy();
+  fireEvent.change(select, { target: { value: "llm:legacy" } });
+  fireEvent.change(screen.getByLabelText("Model ID"), {
+    target: { value: "speech-1" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(mocks.settings.draft.services.tts.profiles.at(-1)?.provider_ref).toMatchObject({ service: "llm", profile_id: "legacy", binding: "custom" });
+});
+
+it("keeps explicit disabled services out of new model choices even in custom mode", () => {
+  live.services.llm.profiles[0].service_overrides = { tts: { enabled: false } };
+  render(<Harness page="voice" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.click(screen.getByLabelText("settings.serviceConfig.custom"));
+  expect(within(screen.getByLabelText("Configured provider")).queryByRole("option", { name: "My account" })).toBeNull();
+  expect(live.services.llm.profiles[0].models).toHaveLength(2);
+});
+
+it("uses live service metadata while manual choices survive reprobes and credential edits", () => {
+  const source = providerRegistry(live)[0];
+  source.source.discovery = { status: "connected", models: [], capabilities: [{ category: "tts", evidence: "metadata" }] };
+  const providers = { llm: [], tts: [] } as unknown as SettingsContextValue["providers"];
+  expect(providerServiceSupport(source, "tts", [], providers)).toEqual({ enabled: true, evidence: "detected" });
+  updateProvider(live, source.ref, "service_overrides", { tts: { enabled: false }, stt: { enabled: true, binding: "custom" } });
+  expect(source.source.discovery?.status).toBe("connected");
+  expect(providerServiceSupport(source, "tts", [], providers)).toEqual({ enabled: false, evidence: "manual" });
+  updateProvider(live, source.ref, "api_key", "rotated");
+  expect(source.source.discovery).toBeUndefined();
+  expect(providerServiceSupport(source, "stt", [], providers)).toEqual({ enabled: true, evidence: "manual" });
+});
+
+it("categorizes cross-service providers without duplicating accounts and supports search", () => {
+  const props = { options: [
+    { value: "a", label: "Aggregate", services: ["llm", "tts"] as const },
+    { value: "b", label: "Search only", services: ["search"] as const },
+    { value: "custom", label: "Custom", services: [] },
+  ].map(p => ({ ...p, services: [...p.services] })), vendor: "", onVendor: vi.fn(), onCreate: vi.fn(), onCancel: vi.fn() };
+  render(<AddProviderPanel {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "settings.providerServices.filter.multi" }));
+  expect(screen.getByRole("radio", { name: "Aggregate" })).toBeTruthy();
+  expect(screen.queryByRole("radio", { name: "Search only" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "settings.providerServices.filter.all" }));
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Search only" } });
+  expect(screen.getAllByRole("radio")).toHaveLength(1);
+  expect(screen.getByRole("radio", { name: "Search only" })).toBeTruthy();
+});
+
+it("failed reprobes replace stale discovery instead of retaining a green capability result", async () => {
+  mocks.fetch.mockRejectedValue(new Error("network"));
+  const onResult = vi.fn();
+  render(<RegistryProbe input={{ binding: "custom", base_url: "https://gateway.test/v1" }} discovery={{ status: "connected", models: [{ id: "old" }] }} onResult={onResult} />);
+  fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+  await waitFor(() => expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ status: "unreachable", models: [] })));
+  expect(screen.queryByText("settings.providerServices.catalogListed")).toBeNull();
+});
+
+
+it("preserves the add draft when the catalog gains another model", () => {
+  window.history.replaceState(null, "", "/settings/llm?add=1&service=llm&provider=llm%3Alegacy");
+  render(<Harness page="llm" />);
+  fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "custom-unsaved" } });
+  act(() => mocks.settings.mutateCatalog((next) => {
+    next.services.llm.profiles[0].models.push({ id: "arrived", name: "Arrived", model: "arrived" });
+  }));
+  expect((screen.getByLabelText("Model ID") as HTMLInputElement).value).toBe("custom-unsaved");
+  expect(new URLSearchParams(window.location.search).get("model")).toBe("custom-unsaved");
+});
+
+it("restores a typed add model across a remount", () => {
+  window.history.replaceState(null, "", "/settings/llm?add=1&service=llm&provider=llm%3Alegacy&model=custom-unsaved");
+  const view = render(<Harness page="llm" />);
+  expect((screen.getByLabelText("Model ID") as HTMLInputElement).value).toBe("custom-unsaved");
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "" } });
+  expect(new URLSearchParams(window.location.search).has("provider")).toBe(false);
+  view.unmount();
+  render(<Harness page="llm" />);
+  expect((screen.getByLabelText("Configured provider") as HTMLSelectElement).value).toBe("");
+});
+
+
+it("restores a model draft before a provider has been selected", () => {
+  window.history.replaceState(null, "", "/settings/llm?add=1&service=llm");
+  const view = render(<Harness page="llm" />);
+  fireEvent.change(screen.getByLabelText("Model ID"), {
+    target: { value: "custom-unsaved" },
+  });
+  expect(new URLSearchParams(window.location.search).get("model")).toBe("custom-unsaved");
+  view.unmount();
+  render(<Harness page="llm" />);
+  expect((screen.getByLabelText("Configured provider") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Model ID") as HTMLInputElement).value).toBe("custom-unsaved");
+});
+
+it("imports filtered models once into the draft while preserving existing models and defaults", () => {
+  live.services.llm.profiles[0].discovery = { status: "connected", models: [
+    { id: "model-one", services: ["llm"] },
+    { id: "chat-a", services: ["llm"] },
+    { id: "chat-a", services: ["llm"] },
+    { id: "chat-b", services: ["llm"] },
+    { id: "unknown" },
+    { id: "embed-only", services: ["embedding"] },
+  ] };
+  const before = structuredClone(live);
+  render(<Harness page="llm" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  expect(screen.getByRole("checkbox", { name: /model-one/ })).toBeDisabled();
+  expect(screen.queryByRole("checkbox", { name: "embed-only" })).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "unknown" }));
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search models…" }), { target: { value: "CHAT-" } });
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  const bucket = mocks.settings.draft.services.llm;
+  expect(bucket.profiles.flatMap(p => p.models).map(m => m.model)).toEqual(["model-one", "model-two", "unknown", "chat-a", "chat-b"]);
+  expect(bucket.active_profile_id).toBe("legacy");
+  expect(bucket.active_model_id).toBe("one");
+  expect(bucket.profiles[0]).toEqual(before.services.llm.profiles[0]);
+  expect(bucket.profiles.slice(1).every(p => p.models[0].provider_ref?.profile_id === "legacy")).toBe(true);
+  expect(live).toEqual(before);
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it("lists with the provider's protocol-specific endpoint and keeps manual entry available on failure", async () => {
+  live.connections = [{ id: "minimax", name: "MiniMax", provider: "minimax", source_service: "llm", api_key: "***", base_url: "", api_version: "", api_format: "anthropic" }];
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "unavailable", models: [] }) });
+  render(<Harness page="llm" providerOptions={minimaxProviders} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:minimax" } });
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ api_format: "anthropic", base_url: "https://api.minimax.io/anthropic", connection_id: "minimax" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Get model list" })).not.toBeDisabled());
+  fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "manual-model" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(mocks.settings.draft.services.llm.profiles.at(-1)?.models[0].model).toBe("manual-model");
+});
+
+it("discards a pending model list when switching providers", async () => {
+  let finish!: (v: unknown) => void;
+  mocks.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  live.services.llm.profiles.push({ ...structuredClone(live.services.llm.profiles[0]), id: "other", name: "Other", models: [] });
+  render(<Harness page="llm" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:other" } });
+  await act(async () => finish({ ok: true, json: async () => ({ status: "connected", models: [{ id: "stale" }] }) }));
+  expect(mocks.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(screen.queryByRole("checkbox", { name: "stale" })).toBeNull();
+  expect(mocks.settings.draft.services.llm.profiles[0].discovery).toBeUndefined();
+});
+
+it.each([
+  ["voice", "tts", "stt"],
+  ["multimodal", "imagegen", "videogen"],
+] as const)("resets bulk selection when switching %s service types", (page, first, second) => {
+  live.connections = [{ ...xai(), service_overrides: { [first]: { enabled: true }, [second]: { enabled: true } }, discovery: { status: "connected", models: [{ id: "shared" }, { id: "first-only", services: [first] }] } }];
+  render(<Harness page={page} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "shared" }));
+  fireEvent.change(screen.getByLabelText("Model type"), { target: { value: second } });
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  expect(screen.getByRole("checkbox", { name: "shared" })).not.toBeChecked();
+  expect(screen.queryByRole("checkbox", { name: "first-only" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+});
+
+it("fetches models, clears selection and prevents duplicates after reopening import", async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "new-a", services: ["llm"] }, { id: "new-b", services: ["llm"] }] }) });
+  render(<Harness page="llm" />);
+  const open = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  };
+  open();
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  await screen.findByRole("checkbox", { name: "new-a" });
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.clear" }));
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  open();
+  expect(screen.getByRole("checkbox", { name: /new-a/ })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: /new-b/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+});
+
+it("imports embeddings using the existing service adapter and preserves task inheritance", async () => {
+  live.services.task.mode = "inherit";
+  live.connections = [{ ...xai(), service_overrides: { embedding: { enabled: true, binding: "custom" } }, discovery: { status: "connected", models: [{ id: "embed-a", services: ["embedding"] }, { id: "chat-only", services: ["llm"] }] } }];
+  const task = structuredClone(live.services.task);
+  render(<Harness page="embedding" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  expect(screen.queryByRole("checkbox", { name: "chat-only" })).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "embed-a" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  expect(mocks.settings.draft.services.embedding.profiles[0].models[0]).toMatchObject({ model: "embed-a", provider_ref: { connection_id: "x", binding: "custom" } });
+  expect(mocks.settings.draft.services.task).toEqual(task);
+  await waitFor(() => expect(screen.queryByText("Loading...")).toBeNull());
+});
+
+it("automatically lists models after key edits settle, using only the latest key", async () => {
+  vi.useFakeTimers();
+  const view = render(<Harness page="providers" />);
+  try {
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "auto-model", services: ["llm"] }] }) });
+    fireEvent.click(screen.getByRole("button", { name: /My account/ }));
+    const key = screen.getByLabelText("API key");
+    fireEvent.change(key, { target: { value: "first-key" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    fireEvent.change(key, { target: { value: "latest-key" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1199); });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).api_key).toBe("latest-key");
+    expect(mocks.settings.draft.services.llm.profiles[0].discovery?.models).toEqual([{ id: "auto-model", services: ["llm"] }]);
+    expect(live.services.llm.profiles[0].api_key).toBe("***");
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+
+it("automatically lists on the add panel but reuses an existing provider catalog", async () => {
+  vi.useFakeTimers();
+  const view = render(<Harness page="llm" />);
+  try {
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "auto-model" }] }) });
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(screen.getByRole("checkbox", { name: "auto-model" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("checkbox", { name: "auto-model" })).toBeTruthy();
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+
+it("does not automatically retry a failed discovery and retains manual retry", async () => {
+  vi.useFakeTimers();
+  const result = vi.fn();
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "auth_error", models: [] }) });
+  const view = render(<RegistryProbe automatic input={{ binding: "custom", base_url: "https://gateway.test/v1", api_key: "bad-key" }} onResult={result} />);
+  try {
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: "auth_error" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  } finally { view.unmount(); vi.useRealTimers(); }
 });

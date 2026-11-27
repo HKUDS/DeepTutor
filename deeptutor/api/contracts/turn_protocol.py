@@ -140,10 +140,14 @@ class SubmitUserReplyCommand(WireModel):
 
 
 class UserInputCommand(WireModel):
+    """A message for a turn that is still running, read at its next step."""
+
     type: Literal["user_input"] = "user_input"
     turn_id: str = Field(min_length=1)
     content: str
     command_id: str = Field(min_length=1)
+    # The command id of an earlier, still unread ``user_input`` to take back.
+    withdraw: str | None = None
     protocol_version: Literal["2.0"]
 
 

@@ -31,6 +31,7 @@ export function getWorkspaceResources(workspaceId = ''): Promise<WorkspaceResour
 }
 
 export interface ChatWorkspaceRegistration {
+  instructions?: string
   resources?: WorkspaceResources
   workspace_id: string
   kind: 'system' | 'general' | 'workspace'
@@ -44,6 +45,22 @@ export interface ChatWorkspaceRegistration {
 }
 
 const endpoint = '/api/settings/workspace/registrations'
+
+export interface ServerFolder {
+  name: string
+  path: string
+}
+
+export interface ServerFolderListing extends ServerFolder {
+  roots: ServerFolder[]
+  parent: string | null
+  folders: ServerFolder[]
+  truncated: boolean
+}
+
+export function browseServerFolders(path = ''): Promise<ServerFolderListing> {
+  return request(`/api/settings/workspace/folders?path=${encodeURIComponent(path)}`)
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(apiUrl(url), init)
@@ -64,7 +81,7 @@ export function listWorkspaces(force = false): Promise<ChatWorkspaceRegistration
 }
 
 export async function saveWorkspace(
-  input: { name?: string; path?: string; archived?: boolean; resources?: WorkspaceResources },
+  input: { name?: string; path?: string; archived?: boolean; resources?: WorkspaceResources; instructions?: string },
   workspaceId?: string
 ): Promise<ChatWorkspaceRegistration> {
   const result = await request<{ workspace: ChatWorkspaceRegistration }>(
@@ -138,9 +155,13 @@ export function getSystemWorkspaceSnapshot(): Promise<SystemWorkspaceSnapshot> {
   return request<SystemWorkspaceSnapshot>(`${endpoint}/system-snapshot`, { method: 'POST' })
 }
 
-export function workspaceLabel(row: ChatWorkspaceRegistration, zh: boolean): string {
-  if (row.kind === 'system') return zh ? '系统工作区' : 'System workspace'
-  if (row.kind === 'general') return zh ? '通用工作区' : 'General workspace'
+export function workspaceLabel(
+  row: ChatWorkspaceRegistration,
+  zh: boolean,
+  translate: (key: string) => string = key => key,
+): string {
+  if (row.kind === 'system') return zh ? '系统工作区' : translate('System workspace')
+  if (row.kind === 'general') return zh ? '通用工作区' : translate('General workspace')
   return row.display_name
 }
 

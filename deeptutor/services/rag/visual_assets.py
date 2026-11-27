@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -23,7 +24,7 @@ from deeptutor.services.parsing.types import ParsedDocument
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_MODEL_IMAGES = 2
 MAX_IMAGE_PIXELS = 30_000_000
-MAX_MANIFEST_BYTES = 16 * 1024 * 1024
+logger = logging.getLogger(__name__)
 _ID_RE = re.compile(r"^[0-9a-f]{64}$")
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _MIME_EXT = {
@@ -104,20 +105,26 @@ def _text(value: Any) -> str:
 
 
 def _block_details(
-    blocks: list[dict[str, Any]] | None, asset: Path
+    blocks: list[dict[str, Any]] | None,
+    asset: Path,
+    *,
+    matched_blocks: list[tuple[int, dict[str, Any]]] | None = None,
 ) -> tuple[str, str, int | None, int | None, list[float] | None, str]:
     if not blocks:
         return "", "", None, None, None, ""
-    for index, block in enumerate(blocks):
+    entries = enumerate(blocks) if matched_blocks is None else matched_blocks
+    for index, block in entries:
         if not isinstance(block, dict):
             continue
-        raw = str(block.get("img_path") or block.get("path") or "")
-        if not raw or Path(raw).resolve() != asset.resolve():
-            continue
+        if matched_blocks is None:
+            raw = str(block.get("img_path") or block.get("path") or "")
+            if not raw or Path(raw).resolve() != asset.resolve():
+                continue
         caption = _text(
             block.get("caption")
             or block.get("image_caption")
             or block.get("chart_caption")
+            or block.get("table_caption")
             or block.get("captions")
         )
         context = _text(block.get("text") or block.get("content"))
@@ -181,14 +188,31 @@ def collect_visual_assets(
     source_key = source_key_for(kb_dir, source)
     source_hash = _sha256_file(source)
     candidates: list[VisualAssetCandidate] = []
+    blocks_by_path: dict[Path, list[tuple[int, dict[str, Any]]]] | None = None
     for path in sorted(asset_dir.iterdir()):
-        loaded = _image_bytes(path)
+        try:
+            loaded = _image_bytes(path)
+        except OSError:
+            logger.warning(
+                "Unable to read parser asset %s; coverage report will record it", path.name
+            )
+            continue
         if loaded is None:
             continue
+        if blocks_by_path is None:
+            # Resolve each block path once, and only when there is a valid image.
+            blocks_by_path = {}
+            for index, block in enumerate(parsed.blocks or []):
+                if not isinstance(block, dict):
+                    continue
+                raw = str(block.get("img_path") or block.get("path") or "")
+                if raw:
+                    blocks_by_path.setdefault(Path(raw).resolve(), []).append((index, block))
         image, mime = loaded
         image_hash = sha256(image).hexdigest()
+        matches = blocks_by_path.get(path.resolve(), [])
         caption, context, page_index, page_number, bbox, locator = _block_details(
-            parsed.blocks, path
+            parsed.blocks, path, matched_blocks=matches
         )
         md_caption, md_context, md_locator = _markdown_details(parsed.markdown, path)
         caption = caption or md_caption
@@ -215,6 +239,20 @@ def collect_visual_assets(
             "mime_type": mime,
             "size": len(image),
         }
+        from deeptutor.services.rag.source_visuals import figure_labels
+
+        record["figure_labels"] = figure_labels(caption)
+        if matches:
+            block = matches[0][1]
+            record.update(
+                {
+                    "kind": str(block.get("type") or "image"),
+                    "section": _text(block.get("section") or block.get("section_title")),
+                    "group_id": str(block.get("group_id") or block.get("figure_id") or ""),
+                    "table_html": _text(block.get("table_body") or block.get("table_html")),
+                    "notes": _text(block.get("notes") or block.get("table_footnote")),
+                }
+            )
         candidates.append(VisualAssetCandidate(path=path, record=record))
     return candidates
 
@@ -231,13 +269,30 @@ class VisualAssetStore:
         if self.root.is_symlink() or not self.root.resolve().is_relative_to(self.kb_dir.resolve()):
             return {}
         try:
-            if self.manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
-                return {}
-            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            return self._read_manifest()
+        except OSError as exc:
+            logger.warning("Cannot read source figures for KB '%s': %s", self.kb_dir.name, exc)
             return {}
+
+    def _read_manifest(self) -> dict[str, dict[str, Any]]:
+        # #1802: the corpus grows independently of the per-image request budget.
+        # Never interpret a large or corrupt manifest as an empty store on a write.
+        try:
+            if self.root.is_symlink() or not self.root.resolve().is_relative_to(
+                self.kb_dir.resolve()
+            ):
+                raise OSError("Visual asset directory escapes knowledge base")
+            if self.manifest_path.is_symlink():
+                raise OSError("Visual asset manifest must not be a symbolic link")
+            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            raise OSError(f"Cannot read visual asset manifest {self.manifest_path}: {exc}") from exc
         records = payload.get("assets") if isinstance(payload, dict) else None
-        return records if isinstance(records, dict) else {}
+        if not isinstance(records, dict) or any(not isinstance(v, dict) for v in records.values()):
+            raise OSError(f"Invalid visual asset manifest {self.manifest_path}")
+        return records
 
     def publish(
         self,
@@ -250,7 +305,7 @@ class VisualAssetStore:
         if self.root.is_symlink() or not self.root.resolve().is_relative_to(self.kb_dir.resolve()):
             raise OSError("Visual asset directory escapes knowledge base")
         self.root.mkdir(parents=True, exist_ok=True)
-        prior = self.records()
+        prior = self._read_manifest()
         incoming = {item.record["asset_id"]: item.record for item in candidates}
         if replace:
             remaining: dict[str, dict[str, Any]] = {}
@@ -275,8 +330,6 @@ class VisualAssetStore:
         manifest = json.dumps(
             {"version": 1, "assets": updated}, ensure_ascii=False, sort_keys=True
         ).encode()
-        if len(manifest) > MAX_MANIFEST_BYTES:
-            raise OSError("Visual asset manifest exceeds its size limit")
         for candidate in candidates:
             record = candidate.record
             loaded = _image_bytes(candidate.path)
@@ -316,7 +369,7 @@ class VisualAssetStore:
         return record, data
 
     def remove_source(self, source_relative_path: str) -> None:
-        prior = self.records()
+        prior = self._read_manifest()
         updated = {
             key: value
             for key, value in prior.items()
@@ -335,7 +388,7 @@ class VisualAssetStore:
                 self._path(old_id, str(old_record.get("mime_type"))).unlink(missing_ok=True)
 
     def move_source(self, old_relative_path: str, new_relative_path: str) -> None:
-        prior = self.records()
+        prior = self._read_manifest()
         updated = {}
         changed = False
         for key, value in prior.items():

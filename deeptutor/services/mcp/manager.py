@@ -434,6 +434,13 @@ class MCPConnectionManager:
         conn = self._connections.get((owner, server_name))
         if conn is None or conn.session is None or conn.status != "connected":
             return f"(MCP server {server_name!r} is not connected)"
+        if not conn.config.tool_allowed(tool_name, wrapped_tool_name(server_name, tool_name)):
+            return "(MCP tool is no longer enabled; no tool was invoked)"
+        if owner != SHARED_OWNER and conn.config.allow_private_network:
+            from deeptutor.services.mcp.network import approved_private_origin
+
+            if approved_private_origin(conn.config.url) is None:
+                return "(Private-network MCP origin approval was revoked; no tool was invoked)"
         try:
             return await self._call_watching_connection(
                 conn, tool_name, arguments, timeout, on_progress
@@ -568,7 +575,7 @@ class MCPConnectionManager:
     # ── connection internals ───────────────────────────────────────────
 
     @classmethod
-    def _signature(cls, cfg: MCPServerConfig, owner: str) -> str:
+    def _signature(cls, cfg: MCPServerConfig, owner: str, server_name: str = "") -> str:
         """``cfg``'s connection fingerprint, sensitive to its resolved secrets.
 
         :meth:`MCPServerConfig.connection_signature` fingerprints the *stored*
@@ -585,6 +592,10 @@ class MCPConnectionManager:
         does not invalidate — and drop — every live session.
         """
         base = cfg.connection_signature()
+        if cfg.auth == "oauth":
+            from deeptutor.services.mcp.oauth import authorization_revision
+
+            base = f"{base}#oauth:{authorization_revision(owner, server_name)}"
         if _SECRET_REFERENCE_MARKER not in base:
             # Nothing to resolve, so nothing can change behind the diff. Worth
             # checking first: this runs for every live connection on every
@@ -609,7 +620,10 @@ class MCPConnectionManager:
             if key[0] != owner:
                 continue
             cfg = desired.get(key[1])
-            if cfg is None or self._signature(cfg, owner) != self._connections[key].signature:
+            if (
+                cfg is None
+                or self._signature(cfg, owner, key[1]) != self._connections[key].signature
+            ):
                 await self._disconnect(self._connections.pop(key))
         # Connect new/changed servers concurrently.
         pending = [
@@ -631,7 +645,7 @@ class MCPConnectionManager:
         conn = _ServerConnection(
             name=name,
             config=cfg,
-            signature=self._signature(cfg, owner),
+            signature=self._signature(cfg, owner, name),
             owner=owner,
             retry_delay=retry_delay,
         )
@@ -781,14 +795,49 @@ class MCPConnectionManager:
             read, write = await stack.enter_async_context(stdio_client(params))
             return read, write
 
-        if self_service:
-            # Re-validated here, not only where the server was saved: DNS can
-            # change between the two, and this is the last point before a socket.
-            from deeptutor.services.mcp.network import validate_mcp_url_async
+        from deeptutor.services.mcp.network import (
+            approved_private_origin,
+            mcp_origin,
+            validate_mcp_url_async,
+        )
 
-            ok, error = await validate_mcp_url_async(cfg.url, strict=True)
-            if not ok:
-                raise ValueError(error)
+        trusted_origin = (
+            (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+            if cfg.allow_private_network
+            else None
+        )
+        strict_network = self_service
+        if self_service and cfg.allow_private_network and trusted_origin is None:
+            raise ValueError("Private-network MCP origin is not approved by an administrator")
+        ok, error = await validate_mcp_url_async(
+            cfg.url, strict=strict_network, trusted_origin=trusted_origin
+        )
+        if not ok:
+            raise ValueError(error)
+
+        async def network_guard(request):
+            # Revalidate every request/redirect and recheck revocable admin trust.
+            current_origin = (
+                (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+                if cfg.allow_private_network
+                else None
+            )
+            if self_service and cfg.allow_private_network and current_origin is None:
+                raise ValueError("Private-network MCP origin approval was revoked")
+            allowed, detail = await validate_mcp_url_async(
+                str(request.url),
+                strict=(
+                    self_service
+                    or (
+                        cfg.allow_private_network
+                        and mcp_origin(str(request.url)) != mcp_origin(cfg.url)
+                    )
+                ),
+                trusted_origin=current_origin,
+            )
+            if not allowed:
+                raise ValueError(detail)
+
         follow_redirects = not self_service
 
         # OAuth, when the server declares it. Non-interactive here on purpose:
@@ -818,6 +867,7 @@ class MCPConnectionManager:
                 return httpx.AsyncClient(
                     headers=merged or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=timeout,
                     # The transport supplies its own auth for some flows; ours
                     # wins when the server is OAuth-backed.
@@ -835,6 +885,7 @@ class MCPConnectionManager:
                 httpx.AsyncClient(
                     headers=cfg.headers or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=httpx.Timeout(60.0, connect=10.0),
                     auth=oauth_auth,
                 )
@@ -895,13 +946,18 @@ async def probe_server(
     *,
     timeout: int = _CONNECT_TIMEOUT_S,
     owner: str = SHARED_OWNER,
+    server_name: str = "",
 ) -> dict[str, Any]:
     """One-off connect + list_tools for a Test button.
 
     Opens and closes its own connection; never touches the live manager. Pass
     the *owner* so the probe runs under the same address policy, redirect rule,
     and stored credentials the real connection would use — a Test that is more
-    permissive than the connection it previews is worse than no Test.
+    permissive than the connection it previews is worse than no Test. Pass the
+    *server_name* for the same reason where it matters: an OAuth-backed
+    server's grant is stored per name, so the probe has to address the store
+    under the name the connection would, or an authorized server tests as if
+    nobody had ever consented to it.
     """
     from contextlib import AsyncExitStack
 
@@ -914,7 +970,9 @@ async def probe_server(
         # covered by the type gate.
         tools: list[dict[str, str]] = []
         async with AsyncExitStack() as stack:
-            read, write = await MCPConnectionManager._open_transport(stack, cfg, owner=owner)
+            read, write = await MCPConnectionManager._open_transport(
+                stack, cfg, owner=owner, server_name=server_name
+            )
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             listing = await session.list_tools()

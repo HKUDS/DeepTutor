@@ -14,7 +14,11 @@ class TurnContextAssembler:
     if TYPE_CHECKING:
         store: SessionStoreProtocol
 
-    def _create_context_builder(self) -> Any:
+    def _create_context_builder(self, *, tutoring: bool = False) -> Any:
+        if tutoring:
+            from deeptutor.capabilities.mastery.memory import MasteryContextBuilder
+
+            return MasteryContextBuilder(self.store)
         from deeptutor.services.session.context_builder import ContextBuilder
 
         return ContextBuilder(self.store)

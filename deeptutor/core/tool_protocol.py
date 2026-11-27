@@ -34,6 +34,17 @@ class ToolParameter:
     default: Any = None
     enum: list[str] | None = None
     items: dict[str, Any] | None = None
+    #: Emit ``"type": [<type>, "null"]`` so a strictly-required property still
+    #: has a genuine absence value. Endpoints that normalise optional
+    #: properties into required fields reject ``null`` otherwise, and the model
+    #: falls back to placeholder values (issue #1928).
+    nullable: bool = False
+    #: Numeric bounds and array length bounds are emitted verbatim so the
+    #: advertised contract matches what execution enforces.
+    minimum: float | None = None
+    maximum: float | None = None
+    min_items: int | None = None
+    max_items: int | None = None
     #: Keep this argument's value out of the ``tool_call`` event the trace
     #: renders. The model still sends it and the tool still receives it — this
     #: only stops it from being shown back to the person the tool is acting
@@ -44,9 +55,20 @@ class ToolParameter:
 
     def to_schema(self) -> dict[str, Any]:
         """Convert to JSON Schema property dict."""
-        schema: dict[str, Any] = {"type": self.type, "description": self.description}
+        schema: dict[str, Any] = {
+            "type": [self.type, "null"] if self.nullable else self.type,
+            "description": self.description,
+        }
         if self.enum:
-            schema["enum"] = self.enum
+            schema["enum"] = list(self.enum)
+        if self.minimum is not None:
+            schema["minimum"] = self.minimum
+        if self.maximum is not None:
+            schema["maximum"] = self.maximum
+        if self.min_items is not None:
+            schema["minItems"] = self.min_items
+        if self.max_items is not None:
+            schema["maxItems"] = self.max_items
         if self.type == "array":
             schema["items"] = self.items if self.items is not None else {"type": "string"}
         return schema
@@ -126,6 +148,21 @@ class ToolPromptHints:
     aliases: list[ToolAlias] = field(default_factory=list)
 
 
+TOOL_EVENT_PROJECTION = "_tool_event_projection"
+
+
+@dataclass(frozen=True)
+class ToolEventProjection:
+    """Server-owned public invocation details, separate from execution arguments.
+
+    The runtime accepts this typed value only; a model-supplied JSON object
+    cannot change trace visibility. Capabilities inject it beside private kwargs.
+    """
+
+    arguments: dict[str, Any] = field(default_factory=dict)
+    retrieval_query: str = ""
+
+
 @dataclass
 class ToolResult:
     """Standardised return value from a tool execution.
@@ -165,6 +202,10 @@ class ToolResult:
     # Private model-only follow-up (for example verified source image parts).
     # Never copy this into stream events, citation rows, or persisted metadata.
     model_message: dict[str, Any] | None = field(default=None, repr=False)
+    # Optional public stream projection. Omitted fields are withheld, not
+    # inherited from private content/sources/metadata. The inference result
+    # remains intact in the tool message and internal model trace.
+    public_result: dict[str, Any] | None = field(default=None, repr=False)
 
     def __str__(self) -> str:
         return self.content

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from deeptutor.app.container import RuntimeRegistry
 from deeptutor.app.service import TurnApplicationService
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.runtime.coordination import MemoryCoordinator
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import _TurnExecution
@@ -19,6 +21,30 @@ class _FixedStoreProvider:
         return self.store
 
 
+@pytest.mark.asyncio
+async def test_history_budget_failure_is_terminal_before_answer_execution(
+    submission_service, monkeypatch
+):
+    from deeptutor.services.session import context_builder
+    from deeptutor.services.session.context_builder import HistoryBudgetExceeded
+
+    async def reject_history(self, **kwargs):
+        raise HistoryBudgetExceeded(150002, 131072)
+
+    monkeypatch.setattr(context_builder.ContextBuilder, "build", reject_history)
+    service, store, _, _, calls = submission_service
+    session, turn = await service.start_turn(
+        {"content": "Continue", "client_submission_id": "oversized-history"}
+    )
+    events = [event async for event in service.subscribe_turn(turn["id"])]
+    error = next(event for event in events if event["type"] == "error")
+    done = next(event for event in events if event["type"] == "done")
+    assert error["metadata"]["error_code"] == "history_budget_exceeded"
+    assert done["metadata"]["status"] == "failed"
+    assert done["metadata"]["retryable"] is False
+    assert calls["count"] == 0
+
+
 def _service(
     store: SQLiteSessionStore,
     coordinator: MemoryCoordinator,
@@ -29,6 +55,518 @@ def _service(
         TurnApplicationService(_FixedStoreProvider(store), registry, coordinator),
         registry,
     )
+
+
+@pytest.fixture
+def submission_service(monkeypatch, tmp_path):
+    from deeptutor.services.path_service import PathService
+    from deeptutor.services.session.turns.title_service import SessionTitleService
+
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    monkeypatch.setattr(PathService, "_instance", PathService(workspace_root=tmp_path / "data"))
+    calls = {"count": 0, "fail": False}
+
+    class Builder:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def build(self, **kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class Orchestrator:
+        async def handle(self, context):
+            calls["count"] += 1
+            calls["knowledge_bases"] = context.knowledge_bases
+            if calls["fail"]:
+                from deeptutor.services.llm.exceptions import LLMProviderTransportError
+
+                raise LLMProviderTransportError("controlled upstream failure")
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                content="Recovered answer",
+                source="chat",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr("deeptutor.services.session.context_builder.ContextBuilder", Builder)
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", Orchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store", lambda: SimpleNamespace(emit=noop)
+    )
+    monkeypatch.setattr(SessionTitleService, "_maybe_generate_session_title", noop)
+    store = SQLiteSessionStore(tmp_path / "submissions.db")
+    coordinator = MemoryCoordinator(lease_ttl_seconds=30)
+    service, registry = _service(store, coordinator, "worker-a")
+    return service, store, coordinator, registry, calls
+
+
+@pytest.mark.asyncio
+async def test_subscriber_waits_for_owned_terminal_envelope_and_replays_after_eviction(tmp_path):
+    """A slow subscriber must get the real DONE ids even across cleanup (#1971)."""
+    store = SQLiteSessionStore(tmp_path / "turns.db")
+    coordinator = MemoryCoordinator()
+    service, _ = _service(store, coordinator, "worker")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("owned-terminal", session["id"], "worker")
+    assert lease is not None
+    await store.begin_turn(
+        session["id"],
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    await store.transition_turn(
+        lease.turn_id, "completed", expected_status="running", fencing_token=lease.fencing_token
+    )
+    subscription = service.subscribe_turn(lease.turn_id)
+    waiting = asyncio.create_task(anext(subscription))
+    try:
+        await asyncio.sleep(0.15)
+        assert not waiting.done(), "live owner has not published the real DONE yet"
+        done = await coordinator.publish_event(
+            lease.turn_id,
+            {
+                "type": "done",
+                "metadata": {"status": "completed", "assistant_message_id": "answer"},
+            },
+        )
+        await store.append_events(lease.turn_id, [done], fencing_token=lease.fencing_token)
+        await coordinator.release_turn(lease)
+        await coordinator.acknowledge_expired_turn(lease.turn_id)
+        received = await asyncio.wait_for(waiting, 2)
+        assert received["metadata"]["assistant_message_id"] == "answer"
+        assert not received["metadata"].get("synthesized")
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+        await subscription.aclose()
+
+
+@pytest.mark.asyncio
+async def test_running_turn_flushes_visible_prefix_without_waiting_for_more_events(
+    submission_service,
+    monkeypatch,
+):
+    """A quiet model/tool must not leave already visible work only in RAM (#1971)."""
+    service, store, coordinator, registry, _ = submission_service
+    streamed = asyncio.Event()
+    finish = asyncio.Event()
+
+    class SlowOrchestrator:
+        async def handle(self, context):
+            yield StreamEvent(type=StreamEventType.CONTENT, content="visible prefix", source="chat")
+            streamed.set()
+            await finish.wait()
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", SlowOrchestrator)
+    _, turn = await service.start_turn({"content": "Hello"})
+    try:
+        await asyncio.wait_for(streamed.wait(), 3)
+        await asyncio.sleep(0.6)
+        restarted = SQLiteSessionStore(store.db_path)
+        events = await restarted.get_events(turn["id"])
+        assert any(e.get("content") == "visible prefix" for e in events)
+        assert (await restarted.get_turn(turn["id"]))["status"] == "running"
+    finally:
+        finish.set()
+        [event async for event in service.subscribe_turn(turn["id"])]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_after_done_keeps_the_live_post_turn_title(tmp_path):
+    store = SQLiteSessionStore(tmp_path / "turns.db")
+    coordinator = MemoryCoordinator()
+    service, _ = _service(store, coordinator, "worker")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("title-tail", session["id"], "worker")
+    await store.begin_turn(
+        session["id"],
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    done = await coordinator.publish_event(
+        lease.turn_id,
+        {
+            "type": "done",
+            "metadata": {"status": "completed"},
+        },
+    )
+    await store.append_events(lease.turn_id, [done], fencing_token=lease.fencing_token)
+    await store.transition_turn(
+        lease.turn_id, "completed", expected_status="running", fencing_token=lease.fencing_token
+    )
+    stream = service.subscribe_turn(lease.turn_id)
+    assert (await anext(stream))["type"] == "done"
+    waiting = asyncio.create_task(anext(stream))
+    try:
+        await asyncio.sleep(0.05)
+        assert not waiting.done(), "terminal status is not the end of the owned title tail"
+        title = await coordinator.publish_event(
+            lease.turn_id,
+            {
+                "type": "session_meta",
+                "metadata": {"title": "Cell membrane"},
+            },
+        )
+        await store.append_events(lease.turn_id, [title], fencing_token=lease.fencing_token)
+        await coordinator.release_turn(lease)
+        await coordinator.acknowledge_expired_turn(lease.turn_id)
+        assert (await asyncio.wait_for(waiting, 2))["metadata"]["title"] == "Cell membrane"
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_replacement_endpoint_workflow_starts_once_and_branches_admitted_user(
+    submission_service,
+):
+    service, store, _, _, calls = submission_service
+    session, original_turn = await service.start_turn(
+        {"content": "Original", "client_submission_id": "already-admitted"}
+    )
+    [event async for event in service.subscribe_turn(original_turn["id"])]
+    payload = {
+        "content": "Edited",
+        "client_submission_id": "branch-edit",
+        "session_id": session["id"],
+    }
+    receipt = await service.replace_submission("already-admitted", payload, start=True)
+    assert receipt["status"] == "started"
+    [event async for event in service.subscribe_turn(receipt["turn"]["id"])]
+    replay = await service.replace_submission("already-admitted", payload, start=True)
+    assert replay["turn"]["id"] == receipt["turn"]["id"]
+    users = [row for row in await store.get_messages(session["id"]) if row["role"] == "user"]
+    assert [row["content"] for row in users] == ["Original", "Edited"]
+    assert users[0]["parent_message_id"] == users[1]["parent_message_id"]
+    assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_edit_admitted_before_user_persistence_waits_for_cancellation(submission_service):
+    service, store, _, _, calls = submission_service
+    sid = await store.reserve_submission("before-user", "original-digest")
+    original = await store.begin_turn(sid, submission_id="before-user")
+    receipt = await service.replace_submission(
+        "before-user",
+        {
+            "content": "Edited",
+            "client_submission_id": "edit-before-user",
+            "session_id": sid,
+        },
+        start=True,
+    )
+    assert (await store.get_turn(original["id"]))["status"] in {"cancelled", "failed"}
+    [event async for event in service.subscribe_turn(receipt["turn"]["id"])]
+    assert calls["count"] == 1
+    assert [row["content"] for row in await store.get_messages(sid) if row["role"] == "user"] == [
+        "Edited"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reserved_edit_replays_exact_request_after_lost_receipt(submission_service):
+    service, store, _, _, calls = submission_service
+    payload = {
+        "content": "Edited",
+        "client_submission_id": "edited",
+        "tools": ["reason"],
+        "config": {},
+        "attachments": [],
+    }
+    receipt = await service.replace_submission("unsent", payload)
+    assert await service.replace_submission("unsent", payload) == receipt
+    with pytest.raises(RuntimeError, match="superseded"):
+        await service.start_turn({"content": "Original", "client_submission_id": "unsent"})
+    session, turn = await service.start_turn({**payload, "session_id": receipt["session_id"]})
+    [event async for event in service.subscribe_turn(turn["id"])]
+    replay_session, replay_turn = await service.start_turn(payload)
+    assert replay_session["id"] == session["id"]
+    assert replay_turn["id"] == turn["id"]
+    assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lost_first_session_ack_replays_the_same_submission_after_worker_restart(
+    submission_service,
+):
+    service, store, coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "lost-first-ack"}
+    first_session, first_turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(first_turn["id"])]
+    restarted_store = SQLiteSessionStore(store.db_path)
+    restarted, _ = _service(restarted_store, coordinator, "worker-b")
+    second_session, second_turn = await restarted.start_turn(payload)
+    assert second_session["id"] == first_session["id"]
+    assert second_turn["id"] == first_turn["id"]
+    assert calls["count"] == 1
+    assert len(await store.list_sessions()) == 1
+    assert [row["role"] for row in await store.get_messages(first_session["id"])] == [
+        "user",
+        "assistant",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_first_submission_resends_in_its_original_conversation_without_a_duplicate_user(
+    submission_service,
+):
+    service, store, _coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "failed-first-ack"}
+    calls["fail"] = True
+    first_session, failed_turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(failed_turn["id"])]
+    original_user = await store.get_last_message(first_session["id"], role="user")
+    assert original_user is not None
+    calls["fail"] = False
+    session, retried_turn = await service.start_turn(payload)
+    events = [event async for event in service.subscribe_turn(retried_turn["id"])]
+    assert session["id"] == first_session["id"]
+    assert retried_turn["id"] != failed_turn["id"]
+    rows = await store.get_messages(session["id"])
+    assert [row["role"] for row in rows] == ["user", "assistant"]
+    assert rows[0]["id"] == original_user["id"]
+    done = next(event for event in events if event["type"] == "done")
+    assert done["metadata"]["user_message_id"] == original_user["id"]
+    assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_submission_key_cannot_be_reused_for_different_content(submission_service):
+    service, store, _coordinator, _registry, calls = submission_service
+    payload = {"content": "Hello", "client_submission_id": "same-key"}
+    session, turn = await service.start_turn(payload)
+    [event async for event in service.subscribe_turn(turn["id"])]
+    with pytest.raises(RuntimeError, match="different request"):
+        await service.start_turn({**payload, "content": "Changed input"})
+    assert len(await store.list_sessions()) == 1
+    assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_failed", [False, True])
+@pytest.mark.parametrize("owner_fails", [False, True])
+async def test_concurrent_submission_waits_for_lease_owner_to_record_receipt(
+    submission_service, monkeypatch, retry_failed, owner_fails
+):
+    """A reconnect can reach another worker before begin_turn binds the ID."""
+    service, store, coordinator, registry, calls = submission_service
+    other_store = SQLiteSessionStore(store.db_path)
+    other, other_registry = _service(other_store, coordinator, "worker-b")
+    payload = {"content": "Hello", "client_submission_id": "concurrent-first-ack"}
+    previous_turn = None
+    if retry_failed:
+        calls["fail"] = True
+        _, previous_turn = await service.start_turn(payload)
+        [event async for event in service.subscribe_turn(previous_turn["id"])]
+    calls["fail"] = owner_fails
+
+    owner_admitting = asyncio.Event()
+    contender_blocked = asyncio.Event()
+    release_owner = asyncio.Event()
+    begin_turn = store.begin_turn
+    acquire_turn = coordinator.acquire_turn
+
+    async def delayed_begin(*args, **kwargs):
+        owner_admitting.set()
+        await release_owner.wait()
+        return await begin_turn(*args, **kwargs)
+
+    async def observed_acquire(turn_id, session_id, owner_id):
+        lease = await acquire_turn(turn_id, session_id, owner_id)
+        if owner_id == "worker-b" and lease is None:
+            contender_blocked.set()
+        return lease
+
+    monkeypatch.setattr(store, "begin_turn", delayed_begin)
+    monkeypatch.setattr(coordinator, "acquire_turn", observed_acquire)
+    first = asyncio.create_task(service.start_turn(payload))
+    tasks = [first]
+    try:
+        await asyncio.wait_for(owner_admitting.wait(), 3)
+        second = asyncio.create_task(other.start_turn(payload))
+        tasks.append(second)
+        await asyncio.wait_for(contender_blocked.wait(), 3)
+        release_owner.set()
+        (session, turn), (replay_session, replay_turn) = await asyncio.wait_for(
+            asyncio.gather(*tasks), 3
+        )
+        assert replay_session["id"] == session["id"]
+        assert replay_turn["id"] == turn["id"]
+        if previous_turn is not None:
+            assert turn["id"] != previous_turn["id"]
+        events = [event async for event in other.subscribe_turn(turn["id"])]
+        assert any(event["type"] == "done" for event in events)
+        assert calls["count"] == 1 + int(retry_failed)
+        assert len(await store.list_sessions()) == 1
+        rows = await other_store.get_messages(session["id"])
+        expected_roles = ["user"] if owner_fails else ["user", "assistant"]
+        assert [row["role"] for row in rows] == expected_roles
+        assert rows[0]["metadata"]["client_submission_id"] == payload["client_submission_id"]
+    finally:
+        release_owner.set()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await registry.get(store).close()
+        await other_registry.get(other_store).close()
+
+
+@pytest.mark.asyncio
+async def test_different_submission_during_admission_still_conflicts(
+    submission_service, monkeypatch
+):
+    service, store, coordinator, registry, calls = submission_service
+    other_store = SQLiteSessionStore(store.db_path)
+    other, other_registry = _service(other_store, coordinator, "worker-b")
+    session = await store.create_session()
+    payload = {
+        "content": "Hello",
+        "session_id": session["id"],
+        "client_submission_id": "original-admission",
+    }
+    owner_admitting = asyncio.Event()
+    contender_blocked = asyncio.Event()
+    release_owner = asyncio.Event()
+    finish = asyncio.Event()
+    begin_turn = store.begin_turn
+    acquire_turn = coordinator.acquire_turn
+
+    class ParkedOrchestrator:
+        async def handle(self, context):
+            await finish.wait()
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def delayed_begin(*args, **kwargs):
+        owner_admitting.set()
+        await release_owner.wait()
+        return await begin_turn(*args, **kwargs)
+
+    async def observed_acquire(turn_id, session_id, owner_id):
+        lease = await acquire_turn(turn_id, session_id, owner_id)
+        if owner_id == "worker-b" and lease is None:
+            contender_blocked.set()
+        return lease
+
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", ParkedOrchestrator)
+    monkeypatch.setattr(store, "begin_turn", delayed_begin)
+    monkeypatch.setattr(coordinator, "acquire_turn", observed_acquire)
+    first = asyncio.create_task(service.start_turn(payload))
+    tasks = [first]
+    try:
+        await asyncio.wait_for(owner_admitting.wait(), 3)
+        second = asyncio.create_task(
+            other.start_turn({**payload, "client_submission_id": "different-admission"})
+        )
+        tasks.append(second)
+        await asyncio.wait_for(contender_blocked.wait(), 3)
+        release_owner.set()
+        _, turn = await asyncio.wait_for(first, 3)
+        with pytest.raises(RuntimeError, match="active or recovering turn"):
+            await asyncio.wait_for(second, 3)
+        assert await coordinator.get_lease(turn["id"]) is not None
+        assert await store.submission_turn("different-admission") is None
+        assert calls["count"] == 0
+    finally:
+        release_owner.set()
+        finish.set()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await registry.get(store).close()
+        await other_registry.get(other_store).close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_submission", [False, True])
+async def test_unrecorded_lease_owner_cannot_hold_admission_open_forever(
+    submission_service, monkeypatch, with_submission
+):
+    service, store, coordinator, registry, calls = submission_service
+    session = await store.create_session()
+    runtime = registry.get(store)
+    lease = await coordinator.acquire_turn(
+        "unrecorded-owner", f"{runtime._coordination_scope}:{session['id']}", "worker-b"
+    )
+    assert lease is not None
+    payload = {"content": "Hello", "session_id": session["id"]}
+    if with_submission:
+        payload["client_submission_id"] = "still-admitting"
+    monkeypatch.setattr(service, "_SUBMISSION_ADMISSION_WAIT_SECONDS", 0.01)
+    try:
+        with pytest.raises(RuntimeError, match="active or recovering turn"):
+            await asyncio.wait_for(service.start_turn(payload), 1)
+        assert await coordinator.get_lease(lease.turn_id) == lease
+        assert await store.get_active_turn(session["id"]) is None
+        assert await store.submission_turn("still-admitting") is None
+        assert calls["count"] == 0
+    finally:
+        await coordinator.release_turn(lease)
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_receipt_wait_preserves_owner_and_later_replay(
+    submission_service, monkeypatch
+):
+    service, store, coordinator, registry, calls = submission_service
+    session = await store.create_session()
+    runtime = registry.get(store)
+    lease = await coordinator.acquire_turn(
+        "admitting-owner", f"{runtime._coordination_scope}:{session['id']}", "worker-b"
+    )
+    assert lease is not None
+    payload = {
+        "content": "Hello",
+        "session_id": session["id"],
+        "client_submission_id": "cancelled-waiter",
+    }
+    waiting = asyncio.Event()
+    get_active_turn = store.get_active_turn
+
+    async def observed_active(session_id):
+        row = await get_active_turn(session_id)
+        waiting.set()
+        return row
+
+    monkeypatch.setattr(store, "get_active_turn", observed_active)
+    retry = asyncio.create_task(service.start_turn(payload))
+    try:
+        await asyncio.wait_for(waiting.wait(), 3)
+        retry.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await retry
+        assert await coordinator.get_lease(lease.turn_id) == lease
+        turn = await store.begin_turn(
+            session["id"],
+            submission_id=payload["client_submission_id"],
+            turn_id=lease.turn_id,
+            owner_id=lease.owner_id,
+            fencing_token=lease.fencing_token,
+        )
+        replay_session, replay_turn = await service.start_turn(payload)
+        assert replay_session["id"] == session["id"]
+        assert replay_turn["id"] == turn["id"]
+        assert calls["count"] == 0
+    finally:
+        retry.cancel()
+        await asyncio.gather(retry, return_exceptions=True)
+        await coordinator.release_turn(lease)
+        await runtime.close()
 
 
 @pytest.mark.asyncio
@@ -212,3 +750,123 @@ async def test_second_worker_cancel_is_consumed_by_owner_worker(tmp_path) -> Non
         fencing_token=lease.fencing_token,
     )
     await coordinator.release_turn(lease)
+
+
+@pytest.mark.asyncio
+async def test_replacement_availability_matches_configured_store_before_mutation(
+    submission_service, monkeypatch
+):
+    from fastapi import HTTPException
+
+    from deeptutor.api.routers import sessions
+    from deeptutor.core.turn_request import TurnRequest
+
+    service, store, _, _, calls = submission_service
+    monkeypatch.setattr(sessions, "get_session_store", lambda: store)
+    assert (await sessions.session_store_capabilities()).submission_replacement
+    unsupported = SimpleNamespace()
+    monkeypatch.setattr(sessions, "get_session_store", lambda: unsupported)
+    monkeypatch.setattr(service, "_resolve", lambda: (unsupported, None))
+    monkeypatch.setattr(sessions, "_turn_application_service", lambda: service)
+    assert not (await sessions.session_store_capabilities()).submission_replacement
+    body = sessions.SubmissionReplacementRequest(
+        original_submission_id="original",
+        request=TurnRequest(content="Edited", client_submission_id="edited"),
+    )
+    with pytest.raises(HTTPException) as error:
+        await sessions.replace_submission(body)
+    assert error.value.status_code == 501
+    assert calls["count"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interruption", ["append", "cancel", "publish"])
+@pytest.mark.parametrize("after_seq", [0, 1, 10])
+async def test_interrupted_worker_loss_recovery_replays_failure(
+    tmp_path, monkeypatch, interruption, after_seq
+):
+    from deeptutor.runtime.coordination.recovery import TurnRecoveryService
+
+    store = SQLiteSessionStore(tmp_path / "interrupted.db")
+    coordinator = MemoryCoordinator()
+    session = await store.ensure_session(None)
+    turn = await store.begin_turn(session["id"], capability="chat")
+    await store.append_events(turn["id"], [{"type": "content", "content": "Partial answer"}])
+
+    async def interrupt(*args, **kwargs):
+        if interruption == "cancel":
+            raise asyncio.CancelledError
+        raise RuntimeError("Injected recovery interruption")
+
+    with monkeypatch.context() as patch:
+        if interruption == "publish":
+            patch.setattr(coordinator, "publish_event", interrupt)
+        else:
+            patch.setattr(store, "append_events", interrupt)
+        recovery = TurnRecoveryService(coordinator, store)
+        if interruption == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await recovery.recover_once()
+        else:
+            await recovery.recover_once()
+
+    assert (await store.get_turn(turn["id"]))["status"] == "failed"
+    # A restarted coordinator cannot rediscover an already terminal row.
+    restarted = MemoryCoordinator()
+    assert await TurnRecoveryService(restarted, store).recover_once() == 0
+    service, _ = _service(store, restarted, "replacement")
+
+    async def collect():
+        return [event async for event in service.subscribe_turn(turn["id"], after_seq)]
+
+    events = await asyncio.wait_for(collect(), timeout=2)
+    assert [event["type"] for event in events][-2:] == ["error", "done"]
+    assert events[-2]["content"]
+    assert events[-2]["metadata"]["turn_terminal"] is True
+    for event in events[-2:]:
+        assert event["metadata"]["error_code"] == "worker_lost"
+        assert event["metadata"]["retryable"] is True
+        assert event["turn_id"] == turn["id"]
+        assert event["seq"] > after_seq
+    assert events[-1]["seq"] == events[-2]["seq"] + 1
+    if after_seq == 0:
+        assert events[0]["content"] == "Partial answer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choice", [None, [], ["user-picked"]])
+async def test_workspace_default_only_fills_an_absent_conversation_choice(
+    submission_service, monkeypatch, choice
+):
+    from unittest.mock import Mock
+
+    from deeptutor.services.workspace import knowledge
+
+    defaults = Mock(return_value=["account:kb:physics"])
+    monkeypatch.setattr(knowledge, "inherited_chat_knowledge_bases", defaults)
+    service, store, _, _, calls = submission_service
+    payload = {"content": "Explain gravity", "client_submission_id": "default-first"}
+    if choice is not None:
+        payload["knowledge_bases"] = choice
+    session, turn = await service.start_turn(payload)
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    expected = ["account:kb:physics"] if choice is None else choice
+    assert (await store.get_session(session["id"]))["preferences"]["knowledge_bases"] == expected
+    assert calls["knowledge_bases"] == expected
+    assert defaults.call_count == (1 if choice is None else 0)
+    # An explicit detach persists even if a later producer omits the field.
+    _, turn = await service.start_turn(
+        {
+            "session_id": session["id"],
+            "content": "Next",
+            "knowledge_bases": [],
+            "client_submission_id": "detach",
+        }
+    )
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    _, turn = await service.start_turn(
+        {"session_id": session["id"], "content": "Next again", "client_submission_id": "omitted"}
+    )
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    assert (await store.get_session(session["id"]))["preferences"]["knowledge_bases"] == []
+    assert defaults.call_count == (1 if choice is None else 0)

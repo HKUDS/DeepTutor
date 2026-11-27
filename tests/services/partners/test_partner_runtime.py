@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import pytest
@@ -43,6 +44,20 @@ def _muted_progress_config() -> PartnerConfig:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["pt", "pt-BR", "pt_PT", "Português"])
+    async def test_feishu_turn_announces_thinking_in_portuguese(
+        self, partners_root, fake_orchestrator, language
+    ):
+        fake_orchestrator.script = finish("Pronto")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Pensando…"
+        assert notice.metadata["_thinking_notice"] is True
+
+    @pytest.mark.asyncio
     async def test_feishu_turn_announces_thinking_before_any_output(
         self, partners_root, fake_orchestrator
     ):
@@ -56,6 +71,63 @@ class TestTurnExecution:
         assert notice.content == "🤔 正在思考…"
         assert notice.metadata["_thinking_notice"] is True
         assert notice.metadata["_progress"] is True
+
+    @pytest.mark.asyncio
+    async def test_feishu_thinking_notice_uses_the_partner_language(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("done")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="fr"))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Réflexion…"
+
+    def test_auto_reply_language_follows_the_account_response_language(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada"))
+
+        assert runner._language() == "fr"
+
+    def test_explicit_reply_language_wins_over_the_account_default(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="uk"))
+
+        assert runner._language() == "uk"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["tr", "tr-TR", "tr_TR", "turkish", "Türkçe", ""])
+    async def test_turkish_thinking_notice_follows_explicit_or_account_language(
+        self, partners_root, monkeypatch, language
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings, "get_response_language", lambda default="en": "tr_TR"
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+        assert runner._language() == "tr"
+        await runner._publish_thinking_notice(_msg(channel="feishu"))
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Düşünüyorum…"
+        assert notice.metadata["_thinking_notice"] is True
 
     @pytest.mark.asyncio
     async def test_web_turn_never_announces_thinking(self, partners_root, fake_orchestrator):
@@ -871,15 +943,16 @@ class TestContextAssembly:
         } in context.conversation_history
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("content", ["what is in this image?", ""])
     async def test_image_media_becomes_context_attachment_and_session_record(
-        self, partners_root, fake_orchestrator
+        self, partners_root, fake_orchestrator, content
     ):
         image_path = partners_root / "image.png"
         image_path.parent.mkdir(parents=True, exist_ok=True)
         image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
         fake_orchestrator.script = finish("saw it")
         runner = _runner(partners_root)
-        msg = _msg("what is in this image?")
+        msg = _msg(content)
         msg.media = [str(image_path)]
 
         await runner.process_message(msg)
@@ -889,6 +962,7 @@ class TestContextAssembly:
         assert context.attachments[0].type == "image"
         assert context.attachments[0].filename == "image.png"
         records = _shared_store().messages("telegram:42")
+        assert [record["role"] for record in records] == ["user", "assistant"]
         assert records[0]["attachments"][0]["type"] == "image"
         assert records[0]["attachments"][0]["filename"] == "image.png"
 
@@ -1059,6 +1133,104 @@ class TestSessionStoreOps:
         assert [m["content"] for m in store.messages("web-b")] == ["q1", "a1"]
         # Events ride along so the branched copy rehydrates its trace too.
         assert store.messages("web-b")[1].get("events")
+
+    def test_image_only_history_replays_the_stored_model_turn(self, partners_root):
+        store = _shared_store()
+        image = [{"type": "image_url", "image_url": {"url": "https://example.test/photo.png"}}]
+        turn = {
+            "version": 1,
+            "messages": [
+                {"role": "user", "content": image},
+                {"role": "assistant", "content": "saw it"},
+            ],
+        }
+        store.append(
+            "web-image",
+            "user",
+            "",
+            attachments=[
+                {
+                    "type": "image",
+                    "filename": "photo.png",
+                    "path": "/tmp/photo.png",
+                }
+            ],
+        )
+        store.append("web-image", "assistant", "saw it", metadata={"model_turn": turn})
+
+        assert [row["role"] for row in store.messages("web-image")] == ["user", "assistant"]
+        assert store.messages("web-image")[1]["metadata"] == {}
+        summary = store.list_sessions()[0]
+        assert (summary["message_count"], summary["title"], summary["last_message"]) == (
+            2,
+            "",
+            "saw it",
+        )
+        assert store.conversation_history("web-image") == [
+            {"role": "assistant", "content": "saw it"}
+        ]
+        assert store.model_history("web-image") == turn["messages"]
+
+    def test_image_only_records_do_not_consume_text_history_budget(self, partners_root):
+        store = _shared_store()
+        store.append("text-budget", "user", "before")
+        store.append(
+            "text-budget",
+            "user",
+            "",
+            attachments=[
+                {
+                    "type": "image",
+                    "filename": "photo.png",
+                }
+            ],
+        )
+        store.append("text-budget", "assistant", "saw it")
+
+        assert store.conversation_history("text-budget", max_messages=2) == [
+            {"role": "user", "content": "before"},
+            {"role": "assistant", "content": "saw it"},
+        ]
+
+    @pytest.mark.parametrize("attachments", ["photo.png", ["photo.png"], [{}], [{"type": "image"}]])
+    def test_malformed_attachments_do_not_admit_empty_records(self, partners_root, attachments):
+        store = _shared_store()
+        store._path("bad").write_text(
+            json.dumps(
+                {
+                    "role": "user",
+                    "content": "",
+                    "attachments": attachments,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        assert store.messages("bad") == []
+        assert store.messages_page("bad")["total"] == 0
+        assert store.model_history("bad") == []
+
+    @pytest.mark.parametrize("existing_content", ["target text", ""])
+    def test_branch_rejects_existing_destination_without_changing_sessions(
+        self, partners_root, existing_content
+    ):
+        store = _shared_store()
+        store.append("web-a", "user", "source text")
+        if existing_content:
+            store.append("web-b", "user", existing_content)
+        else:
+            store._path("web-b").touch()
+        store.set_archived("web-b", True)
+        paths = [store._path("web-a"), store._path("web-b"), store._index_path]
+        before = [path.read_bytes() for path in paths]
+
+        with pytest.raises(FileExistsError):
+            store.branch("web-a", "web-b")
+
+        assert [path.read_bytes() for path in paths] == before
+        assert store.is_archived("web-a") is False
+        assert store.is_archived("web-b") is True
 
     def test_delete_removes_file_and_index(self, partners_root):
         store = _shared_store()
@@ -1446,3 +1618,56 @@ class TestPartnerCommands:
 
         assert "Started a new conversation" in reply
         assert len(fake_orchestrator.seen_contexts) == 1
+
+
+def test_a_finished_activity_keeps_its_question_and_answer_not_every_delta() -> None:
+    from deeptutor.services.partners.manager import PartnerActivityFeed
+
+    feed = PartnerActivityFeed()
+    live = feed.subscribe("ada")
+    frames = [
+        {"type": "user_echo", "content": "hi", "activity_id": "a1"},
+        *(
+            {"type": "stream_event", "event": {"content": str(i)}, "activity_id": "a1"}
+            for i in range(50)
+        ),
+        {"type": "content", "content": "hello", "activity_id": "a1"},
+        {"type": "done", "activity_id": "a1"},
+    ]
+    for frame in frames:
+        feed.publish("ada", frame)
+
+    # Whoever was watching saw it all.
+    assert live.qsize() == len(frames)
+    # A late subscriber gets the gap, not the replay of every delta.
+    late = feed.subscribe("ada")
+    replayed = [late.get_nowait()["type"] for _ in range(late.qsize())]
+    assert replayed == ["user_echo", "content", "done"]
+
+
+def test_a_finished_web_turn_is_not_kept() -> None:
+    import asyncio
+
+    from deeptutor.services.partners.manager import LiveTurn, PartnerManager
+
+    async def run() -> None:
+        manager = object.__new__(PartnerManager)
+        instance = type("Instance", (), {"live_turns": {}})()
+        manager._partners = {"ada": instance}
+
+        async def send_message(*_args, on_event=None, **_kwargs):
+            await on_event(type("E", (), {"to_dict": lambda self: {"type": "content"}})())
+            return "done"
+
+        manager.send_message = send_message
+        turn = LiveTurn(user_content="hi")
+        instance.live_turns["s1"] = turn
+        queue = turn.subscribe()
+        await manager._drive_web_turn("ada", "s1", "hi", [], turn)
+        assert "s1" not in instance.live_turns
+        assert turn.events == []
+        # The subscriber still received the whole turn.
+        kinds = [queue.get_nowait()["type"] for _ in range(queue.qsize())]
+        assert kinds == ["stream_event", "content", "done"]
+
+    asyncio.run(run())

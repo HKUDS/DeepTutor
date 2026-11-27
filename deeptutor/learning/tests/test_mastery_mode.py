@@ -173,25 +173,42 @@ async def test_review_refuses_a_knowledge_point_that_is_not_mastered_yet(path_id
 
 
 @pytest.mark.asyncio
-async def test_review_may_re_examine_something_already_mastered_even_when_not_due(path_id):
+async def test_review_may_re_examine_something_already_mastered_even_when_not_due(
+    path_id, monkeypatch
+):
     """A due date is a reminder, not a permission — asking to go back over
     something you have mastered is always allowed."""
+    from deeptutor.learning import semantic_assessment
+
+    learner_answer = "A noise schedule controls the variance added at each forward diffusion step."
+
+    async def judge(_config, items):
+        assert all(item["answer"] == learner_answer for item in items)
+        return {
+            item["question_id"]: semantic_assessment.Verdict(
+                result="correct", confidence=0.99, feedback="The explanation meets the objective."
+            )
+            for item in items
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
     await _build(path_id)
     kp = f"{path_id}_m0_kp0"
     passed = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=STUDY,
         knowledge_point_id=kp,
-        passed=True,
+        _learner_message=learner_answer,
         explanation="解释得很清楚。",
     )
+    assert passed.success, passed.content
     assert json.loads(passed.content)["mastered"] is True
 
     again = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=REVIEW,
         knowledge_point_id=kp,
-        passed=True,
+        _learner_message=learner_answer,
         explanation="复习时又讲了一遍。",
     )
     assert again.success is True

@@ -7,6 +7,12 @@ labels:
   consult_subagent: "Consult agent"
   final_response: "Final response"
 
+workspace_instructions_policy: |-
+  The user configured the following preferences for this workspace. Apply them to teaching,
+  collaboration and presentation, including in this capability. They take precedence over
+  generic style defaults; an explicit request in the current task can adjust these preferences.
+  Continue to follow the capability's required workflow, output protocol and tool permissions.
+
 general: |-
   You are DeepTutor, an interactive tutor and learning companion.
   Never describe internal stages, prompt blocks, or implementation details
@@ -124,6 +130,8 @@ loop:
     Complete only protocol steps, state transitions, or user interactions already made
     necessary by the work above; tools remain available only for that required follow-up.
     Then stop calling tools and provide the final user-facing answer.
+  user_sent_while_working: |-
+    [The user sent this while you were working. Take it into account from here on: answer it, or adjust what you are doing.]
   continue_truncated: |-
     Your previous response stopped at the token limit. Continue from where it ended
     without repeating it, and complete the user-facing answer.
@@ -151,6 +159,7 @@ knowledge_base_seed:
     irrelevant; if they are not enough, retrieve more with rag.
 
 notices:
+  context_length_exceeded: "The conversation filled the model's context window, so the answer was cut off. Start a new chat or shorten the history and try again."
   conversation_summary_header: "[Conversation summary]"
   tool_result_snipped: "[earlier tool result snipped to stay within context window; call the same tool again if the content is still needed]"
   ask_user_resolved_directive: "[ask_user resolved. Continue the user's original request using these answers. Do not stop with an acknowledgement.]"
@@ -175,7 +184,9 @@ notices:
   reasoning_only_final_response: "The model produced internal reasoning but no usable answer. Please try again or narrow the request."
   empty_finish_nudged: "The round produced only internal reasoning; asked the model to continue."
   reasoning_progress: "The model is still reasoning; it has not produced an answer or tool action yet."
-  reasoning_budget_exhausted: "The model exhausted its output budget on internal reasoning twice without producing an answer or tool action. Please retry, lower reasoning effort, or split the task into smaller steps."
+  reasoning_budget_exhausted: "The model exhausted its output budget on internal reasoning without producing an answer or tool action. Please retry, lower reasoning effort, or split the task into smaller steps."
+  reasoning_budget_recovery: "Internal reasoning used the output budget; requesting one retry with the same {next_max_tokens}-token output limit."
+  reasoning_budget_increased: "Internal reasoning used the output budget; requesting one retry with up to {next_max_tokens} output tokens (previously {previous_max_tokens}). This may increase latency and cost."
 
 empty:
   empty_reply: "(empty reply)"

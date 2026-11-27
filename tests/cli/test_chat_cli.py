@@ -224,6 +224,33 @@ def test_session_list_command_uses_shared_store(monkeypatch) -> None:
     assert "Algebra" in result.output
 
 
+def test_session_show_json_prints_the_stored_session(monkeypatch) -> None:
+    session = {
+        "id": "session-1",
+        "title": "Fourier [draft]",
+        "messages": [
+            {"role": "user", "content": "Explain the Fourier transform"},
+            {
+                "role": "assistant",
+                "content": (
+                    "A signal can be written as a sum of sines and cosines; see "
+                    "[the lecture notes](https://example.org/ft) for the derivation. :tada:"
+                ),
+            },
+        ],
+    }
+
+    async def _get_session(self, session_id: str):  # noqa: ANN001
+        return session if session_id == "session-1" else None
+
+    monkeypatch.setattr("deeptutor.app.facade.DeepTutorApp.get_session", _get_session)
+
+    result = runner.invoke(app, ["session", "show", "session-1", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == session
+
+
 def test_start_command_delegates_to_runtime_launcher(monkeypatch) -> None:
     calls: list[object] = []
 
@@ -260,3 +287,16 @@ def test_stop_command_delegates_to_detached_launcher(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert calls == [None]
+
+
+def test_malformed_notebook_ref_in_repl_does_not_crash_the_session() -> None:
+    from deeptutor_cli.chat import ChatState, _apply_command
+
+    state = ChatState()
+    # A bad `/notebook add` ref must be reported in-loop (like every other
+    # command), not raise and tear down the whole interactive session.
+    assert _apply_command("/notebook add :", state) is True
+    assert state.notebook_references == []
+
+    assert _apply_command("/notebook add nb1:rec1", state) is True
+    assert state.notebook_references == [{"notebook_id": "nb1", "record_ids": ["rec1"]}]

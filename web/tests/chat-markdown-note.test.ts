@@ -246,3 +246,41 @@ function createStorage(
     },
   };
 }
+
+for (const operation of ["load", "save"] as const) {
+  test(`markdown-note ${operation} tolerates browser storage denied for an opaque origin`, () => {
+    const { JSDOM } = require("jsdom");
+    const dom = new JSDOM();
+    const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
+    try {
+      assert.throws(() => dom.window.localStorage, { name: "SecurityError" });
+      if (operation === "load") {
+        assert.deepEqual(loadChatMarkdownNoteDraft("local", "session-1"), {
+          title: "", content: "", saved: null,
+        });
+      } else {
+        assert.doesNotThrow(() => saveChatMarkdownNoteDraft(
+          "local", "session-1", { title: "Note", content: "# Keep editing", saved: null },
+        ));
+      }
+    } finally {
+      if (original) Object.defineProperty(globalThis, "window", original);
+      else Reflect.deleteProperty(globalThis, "window");
+      dom.window.close();
+    }
+  });
+}
+
+test("markdown-note loading tolerates a denied read without deleting the draft", () => {
+  let writes = 0;
+  const denied = {
+    getItem() { throw new DOMException("Storage access denied", "SecurityError"); },
+    setItem() { writes++; },
+    removeItem() { writes++; },
+  };
+  assert.deepEqual(loadChatMarkdownNoteDraft("local", "session-1", denied), {
+    title: "", content: "", saved: null,
+  });
+  assert.equal(writes, 0);
+});

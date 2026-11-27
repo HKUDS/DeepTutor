@@ -226,6 +226,18 @@
         "profile_id": {
           "title": "Profile Id",
           "type": "string"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
         }
       },
       "required": [
@@ -239,6 +251,23 @@
       "additionalProperties": false,
       "description": "An answer submitted from a mastery question card.\n\nThe card outlives the turn that posed it — posing a question ends that\nturn — so the answer arrives as the next turn's message. This says which\nquestion the message is answering, letting the runtime commit it to the\nengine before the tutor's first token instead of asking the model to\nrecover the pairing from prose.",
       "properties": {
+        "answers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "maxProperties": 4,
+              "minProperties": 1,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answers"
+        },
         "question_id": {
           "minLength": 1,
           "title": "Question Id",
@@ -271,6 +300,30 @@
         "question_id"
       ],
       "title": "MasteryCardSkip",
+      "type": "object"
+    },
+    "NoteGeneration": {
+      "additionalProperties": false,
+      "description": "The learning block on the open note page this turn fills in.\n\nSent by the note companion when a block's own \"Generate\" runs. The server\nowns the instructions that follow from it, so the learner's message stays\nexactly what they see in the conversation.",
+      "properties": {
+        "block_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Block Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "",
+          "maxLength": 32,
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id"
+      ],
+      "title": "NoteGeneration",
       "type": "object"
     },
     "NotebookReference": {
@@ -509,6 +562,19 @@
           ],
           "default": null,
           "title": "Selection"
+        },
+        "time_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Seconds"
         }
       },
       "title": "ReadingViewport",
@@ -813,6 +879,19 @@
     "StartTurnCommand": {
       "additionalProperties": false,
       "properties": {
+        "answer_by": {
+          "anyOf": [
+            {
+              "pattern": "^(partner|subagent):\\S.*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer By"
+        },
         "attachments": {
           "items": {
             "$ref": "#/$defs/OutgoingAttachment"
@@ -891,9 +970,10 @@
           "title": "Content",
           "type": "string"
         },
-        "course_id": {
+        "create_target": {
           "anyOf": [
             {
+              "pattern": "^$|^[a-z][a-z0-9_]{0,31}$",
               "type": "string"
             },
             {
@@ -901,7 +981,7 @@
             }
           ],
           "default": null,
-          "title": "Course Id"
+          "title": "Create Target"
         },
         "followup_question_context": {
           "anyOf": [
@@ -1024,6 +1104,30 @@
           },
           "title": "Memory References",
           "type": "array"
+        },
+        "note_document_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note Document Id"
+        },
+        "note_generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoteGeneration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "notebook_references": {
           "items": {
@@ -1744,6 +1848,7 @@
     },
     "UserInputCommand": {
       "additionalProperties": false,
+      "description": "A message for a turn that is still running, read at its next step.",
       "properties": {
         "command_id": {
           "minLength": 1,
@@ -1769,6 +1874,18 @@
           "default": "user_input",
           "title": "Type",
           "type": "string"
+        },
+        "withdraw": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Withdraw"
         }
       },
       "required": [

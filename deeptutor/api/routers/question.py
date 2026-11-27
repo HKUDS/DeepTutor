@@ -320,8 +320,10 @@ async def websocket_mimic_generate(websocket: WebSocket):
         error_msg = format_exception_message(e)
         try:
             await websocket.send_json({"type": "error", "content": error_msg})
+        except (RuntimeError, WebSocketDisconnect):
+            logger.debug("WebSocket closed, cannot send error event")
         except Exception:
-            pass
+            logger.warning("Failed to send error event to client", exc_info=True)
     finally:
         # Ensure stdout is always restored
         sys.stdout = original_stdout

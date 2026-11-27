@@ -22,16 +22,20 @@ export type SubmitUserReply = (
  * Both question cards implement that same three-state dance, so it lives here
  * rather than twice.
  */
-export function useCardSubmission(onSubmit: SubmitUserReply) {
+export function useCardSubmission(onSubmit: SubmitUserReply, rejectionKey?: string, acknowledgementKey?: string) {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
+  const [submittedAfterRejection, setSubmittedAfterRejection] = useState<string>();
+  const [submittedAfterAcknowledgement, setSubmittedAfterAcknowledgement] = useState<string>();
 
   const submit = useCallback(
     async (payload: UserReplyPayload) => {
       setSending(true);
       setFailed(false);
       setFailureMessage(null);
+      setSubmittedAfterRejection(rejectionKey);
+      setSubmittedAfterAcknowledgement(acknowledgementKey);
       let accepted: void | boolean;
       try {
         accepted = await onSubmit(payload);
@@ -47,8 +51,13 @@ export function useCardSubmission(onSubmit: SubmitUserReply) {
         setFailed(true);
       }
     },
-    [onSubmit],
+    [onSubmit, rejectionKey, acknowledgementKey],
   );
 
-  return { sending, failed, failureMessage, submit };
+  // A delivered turn may still reject its answer contract on the server.
+  // Compare durable event identities, not copy: identical retries must each
+  // reopen the existing editors, without clearing the learner's answers.
+  const rejected = Boolean(rejectionKey && rejectionKey !== submittedAfterRejection);
+  const acknowledged = acknowledgementKey !== submittedAfterAcknowledgement;
+  return { sending: sending && !rejected && !acknowledged, failed: (failed && !acknowledged) || rejected, failureMessage, submit };
 }

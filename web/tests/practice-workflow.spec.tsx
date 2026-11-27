@@ -190,5 +190,5 @@ it("keeps a successful preview available when import saving fails", async () => 
   expect(onImported).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm import" }));
   await waitFor(() => expect(onImported).toHaveBeenCalledOnce());
-  expect(api.previewPracticeImport).toHaveBeenCalledWith(expect.any(File), "mistakes", "");
+  expect(api.previewPracticeImport).toHaveBeenCalledWith(expect.any(File), "mistakes");
 });

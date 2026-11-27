@@ -312,6 +312,7 @@ def materialize_modules(
     strict: bool = False,
     existing_module_ids: set[str] | None = None,
     existing_objective_ids: set[str] | None = None,
+    existing_objective_counts: dict[str, int] | None = None,
     discarded_modules: list[dict[str, Any]] | None = None,
     module_limit: int = DEFAULT_MODULE_LIMIT,
 ) -> list[LearningModule]:
@@ -330,6 +331,9 @@ def materialize_modules(
     Position is presentation state, not identity. Existing ids are accepted
     only when the caller proves they belong to this topic; every new entity gets
     a collision-proof id so a deleted objective's evidence can never be reused.
+
+    An existing region may retain its stored waypoint count when that exceeds
+    the generation limit. This edit budget does not apply to new regions.
     """
     cap = max(1, min(int(module_limit or DEFAULT_MODULE_LIMIT), MAX_MODULE_LIMIT))
     if strict and len(raw_modules) > cap:
@@ -384,12 +388,15 @@ def materialize_modules(
             raise TopicGenerationError(
                 f"Route region {module_index + 1} needs at least one waypoint"
             )
-        if strict and len(raw_kps) > _MAX_OBJECTIVES_PER_MODULE:
+        objective_limit = _MAX_OBJECTIVES_PER_MODULE
+        if module_id in allowed_modules and existing_objective_counts is not None:
+            objective_limit = max(objective_limit, existing_objective_counts.get(module_id, 0))
+        if strict and len(raw_kps) > objective_limit:
             raise TopicGenerationError(
                 f"Route region {module_index + 1} may have at most "
-                f"{_MAX_OBJECTIVES_PER_MODULE} waypoints; it has {len(raw_kps)}"
+                f"{objective_limit} waypoints; it has {len(raw_kps)}"
             )
-        for kp_index, raw_kp in enumerate(raw_kps[:_MAX_OBJECTIVES_PER_MODULE]):
+        for kp_index, raw_kp in enumerate(raw_kps[:objective_limit]):
             if not isinstance(raw_kp, dict):
                 if strict:
                     raise TopicGenerationError(

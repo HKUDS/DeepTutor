@@ -33,12 +33,13 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Protocol, runtime_checkable
 from urllib.parse import quote
 
-from deeptutor.partners.helpers import safe_filename
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.path_service import get_path_service
+from deeptutor.utils.filenames import safe_filename
 
 logger = logging.getLogger(__name__)
 
@@ -176,17 +177,17 @@ class LocalDiskAttachmentStore:
     @staticmethod
     def _write_sync(target: Path, data: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic-ish write: write to .tmp then rename. Avoids exposing a
-        # half-written file via the static handler.
-        tmp = target.with_suffix(target.suffix + ".tmp")
+        # Concurrent uploads must not replace or clean up each other's staging file.
+        tmp: Path | None = None
         try:
-            with tmp.open("wb") as fh:
+            with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as fh:
+                tmp = Path(fh.name)
                 fh.write(data)
             os.replace(tmp, target)
         finally:
-            if tmp.exists():
+            if tmp is not None:
                 try:
-                    tmp.unlink()
+                    tmp.unlink(missing_ok=True)
                 except OSError:
                     pass
 

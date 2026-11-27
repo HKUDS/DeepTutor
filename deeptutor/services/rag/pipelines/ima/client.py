@@ -103,6 +103,7 @@ class ImaClient:
         folders = []
         cursor = ""
         is_end = False
+        unverified = 0
         for _ in range(_MAX_SEARCH_PAGES):
             page = parse_knowledge_page(
                 await self._wire.post(
@@ -116,6 +117,7 @@ class ImaClient:
             )
             documents.extend(page.documents)
             folders.extend(page.folders)
+            unverified += page.unverified_documents
             cursor = page.next_cursor
             is_end = page.is_end
             if len(documents) >= limit or page.is_end or not cursor:
@@ -125,6 +127,7 @@ class ImaClient:
             folders=tuple(folders),
             next_cursor=cursor,
             is_end=is_end,
+            unverified_documents=unverified,
         )
 
     async def get_knowledge_list(

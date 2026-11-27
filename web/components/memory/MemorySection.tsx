@@ -450,7 +450,6 @@ export default function MemorySection({
     <div className="space-y-6">
       {!hideHeader && (
         <SpaceSectionHeader
-          icon={Brain}
           title={t("Memory")}
           description={t(
             "L1 mirrors your workspace, L2 summarises per-surface content, L3 is cross-surface knowledge.",

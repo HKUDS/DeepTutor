@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ReviewTrail } from '@/components/space/learning/ReviewTrail'
-import type { TopicReview } from '@/lib/learning-api'
+import type { ReviewStrategy, TopicReview } from '@/lib/learning-api'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -31,6 +31,24 @@ function makeReviews(count: number): TopicReview[] {
   }))
 }
 
+const strategies: ReviewStrategy[] = [
+  {
+    template_id: 'preset-exam-cramming',
+    name: 'Exam Cramming',
+    description: '',
+    builtin: true,
+    desired_retention: 0.95,
+    intervals: {
+      memory: [0, 1, 1, 2, 3, 4, 7],
+      concept: [1, 2, 3, 5, 7],
+      procedure: [1, 2, 3, 5],
+      design: [3, 7, 14],
+    },
+    created_at: 1,
+    updated_at: 1,
+  },
+]
+
 function renderTrail(reviews: TopicReview[]) {
   return render(
     <ReviewTrail
@@ -39,6 +57,16 @@ function renderTrail(reviews: TopicReview[]) {
       retentionBusy={false}
       retentionError={null}
       onRetentionChange={vi.fn()}
+      strategies={strategies}
+      selectedStrategyId=""
+      strategyLoading={false}
+      strategyError={null}
+      strategyBusy={false}
+      onStrategyChange={vi.fn()}
+      onRetryStrategies={vi.fn()}
+      onStrategySave={vi.fn()}
+      onStrategyDuplicate={vi.fn()}
+      onStrategyDelete={vi.fn()}
       zh={false}
       onSelect={vi.fn()}
       onStartReview={vi.fn()}
@@ -72,7 +100,7 @@ describe('ReviewTrail with a long review trail (#1566)', () => {
 
     const section = sectionElement()
     expect(section).not.toBeNull()
-    expect(section?.className).toContain('lg:max-h-[min(30vh,260px)]')
+    expect(section?.className).toContain('lg:max-h-[min(34vh,300px)]')
     expect(section?.className).toContain('lg:shrink-0')
     expect(section?.className).toContain('min-h-0')
     expect(section?.className).toContain('flex-col')
@@ -114,7 +142,7 @@ describe('ReviewTrail with a long review trail (#1566)', () => {
       expect(scroller).toContainElement(row)
     }
     // Expanding must not lift the cap that protects the outline column.
-    expect(section.className).toContain('lg:max-h-[min(30vh,260px)]')
+    expect(section.className).toContain('lg:max-h-[min(34vh,300px)]')
     expect(scroller.className).toContain('overflow-y-auto')
   })
 })

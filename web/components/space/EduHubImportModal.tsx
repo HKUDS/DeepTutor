@@ -59,9 +59,9 @@ export default function EduHubImportModal({
   /** Names of skills already installed locally — shown as "已导入". */
   installedNames?: Set<string>;
 }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
-  const tr = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
+  const tr = useCallback((cn: string, en: string) => (zh ? cn : t(en)), [zh, t]);
 
   const [skills, setSkills] = useState<HubSkillListing[] | null>(null);
   const [webUrl, setWebUrl] = useState<string>(EDUHUB_FALLBACK);
@@ -451,6 +451,7 @@ function DetailView({
   onBack: () => void;
   onInstall: (slug: string, opts?: { force?: boolean }) => void;
 }) {
+  const { t } = useTranslation();
   const version = detail?.version || skill.version;
   return (
     <>
@@ -495,7 +496,7 @@ function DetailView({
         <div className="mb-4 flex flex-wrap items-center gap-3 text-[11.5px] text-[var(--muted-foreground)]">
           <span className="inline-flex items-center gap-1">
             <Download size={12} />
-            {skill.downloads} {tr("次下载", "downloads")}
+            {t("{{count}} downloads", { count: skill.downloads })}
           </span>
           <span className="inline-flex items-center gap-1">
             <Star size={12} />
@@ -519,8 +520,7 @@ function DetailView({
 
         {installState?.kind === "error" ? (
           <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-400">
-            {tr("导入失败：", "Import failed: ")}
-            {installState.message}
+            {t("Import failed: {{message}}", { message: installState.message })}
           </div>
         ) : null}
 

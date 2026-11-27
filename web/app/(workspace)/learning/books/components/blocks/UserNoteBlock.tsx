@@ -108,14 +108,14 @@ export default function UserNoteBlock({
               }}
               rows={4}
               placeholder={t("Markdown supported. ⌘/Ctrl + Enter to save.")}
-              className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--primary)]/50"
+              className="w-full resize-y dt-soft-input rounded-lg bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60"
             />
             <div className="flex items-center justify-end gap-1.5">
               <button
                 type="button"
                 onClick={cancel}
                 disabled={saving}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-2 py-0.5 transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)] text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
               >
                 <X className="h-3 w-3" />
                 {t("Cancel")}

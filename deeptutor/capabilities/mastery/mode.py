@@ -77,6 +77,7 @@ TOOL_MODES: dict[str, frozenset[str]] = {
     "mastery_skip_question": frozenset({STUDY, REVIEW}),
     "mastery_repair_question": frozenset({STUDY, REVIEW}),
     "mastery_defer_objective": frozenset({STUDY, REVIEW}),
+    "mastery_note_explained": frozenset({STUDY, REVIEW}),
 }
 
 

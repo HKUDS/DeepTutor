@@ -400,12 +400,12 @@ class MarginNoteStore:
         query = (query or "").strip()
         if not query:
             return []
-        needle = f"%{query.lower()}%"
+        needle = f"%{_escape_like(query.lower())}%"
         sql = (
             "SELECT * FROM mn4_objects "
-            "WHERE (LOWER(title) LIKE ? OR LOWER(content) LIKE ? "
-            "OR LOWER(COALESCE(excerpt, '')) LIKE ? "
-            "OR LOWER(COALESCE(document_title, '')) LIKE ?)"
+            "WHERE (LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\' "
+            "OR LOWER(COALESCE(excerpt, '')) LIKE ? ESCAPE '\\' "
+            "OR LOWER(COALESCE(document_title, '')) LIKE ? ESCAPE '\\')"
         )
         params: list[Any] = [needle, needle, needle, needle]
         if object_type:
@@ -476,8 +476,8 @@ class MarginNoteStore:
         linked_ids = set(obj.links)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT object_id FROM mn4_objects WHERE links LIKE ?",
-                (f'%"{object_id}"%',),
+                "SELECT object_id FROM mn4_objects WHERE links LIKE ? ESCAPE '\\'",
+                (f'%"{_escape_like(object_id)}"%',),
             ).fetchall()
         for r in rows:
             linked_ids.add(r["object_id"])
@@ -543,6 +543,11 @@ def _to_summary(obj: MarginNoteObject, query: str) -> dict[str, Any]:
         "snippet": _snippet(body, query),
         "updated_at": obj.updated_at,
     }
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so a search term matches itself literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _snippet(body: str, query: str, width: int = 160) -> str:

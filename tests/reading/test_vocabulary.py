@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-import tomllib
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading_extensions
+from deeptutor.modules.catalog import manifests
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import ReadingContext, ReadingExtensionRegistry
 from deeptutor.reading.vocabulary import VocabularyExtension
@@ -203,9 +202,43 @@ async def test_invalid_or_ungrounded_model_output_is_rejected(monkeypatch, respo
         await VocabularyExtension().run_action("explain", _context())
 
 
+def _term_entry(term: str) -> dict:
+    return {
+        "term": term,
+        "meaning": "The passage presents this phrase as a key concept.",
+        "usage": "The selection names it while describing the mechanism.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_drops_sibling_terms_that_miss_the_selection(monkeypatch):
+    async def complete(**_kwargs):
+        return json.dumps({"terms": [_term_entry("redstone dust"), _term_entry("hopper")]})
+
+    monkeypatch.setattr("deeptutor.reading.vocabulary.complete", complete)
+    result = await VocabularyExtension().run_action("explain", _context("redstone dust"))
+
+    assert result.type == "card"
+    assert [term["term"] for term in result.payload["terms"]] == ["redstone dust"]
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_lists_rejected_terms_when_nothing_is_grounded(monkeypatch):
+    async def complete(**_kwargs):
+        return json.dumps({"terms": [_term_entry("hopper"), _term_entry("Minecraft")]})
+
+    monkeypatch.setattr("deeptutor.reading.vocabulary.complete", complete)
+    with pytest.raises(ValueError) as excinfo:
+        await VocabularyExtension().run_action("explain", _context("redstone dust"))
+
+    message = str(excinfo.value)
+    assert "must come from the selection" in message
+    assert "hopper" in message
+    assert "Minecraft" in message
+
+
 def test_vocabulary_is_registered_as_a_packaged_extension():
-    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    group = project["project"]["entry-points"]["deeptutor.reading_extensions"]
+    group = manifests()["reading"]["entry_points"]["deeptutor.reading_extensions"]
 
     assert group["vocabulary"] == "deeptutor.reading.vocabulary:VocabularyExtension"
 

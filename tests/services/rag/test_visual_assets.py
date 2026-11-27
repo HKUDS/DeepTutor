@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -49,6 +50,115 @@ def _fixture(tmp_path: Path, *, suffix: str = ".pdf", engine: str = "mineru"):
         engine=engine,
     )
     return kb_dir, source, image, parsed
+
+
+def test_source_visual_matching_resolves_paths_linearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Figure-heavy documents must not resolve every block path for every image."""
+    from dataclasses import replace
+
+    import deeptutor.services.rag.source_visuals  # load before counting filesystem operations
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    images = [image] + [image.parent / f"figure-{index:03}.png" for index in range(1, 24)]
+    pixels = image.read_bytes()
+    for path in images[1:]:
+        path.write_bytes(pixels)
+    blocks = [{"type": "text", "text": f"Paragraph {index}"} for index in range(64)]
+    blocks.extend(
+        {
+            "type": "image",
+            "img_path": str(path),
+            "page_idx": index,
+            "image_caption": [f"Figure {index + 1}"],
+        }
+        for index, path in enumerate(images)
+    )
+    parsed = replace(parsed, blocks=blocks)
+    resolve = Path.resolve
+    resolve_calls = 0
+
+    def counted_resolve(path: Path, strict: bool = False) -> Path:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", counted_resolve)
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+    assert len(candidates) == len(images)
+    records = {candidate.path.name: candidate.record for candidate in candidates}
+    for index, path in enumerate(images):
+        assert records[path.name]["caption"] == f"Figure {index + 1}"
+        assert records[path.name]["page_index"] == index
+        assert records[path.name]["source_locator"] == f"blocks.json#/{64 + index}"
+    # Allow fixed/per-image validation work, but reject image-count * block-count scans.
+    assert resolve_calls <= 8 * len(images) + 2 * len(blocks) + 16
+
+
+def test_source_visual_path_index_preserves_first_reference_and_context(tmp_path: Path):
+    """Aliases and repeated references retain the first block's original provenance."""
+    from dataclasses import replace
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    alias = image.parent / ".." / image.parent.name / image.name
+    blocks = [
+        None,
+        {"type": "text", "text": "Before the table"},
+        {
+            "type": "table",
+            "path": str(alias),
+            "page_idx": 4,
+            "bbox": [10, 20, 100, 200],
+            "table_caption": ["Table 3"],
+            "table_body": "<table><tr><td>value</td></tr></table>",
+            "table_footnote": ["Measured values"],
+            "section_title": "Results",
+            "group_id": "table-group",
+        },
+        {"type": "text", "text": "After the table"},
+    ]
+    first = collect_visual_assets(replace(parsed, blocks=blocks), source, kb_dir)[0].record
+    duplicate = {
+        "type": "image",
+        "img_path": str(image),
+        "page_idx": 99,
+        "image_caption": ["Later duplicate"],
+    }
+    actual = collect_visual_assets(replace(parsed, blocks=blocks + [duplicate]), source, kb_dir)[
+        0
+    ].record
+    assert actual == first
+    assert actual["caption"] == "Table 3"
+    assert actual["context"] == "Before the table After the table"
+    assert actual["source_locator"] == "blocks.json#/2"
+    assert actual["page_index"] == 4
+    assert actual["page_number"] == 5
+    assert actual["bbox"] == [10, 20, 100, 200]
+    assert actual["kind"] == "table"
+    assert actual["section"] == "Results"
+    assert actual["group_id"] == "table-group"
+    assert actual["table_html"] == blocks[2]["table_body"]
+    assert actual["notes"] == "Measured values"
+
+
+def test_discarded_images_do_not_resolve_block_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Invalid image bytes are rejected before inspecting their block references."""
+    from dataclasses import replace
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    image.write_bytes(b"not an image")
+    parsed = replace(parsed, blocks=[{"img_path": "unused-image.png"}])
+    resolve = Path.resolve
+
+    def guarded_resolve(path: Path, strict: bool = False) -> Path:
+        assert path.name != "unused-image.png"
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", guarded_resolve)
+    assert collect_visual_assets(parsed, source, kb_dir) == []
 
 
 @pytest.mark.parametrize(
@@ -104,24 +214,64 @@ def test_verified_source_visual_contract_and_lifecycle(tmp_path: Path, suffix: s
     assert not persisted.exists()
 
 
-def test_manifest_limit_does_not_replace_existing_assets(tmp_path: Path, monkeypatch):
+def test_large_existing_manifest_remains_readable_and_accepts_more_figures(tmp_path: Path):
+    """#1802: a corpus beyond the old 16 MiB limit must retain every reference."""
     import deeptutor.services.rag.visual_assets as assets_module
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
     original = collect_visual_assets(parsed, source, kb_dir)[0]
     store = VisualAssetStore(kb_dir)
     store.publish([original])
-    manifest_before = store.manifest_path.read_bytes()
-    monkeypatch.setattr(assets_module, "MAX_MANIFEST_BYTES", len(manifest_before) + 10)
+    # Model a legacy manifest from a figure-heavy KB without 15,000 image copies.
+    records = {
+        f"{index:064x}": {**original.record, "asset_id": f"{index:064x}", "context": "x" * 1000}
+        for index in range(11000)
+    }
+    records[original.record["asset_id"]] = original.record
+    store.manifest_path.write_text(json.dumps({"version": 1, "assets": records}), encoding="utf-8")
+    assert store.manifest_path.stat().st_size > 16 * 1024 * 1024
+    assert store.read(original.record["asset_id"]) is not None
     second = assets_module.VisualAssetCandidate(
         path=image,
         record={**original.record, "asset_id": "a" * 64},
     )
-    with pytest.raises(OSError, match="manifest exceeds"):
-        store.publish([second])
-    assert store.manifest_path.read_bytes() == manifest_before
+    store.publish([second])
+    assert len(store.records()) == len(records) + 1
     assert store.read(original.record["asset_id"]) is not None
-    assert store.read(second.record["asset_id"]) is None
+    assert store.read(second.record["asset_id"]) is not None
+
+
+@pytest.mark.parametrize("operation", ["publish", "remove_source", "move_source"])
+def test_unreadable_manifest_is_reported_and_never_overwritten(tmp_path: Path, caplog, operation):
+    kb_dir, source, _image, parsed = _fixture(tmp_path)
+    candidate = collect_visual_assets(parsed, source, kb_dir)[0]
+    store = VisualAssetStore(kb_dir)
+    store.publish([candidate])
+    store.manifest_path.write_bytes(b"{broken manifest")
+    before = store.manifest_path.read_bytes()
+    assert store.read(candidate.record["asset_id"]) is None
+    assert "Cannot read source figures for KB 'kb'" in caplog.text
+    with pytest.raises(OSError, match="Cannot read visual asset manifest"):
+        if operation == "publish":
+            store.publish([candidate])
+        elif operation == "remove_source":
+            store.remove_source(source.name)
+        else:
+            store.move_source(source.name, "moved.pdf")
+    assert store.manifest_path.read_bytes() == before
+
+
+def test_changed_image_does_not_replace_existing_manifest(tmp_path: Path):
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    candidate = collect_visual_assets(parsed, source, kb_dir)[0]
+    store = VisualAssetStore(kb_dir)
+    store.publish([candidate])
+    before = store.manifest_path.read_bytes()
+    image.write_bytes(b"not an image anymore")
+    with pytest.raises(OSError, match="Source image changed"):
+        store.publish([candidate])
+    assert store.manifest_path.read_bytes() == before
+    assert store.read(candidate.record["asset_id"]) is not None
 
 
 def test_size_count_and_rebuild_cleanup(tmp_path: Path, monkeypatch):
@@ -168,6 +318,13 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     from deeptutor.tools.builtin import RAGTool
 
     kb_dir, source, image, parsed = _fixture(tmp_path)
+    # Page-grounded indexing now opens the physical PDF as well as parser output.
+    import pymupdf
+
+    with pymupdf.open() as pdf:
+        for _ in range(100):
+            pdf.new_page()
+        pdf.save(source)
     image.unlink()
     parsed = replace(
         parsed,
@@ -214,11 +371,12 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     assert len(visuals) == 100
     VisualAssetStore(kb_dir).publish(candidates)
     index = VectorStoreIndex.from_documents(documents, embed_model=FigureEmbedding())
-    retriever = index.as_retriever(similarity_top_k=1)
+    # The page text and its figure caption share the deterministic embedding.
+    retriever = index.as_retriever(similarity_top_k=2)
     for number in (1, 50, 100):
         nodes = retriever.retrieve(f"Figure {number}")
         retrieved = LlamaIndexPipeline._nodes_to_result(None, f"Figure {number}", nodes)
-        record = retrieved["sources"][0]
+        record = next(item for item in retrieved["sources"] if item.get("visual_asset_id"))
         assert record["page"] == number
         assert record["visual_asset_id"] == candidates[number - 1].record["asset_id"]
 
@@ -243,7 +401,9 @@ def test_hundred_figure_textbook_keeps_late_figures_searchable_and_delivers_pixe
     parts = result.model_message["content"]
     assert sum(part["type"] == "image_url" for part in parts) == 1
     assert base64.b64decode(parts[1]["image_url"]["url"].split(",", 1)[1]) == expected_pixels
-    assert late.record["asset_id"] in result.sources[0]["visual_asset_url"]
+    assert any(
+        late.record["asset_id"] in item.get("visual_asset_url", "") for item in result.sources
+    )
 
 
 @pytest.mark.parametrize("suffix", [".pdf", ".epub"])
@@ -610,7 +770,7 @@ def test_visual_message_reaches_next_model_request_without_stream_leak(tmp_path:
 
 
 def test_visual_messages_follow_complete_tool_reply_batch():
-    from deeptutor.runtime.agentic.loop import _with_transient_model_messages
+    from deeptutor.runtime.agentic.messages import with_transient_model_messages
 
     messages = [
         {"role": "assistant", "tool_calls": [{"id": "rag"}, {"id": "other"}]},
@@ -624,7 +784,7 @@ def test_visual_messages_follow_complete_tool_reply_batch():
             "_after_tool_call_id": "rag",
         }
     ]
-    request = _with_transient_model_messages(messages, transient)
+    request = with_transient_model_messages(messages, transient)
     assert [item["role"] for item in request] == ["assistant", "tool", "tool", "user"]
     assert request[-1]["content"] == transient[0]["content"]
     assert messages[-1]["role"] == "tool"  # canonical history was not changed

@@ -5,6 +5,42 @@ from __future__ import annotations
 from typing import Any
 
 
+def image_content_hashes(messages: list[dict]) -> list[str]:
+    """Hashes of bounded image bytes on the accepted provider wire (#1611)."""
+    from base64 import b64decode
+    from hashlib import sha256
+
+    hashes = set()
+    for message in messages:
+        content = message.get("content")
+        for part in content if isinstance(content, list) else []:
+            if not isinstance(part, dict):
+                continue
+            value = part.get("image_url")
+            url = value.get("url") if isinstance(value, dict) else value
+            source = part.get("source")
+            if (
+                part.get("type") == "image"
+                and isinstance(source, dict)
+                and source.get("type") == "base64"
+            ):
+                url = f"data:{source.get('media_type', '')};base64,{source.get('data', '')}"
+            if (
+                not isinstance(url, str)
+                or not url.startswith("data:image/")
+                or ";base64," not in url
+            ):
+                continue
+            encoded = url.split(";base64,", 1)[1]
+            if len(encoded) > 7 * 1024 * 1024:
+                continue
+            try:
+                hashes.add(sha256(b64decode(encoded, validate=True)).hexdigest())
+            except ValueError:
+                continue
+    return sorted(hashes)
+
+
 def assistant_message_with_tool_calls(
     content: str,
     tool_calls: list[dict[str, Any]],
@@ -76,4 +112,51 @@ def assistant_message(
     return message
 
 
-__all__ = ["assistant_message", "assistant_message_with_tool_calls"]
+def with_transient_model_messages(
+    messages: list[dict[str, Any]], transient: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Place model-only images after their tool result without mutating history."""
+    if not transient:
+        return messages
+    anchored: dict[str, list[dict[str, Any]]] = {}
+    for item in transient:
+        tool_call_id = item.get("_after_tool_call_id")
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            continue
+        anchored.setdefault(tool_call_id, []).append({"role": "user", "content": item["content"]})
+    request_messages: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        request_messages.append(message)
+        if message.get("role") == "tool":
+            pending.extend(anchored.pop(str(message.get("tool_call_id") or ""), []))
+            # Providers require all replies to one assistant tool-call batch
+            # before another user message. Inject images after the batch.
+            if index + 1 == len(messages) or messages[index + 1].get("role") != "tool":
+                request_messages.extend(pending)
+                pending.clear()
+    return request_messages
+
+
+def _transient_image_count(message: dict[str, Any]) -> int:
+    content = message.get("content")
+    if not isinstance(content, list):
+        return 0
+    return sum(1 for part in content if isinstance(part, dict) and part.get("type") == "image_url")
+
+
+def extend_transient_model_messages(
+    transient: list[dict[str, Any]], incoming: list[dict[str, Any]], *, max_images: int = 2
+) -> None:
+    """Keep the latest bounded source evidence across tool rounds."""
+    transient.extend(incoming)
+    while sum(_transient_image_count(item) for item in transient) > max_images:
+        transient.pop(0)
+
+
+__all__ = [
+    "assistant_message",
+    "assistant_message_with_tool_calls",
+    "extend_transient_model_messages",
+    "with_transient_model_messages",
+]

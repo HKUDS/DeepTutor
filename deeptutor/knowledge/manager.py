@@ -48,13 +48,13 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
     provider_uses_embedding_versions,
 )
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.index_probe import (
     inspect_kb_versions,
     inspect_provider_version,
     provider_failure_summary,
 )
 from deeptutor.services.web_source.crawler import MAX_CRAWL_DEPTH, MAX_CRAWL_PAGES
+from deeptutor.utils.file_types import FileTypeRouter
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +129,11 @@ def _detect_provider_from_versions(versions: list[dict[str, Any]]) -> str:
 def file_lock_shared(file_handle):
     """Acquire a shared (read) lock on a file - cross-platform."""
     if sys.platform == "win32":
-        import msvcrt
-
-        msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
-        try:
-            yield
-        finally:
-            file_handle.seek(0)
-            msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+        # msvcrt has no shared lock: LK_NBLCK is exclusive and mandatory, so a
+        # second concurrent reader failed at once, read the catalog as empty,
+        # and the next status update saved that over kb_config.json. Writers
+        # replace the file atomically, so a reader needs no lock here.
+        yield
     else:
         import fcntl
 
@@ -612,10 +609,19 @@ class KnowledgeBaseManager:
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
-            except Exception:  # pragma: no cover - best-effort metadata
-                pass
+            except Exception as exc:  # best-effort metadata
+                logger.warning(
+                    f"Failed to refresh embedding/index metadata for KB '{name}' "
+                    f"on ready transition: {exc}"
+                )
 
-        self._save_config()
+        try:
+            self._save_config()
+        except Exception as exc:
+            logger.error(
+                f"Failed to persist KB status update for '{name}' (status='{status}'): {exc}"
+            )
+            raise
         self._sync_kb_to_pb(name, kb_config)
 
     def get_kb_entry(self, name: str) -> dict | None:
@@ -686,7 +692,15 @@ class KnowledgeBaseManager:
                 continue
             rel_path = (kb_entry or {}).get("path", kb_name)
             kb_dir = self.base_dir / rel_path
-            if base_exists and not kb_dir.exists():
+            try:
+                directory_missing = base_exists and not kb_dir.exists()
+            except OSError as exc:
+                # An unreadable directory is not evidence that the KB is gone.
+                # Keep the entry and let version probing degrade it instead.
+                logger.warning("Cannot inspect knowledge base '%s': %s", kb_name, exc)
+                kb_list.add(kb_name)
+                continue
+            if directory_missing:
                 if _entry_updated_after(kb_entry, grace_cutoff):
                     kb_list.add(kb_name)
                     continue
@@ -703,8 +717,18 @@ class KnowledgeBaseManager:
         # Also scan directory for KBs that may not be registered yet
         # This ensures backward compatibility and auto-discovery
         if base_exists:
-            for item in self.base_dir.iterdir():
-                if not item.is_dir() or item.name.startswith(("__", ".")):
+            try:
+                entries = list(self.base_dir.iterdir())
+            except OSError as exc:
+                logger.warning("Failed to scan knowledge bases in %s: %s", self.base_dir, exc)
+                entries = []
+            for item in entries:
+                try:
+                    is_directory = item.is_dir()
+                except OSError as exc:
+                    logger.warning("Cannot inspect knowledge base path '%s': %s", item, exc)
+                    continue
+                if not is_directory or item.name.startswith(("__", ".")):
                     continue
 
                 # Skip if already in config
@@ -715,11 +739,18 @@ class KnowledgeBaseManager:
                 rag_storage = item / "rag_storage"
                 from deeptutor.services.rag.index_versioning import list_kb_versions
 
-                versions = list_kb_versions(item)
-                detected_provider = _detect_provider_from_versions(versions)
-                is_valid_kb = has_ready_provider_index(item, detected_provider) or (
-                    rag_storage.exists() and rag_storage.is_dir()
-                )
+                try:
+                    versions = list_kb_versions(item)
+                    detected_provider = _detect_provider_from_versions(versions)
+                    is_valid_kb = has_ready_provider_index(item, detected_provider) or (
+                        rag_storage.exists() and rag_storage.is_dir()
+                    )
+                except OSError as exc:
+                    # One unreadable KB must not take the whole catalogue down;
+                    # skip it, leave it unregistered, and let the next listing
+                    # retry once the filesystem is readable again.
+                    logger.warning("Skipping unreadable knowledge base '%s': %s", item.name, exc)
+                    continue
 
                 if is_valid_kb:
                     # Auto-register this KB to kb_config.json
@@ -1807,9 +1838,6 @@ class KnowledgeBaseManager:
         # in an external resource the user manages. Leaving it behind would also
         # resurrect every paired device the moment a library of the same name is
         # connected again.
-        if entry.get("type") == MARGINNOTE4_KB_TYPE:
-            self._delete_marginnote4_store(name, entry)
-
         if not confirm:
             # Ask for confirmation in CLI
             print(f"⚠️  Warning: This will permanently delete the knowledge base '{name}'")
@@ -1818,6 +1846,9 @@ class KnowledgeBaseManager:
             if response.lower() != "yes":
                 print("Deletion cancelled.")
                 return False
+
+        if entry.get("type") == MARGINNOTE4_KB_TYPE:
+            self._delete_marginnote4_store(name, entry)
 
         if dir_exists:
 
@@ -2212,8 +2243,14 @@ class KnowledgeBaseManager:
                             if p.exists():
                                 mtime = datetime.fromtimestamp(p.stat().st_mtime)
                                 file_states[file_path] = mtime.isoformat()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Recording failed: leave the file un-recorded so the
+                        # next scan re-syncs it instead of trusting a missing
+                        # mtime, and make the degradation visible in logs.
+                        logger.warning(
+                            f"Failed to record sync state for '{file_path}' in folder "
+                            f"'{folder_id}' of KB '{kb_name}': {exc}"
+                        )
 
                 folder["synced_files"] = file_states
                 folder["file_count"] = len(file_states)

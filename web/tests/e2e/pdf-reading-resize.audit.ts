@@ -1,5 +1,8 @@
+import { sourceModuleInventory } from "./fixtures/modules";
+import { emptyLearningIndex } from "./fixtures/learning-index";
 import { expect, test, type Locator } from "@playwright/test";
 import { jsPDF } from "jspdf";
+import { emptyTaskBoard } from "./fixtures/task-board";
 
 const MATERIAL_ID = "dddddddddddddddd";
 const WORKSPACE_ID = "pdf-resize-workspace";
@@ -49,7 +52,9 @@ const material = {
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
     const json = (payload: unknown) => route.fulfill({ json: payload });
+    if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }
@@ -73,6 +78,7 @@ test.beforeEach(async ({ page }) => {
         ],
       });
     }
+    if (path === "/api/dashboard/learning-index") return json(emptyLearningIndex);
     if (path === "/api/partners" || path === "/api/partner-groups")
       return json([]);
     if (path === "/api/sessions") return json({ sessions: [] });

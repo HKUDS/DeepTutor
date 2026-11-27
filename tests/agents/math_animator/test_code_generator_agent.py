@@ -61,8 +61,10 @@ async def test_code_generation_retries_empty_or_reasoning_only_output(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("retries", [1, 4])
 async def test_code_generation_fails_clearly_after_structured_retries(
     monkeypatch: pytest.MonkeyPatch,
+    retries: int,
 ) -> None:
     async def fake_sleep(_delay: float) -> None:
         return None
@@ -71,20 +73,25 @@ async def test_code_generation_fails_clearly_after_structured_retries(
         "deeptutor.agents.math_animator.agents.code_generator_agent.asyncio.sleep",
         fake_sleep,
     )
-    agent = _agent(monkeypatch, ["", "{}"])
+    responses = ["{}"] * (retries + 1)
+    agent = _agent(monkeypatch, responses)
+    monkeypatch.setattr(agent, "get_max_retries", lambda: retries)
 
-    with pytest.raises(GeneratedCodeOutputError, match="after 2 attempts"):
+    with pytest.raises(GeneratedCodeOutputError, match=f"after {retries + 1} attempts"):
         await agent.generate(
             user_input="Animate a proof",
             output_mode="video",
             analysis=ConceptAnalysis(),
             design=SceneDesign(),
         )
+    assert responses == []
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("retries", [2, 8])
 async def test_truncated_generation_grows_the_budget_and_asks_for_less_reasoning(
     monkeypatch: pytest.MonkeyPatch,
+    retries: int,
 ) -> None:
     """A reasoning model that hits the cap must not be asked the same thing again.
 
@@ -101,7 +108,7 @@ async def test_truncated_generation_grows_the_budget_and_asks_for_less_reasoning
         fake_sleep,
     )
     agent = _agent(monkeypatch, [])
-    monkeypatch.setattr(agent, "get_max_retries", lambda: 2)
+    monkeypatch.setattr(agent, "get_max_retries", lambda: retries)
     monkeypatch.setattr(agent, "get_max_tokens", lambda: 8000)
     calls: list[dict[str, object]] = []
 
@@ -134,6 +141,7 @@ async def test_truncated_generation_grows_the_budget_and_asks_for_less_reasoning
     assert "token limit" not in str(calls[0]["user_prompt"])
     # The failure names the cause instead of "no usable code after 3 attempts".
     message = str(raised.value)
+    assert "after 3 attempts" in message  # #1914: report calls made, not the retry limit.
     assert "cut off at the 16000-token output cap" in message
     assert "chain-of-thought" in message
     assert "reasoning_tokens=7800" in message

@@ -254,3 +254,67 @@ async def test_a_custom_match_policy_flows_through_the_run() -> None:
 
     assert report.policy.min_tokens == 3
     assert report.evaluations[0].metrics.recall == 1.0
+
+
+@pytest.mark.asyncio
+async def test_explicit_rewrite_flag_reaches_search_but_the_default_does_not() -> None:
+    search = _Recorder(_sources(GOLD))
+
+    await evaluate_dataset(_dataset("q"), kb_name="kb", k=5, search_fn=search)
+    await evaluate_dataset(_dataset("q"), kb_name="kb", k=5, search_fn=search, rewrite=True)
+    await evaluate_dataset(_dataset("q"), kb_name="kb", k=5, search_fn=search, rewrite=False)
+
+    assert "rewrite" not in search.calls[0]
+    assert search.calls[1]["rewrite"] is True
+    assert search.calls[2]["rewrite"] is False
+
+
+@pytest.mark.asyncio
+async def test_query_rewrite_provenance_is_carried_into_the_report() -> None:
+    provenance = {
+        "strategy": "standalone",
+        "applied": True,
+        "rewritten": "alpha beta",
+        "latency_ms": 12.5,
+    }
+    search = _Recorder({**_sources(GOLD), "query_rewrite": provenance})
+
+    report = await evaluate_dataset(_dataset("q"), kb_name="kb", k=5, search_fn=search)
+
+    assert report.evaluations[0].query_rewrite == provenance
+    assert report.to_dict()["queries"][0]["query_rewrite"] == provenance
+
+
+@pytest.mark.asyncio
+async def test_non_mapping_provenance_is_dropped_rather_than_crashing() -> None:
+    search = _Recorder({**_sources(GOLD), "query_rewrite": "standalone"})
+
+    report = await evaluate_dataset(_dataset("q"), kb_name="kb", k=5, search_fn=search)
+
+    assert report.evaluations[0].query_rewrite is None
+
+
+def test_default_search_forwards_only_an_explicit_rewrite_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, Any]] = []
+
+    async def fake_search(**kwargs: Any) -> dict[str, Any]:
+        captured.append(kwargs)
+        return {}
+
+    module = types.ModuleType("deeptutor.tools.rag_tool")
+    module.rag_search = fake_search  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "deeptutor.tools.rag_tool", module)
+
+    asyncio.run(
+        runner_module._default_search(
+            "q", kb_name="kb", kb_base_dir=None, mode=None, top_k=2, rewrite=False
+        )
+    )
+    asyncio.run(
+        runner_module._default_search("q", kb_name="kb", kb_base_dir=None, mode=None, top_k=2)
+    )
+
+    assert captured[0]["rewrite"] is False
+    assert "rewrite" not in captured[1]

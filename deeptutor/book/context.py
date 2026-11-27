@@ -11,7 +11,7 @@ depend on FastAPI so it remains cheap to unit test and reuse.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import re
 from typing import Any, Iterable, Sequence
 
@@ -36,13 +36,7 @@ class NormalizedBookReference:
         return {"book_id": self.book_id, "page_ids": list(self.page_ids)}
 
 
-@dataclass
-class BookContextResult:
-    """Serialized book context plus non-fatal issues encountered while loading."""
-
-    text: str = ""
-    references: list[dict[str, Any]] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+from deeptutor.core.source_context import SourceContext as BookContextResult
 
 
 def normalize_book_references(value: Any) -> list[NormalizedBookReference]:

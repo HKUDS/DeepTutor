@@ -942,6 +942,7 @@ async def test_detect_all_excludes_partner_backend() -> None:
         "openclaw",
         "deepseek_harness",
         "hermes_remote",
+        "acp",
     }
 
 
@@ -959,6 +960,7 @@ class _FakePartnerManager:
     def __init__(
         self, *, exists: bool = True, running: bool = True, reply: str = "Hi from partner."
     ) -> None:
+        self._partners = {}
         self._exists = exists
         self._running = running
         self._reply = reply

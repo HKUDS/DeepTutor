@@ -1,5 +1,7 @@
 "use client";
 
+import { PageBarSlot } from "@/components/layout/PageChrome";
+import { PageContainer, PAGE_DESCRIPTION_CLASS } from '@/components/layout/FeaturePage'
 import { scopedUrl } from "@/lib/workspace-scope";
 import { MASTERY_HOME, masterySessionRoute as existingMasterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
 
@@ -38,6 +40,7 @@ import {
   type Translate,
 } from "@/components/space/learning/format";
 import { PathTitle } from "@/components/space/learning/PathTitle";
+import { MasteryPathCrumb } from "@/components/layout/instance-crumbs";
 import { ReviewTrail } from "@/components/space/learning/ReviewTrail";
 import { SessionCamp } from "@/components/space/learning/SessionCamp";
 import { useMasteryPathActivity } from "@/hooks/useMasteryPathActivity";
@@ -46,12 +49,19 @@ import {
   fetchMasteryTopic,
   fetchMasteryTopicSessions,
   fetchLearningBoard,
+  fetchMasteryReviewStrategies,
   redoProgress,
   renameProgress,
   setMasteryObjectiveOverride,
   updateMasteryReviewSettings,
+  bindMasteryReviewStrategy,
+  createMasteryReviewStrategy,
+  deleteMasteryReviewStrategy,
+  duplicateMasteryReviewStrategy,
+  updateMasteryReviewStrategy,
   type MasteryTopic,
   type BoardResult,
+  type ReviewStrategyInput,
   type TopicSession,
 } from "@/lib/learning-api";
 import { setPendingPrompt } from "@/lib/pending-prompt";
@@ -81,6 +91,13 @@ export default function MasteryTopicPage() {
   const [mutationBusy, setMutationBusy] = useState(false);
   const [retentionBusy, setRetentionBusy] = useState(false);
   const [retentionError, setRetentionError] = useState<string | null>(null);
+  const [strategies, setStrategies] = useState<
+    Awaited<ReturnType<typeof fetchMasteryReviewStrategies>>["strategies"]
+  >([]);
+  const [strategiesLoading, setStrategiesLoading] = useState(true);
+  const [strategiesError, setStrategiesError] = useState<string | null>(null);
+  const [strategyBusy, setStrategyBusy] = useState(false);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
   const editorTriggerRef = useRef<HTMLElement | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
@@ -128,6 +145,25 @@ export default function MasteryTopicPage() {
       setSessionsLoading(false);
     }
   }, [pathId]);
+
+  const loadStrategies = useCallback(async () => {
+    setStrategiesLoading(true);
+    try {
+      const result = await fetchMasteryReviewStrategies({
+        cache: "no-store",
+      });
+      setStrategies(result.strategies);
+      setStrategiesError(null);
+    } catch {
+      setStrategiesError(t("Could not load review strategies. Try again."));
+    } finally {
+      setStrategiesLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadStrategies();
+  }, [loadStrategies]);
 
   useEffect(() => {
     void loadTopic();
@@ -222,6 +258,86 @@ export default function MasteryTopicPage() {
     }
   };
 
+  const handleStrategyChange = async (templateId: string) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const saved = await bindMasteryReviewStrategy(pathId, templateId);
+      setTopic(saved);
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not save review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategySave = async (
+    input: ReviewStrategyInput,
+    templateId?: string,
+  ) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const savedStrategy = templateId
+        ? await updateMasteryReviewStrategy(templateId, input)
+        : await createMasteryReviewStrategy(input);
+      const savedTopic = await bindMasteryReviewStrategy(
+        pathId,
+        savedStrategy.template_id,
+      );
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch (error) {
+      setStrategyError(
+        error instanceof Error
+          ? error.message
+          : t("Could not save review strategy. Try again."),
+      );
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategyDuplicate = async (
+    templateId: string,
+    name: string,
+  ) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const copy = await duplicateMasteryReviewStrategy(templateId, name);
+      const savedTopic = await bindMasteryReviewStrategy(
+        pathId,
+        copy.template_id,
+      );
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not duplicate review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategyDelete = async (templateId: string) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const savedTopic = await bindMasteryReviewStrategy(pathId, "");
+      await deleteMasteryReviewStrategy(templateId);
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not delete review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
   const handleReset = async () => {
     setMutationBusy(true);
     try {
@@ -289,10 +405,13 @@ export default function MasteryTopicPage() {
     );
   }
 
-  const nextCopy = NEXT_LABELS[topic.next.action] ?? {
-    zh: topic.next.reason,
-    en: topic.next.reason,
-  };
+  const nextLabel = NEXT_LABELS[topic.next.action];
+  // The reason comes from the server as-is; only the known labels are catalog copy.
+  const nextCopy = nextLabel
+    ? zh
+      ? nextLabel.zh
+      : t(nextLabel.en)
+    : topic.next.reason;
   const progress = topic.map.counts.total
     ? Math.round((topic.map.counts.mastered / topic.map.counts.total) * 100)
     : 0;
@@ -318,26 +437,28 @@ export default function MasteryTopicPage() {
     // no second column to balance, and a fixed-height stack there would just
     // be three tiny scrollers.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto flex w-full min-h-0 max-w-[1180px] flex-1 flex-col px-4 pb-40 pt-6 sm:px-7 sm:pb-10 lg:px-8 lg:py-8">
+      <PageContainer className="flex flex-none flex-col pb-10 lg:min-h-0 lg:flex-1">
+        <MasteryPathCrumb id={pathId} label={displayName} />
         <div className="flex items-center justify-between gap-3">
           <Link
             href={scopedUrl(MASTERY_HOME)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            className="dt-section-back inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t("Learning topics")}
           </Link>
-          <div className="flex items-center gap-2">
+          {/* The goal's own actions go up to the page bar, top right. */}
+          <PageBarSlot name="actions" className="ml-auto flex items-center gap-1">
             <button
               type="button"
               onClick={(event) => openEditor(event.currentTarget)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 text-[12px] font-medium text-[var(--muted-foreground)] transition hover:text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
+              className="dt-quiet-button"
             >
               <PencilRuler className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t("Edit modules")}</span>
             </button>
             <details className="relative">
-              <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] transition hover:text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40">
+              <summary className="dt-quiet-button is-icon cursor-pointer list-none">
                 <MoreHorizontal className="h-4 w-4" />
                 <span className="sr-only">{t("More actions")}</span>
               </summary>
@@ -362,11 +483,11 @@ export default function MasteryTopicPage() {
                 </button>
               </div>
             </details>
-          </div>
+          </PageBarSlot>
         </div>
 
-        <header className="mt-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
+        <header className="dt-page-header mt-2 mb-6 flex flex-col gap-4">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <div className="min-w-0">
                 <PathTitle
@@ -374,13 +495,13 @@ export default function MasteryTopicPage() {
                   storedName={topic.name}
                   onRename={handleRename}
                 />
-                <p className="mt-1 max-w-3xl text-sm text-[var(--muted-foreground)]">
+                <p className={PAGE_DESCRIPTION_CLASS}>
                   {topic.metadata.description || topic.metadata.goal}
                 </p>
               </div>
             </div>
             {sourceLabels.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2 pl-0 sm:pl-[60px]">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 {sourceLabels.map((source) => (
                   <span
                     key={source.id}
@@ -392,7 +513,7 @@ export default function MasteryTopicPage() {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
             <span className="text-[13px] tabular-nums text-[var(--muted-foreground)]">
               {topic.map.counts.mastered}/{topic.map.counts.total}{" "}
               {t("knowledge points")}
@@ -412,7 +533,7 @@ export default function MasteryTopicPage() {
           </div>
         </header>
 
-        <section className="fixed bottom-3 left-4 right-4 z-20 flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)]/95 p-4 backdrop-blur sm:static sm:mt-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:rounded-none sm:border-0 sm:border-y sm:border-[var(--border)] sm:bg-transparent sm:px-0 sm:py-4 sm:backdrop-blur-none">
+        <section className="dt-next-up mt-2">
           <div className="flex min-w-0 items-baseline gap-3">
             <span className="shrink-0 text-[12px] text-[var(--muted-foreground)]">
               {t("Next up")}
@@ -429,9 +550,7 @@ export default function MasteryTopicPage() {
                   ? t(
                       "This goal has no outline yet. Open a session and the tutor will design one with you.",
                     )
-                  : zh
-                    ? nextCopy.zh
-                    : nextCopy.en}
+                  : nextCopy}
               </p>
             </div>
           </div>
@@ -471,7 +590,7 @@ export default function MasteryTopicPage() {
               {nextCta
                 ? zh
                   ? nextCta.zh
-                  : nextCta.en
+                  : t(nextCta.en)
                 : topic.session_count > 0
                   ? t("Continue learning")
                   : t("Begin first waypoint")}
@@ -480,13 +599,13 @@ export default function MasteryTopicPage() {
           )}
         </section>
 
-        <div className="mt-6 grid min-h-0 flex-1 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
+        <div className="mt-6 grid flex-none grid-cols-1 items-start gap-7 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
           {needsRouteRepair ? (
             // A goal starts without an outline: the first session is where the
             // tutor asks about the learner and designs one with them. Writing
             // modules by hand is still possible, but it is the fallback now,
             // not the instruction.
-            <section className="mastery-map-paper flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] p-8 text-center">
+            <section className="dt-panel min-h-72 items-center justify-center p-8 text-center">
               <PencilRuler className="h-9 w-9 text-[var(--mastery-route)]" />
               <h2 className="mt-4 text-lg font-semibold">
                 {t("No outline yet")}
@@ -519,13 +638,13 @@ export default function MasteryTopicPage() {
               </button>
             </section>
           ) : (
-            <div className="flex min-h-0 flex-col gap-5 lg:h-full">
+            <div className="flex min-h-0 min-w-0 flex-col gap-5 lg:h-full">
               {/* The three things a mastery goal owns — outline, review plan,
                   sessions — are named the same way and sit at the same level,
                   so the page reads as one goal's assets rather than a map with
                   two widgets hanging off it. */}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-[12px] font-semibold text-[var(--foreground)]">
+                <h2 className="px-2.5 text-[13px] font-semibold text-[var(--foreground)]">
                   {t("Mastery outline")}
                 </h2>
                 <div className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
@@ -563,7 +682,13 @@ export default function MasteryTopicPage() {
               </div>
               {/* The outline is the tall thing on this page, so it is the one
                   that scrolls. Everything else keeps its place. */}
-              <div className="min-h-0 lg:min-h-[260px] lg:flex-1 lg:overflow-y-auto lg:pr-1">
+              <div
+                className={`min-h-0 min-w-0 lg:min-h-[260px] lg:flex-1 ${
+                  topicView === "board"
+                    ? "flex flex-col"
+                    : "lg:overflow-y-auto lg:pr-1"
+                }`}
+              >
                 {topicView === "outline" ? (
                 <ModuleOutline
                   topic={topic}
@@ -582,11 +707,11 @@ export default function MasteryTopicPage() {
                   onStartTutoring={startBoardTutoring}
                 />
               ) : boardError ? (
-                <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center text-sm text-[var(--muted-foreground)]">
+                <p className="dt-panel p-6 text-center text-sm text-[var(--muted-foreground)]">
                   {t("The learning board could not be loaded")}
                 </p>
               ) : (
-                <div className="flex min-h-40 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card)]">
+                <div className="dt-panel min-h-40 items-center justify-center">
                   <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
                 </div>
               )}
@@ -601,6 +726,18 @@ export default function MasteryTopicPage() {
                 retentionBusy={retentionBusy}
                 retentionError={retentionError}
                 onRetentionChange={(value) => void handleRetentionChange(value)}
+                strategies={strategies}
+                selectedStrategyId={
+                  topic.review_settings?.strategy?.template_id ?? ""
+                }
+                strategyLoading={strategiesLoading}
+                strategyError={strategiesError}
+                strategyBusy={strategyBusy}
+                onStrategyChange={(value) => void handleStrategyChange(value)}
+                onRetryStrategies={() => void loadStrategies()}
+                onStrategySave={handleStrategySave}
+                onStrategyDuplicate={handleStrategyDuplicate}
+                onStrategyDelete={handleStrategyDelete}
                 zh={zh}
                 onSelect={(objectiveId) => {
                   setSelectedId(objectiveId);
@@ -618,7 +755,7 @@ export default function MasteryTopicPage() {
               />
             </div>
           )}
-          <div className="flex min-h-0 flex-col gap-5 lg:h-full">
+          <div className="flex min-h-0 min-w-0 flex-col gap-5 lg:h-full">
             <LearnerProfileCard profile={topic.learner_profile} />
             <SessionCamp
               pathId={pathId}
@@ -630,7 +767,7 @@ export default function MasteryTopicPage() {
             />
           </div>
         </div>
-      </div>
+      </PageContainer>
       {editorOpen && (
         <EditTopicRouteDialog
           topic={topic}

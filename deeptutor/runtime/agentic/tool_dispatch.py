@@ -27,7 +27,12 @@ import logging
 from typing import Any
 
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.tool_protocol import ToolLookup, provider_identity
+from deeptutor.core.tool_protocol import (
+    TOOL_EVENT_PROJECTION,
+    ToolEventProjection,
+    ToolLookup,
+    provider_identity,
+)
 from deeptutor.core.trace import (
     build_trace_metadata,
     derive_trace_metadata,
@@ -198,6 +203,13 @@ async def dispatch_tool_calls(
         display_args = {
             k: v for k, v in exec_args.items() if not k.startswith("_") and k not in withheld
         }
+        projection = exec_args.get(TOOL_EVENT_PROJECTION)
+        if isinstance(projection, ToolEventProjection):
+            display_args = {
+                k: v
+                for k, v in projection.arguments.items()
+                if not k.startswith("_") and k not in withheld
+            }
         await stream.tool_call(
             tool_name=tool_name,
             args=display_args,
@@ -248,7 +260,7 @@ async def dispatch_tool_calls(
                 retrieve_meta_factory(
                     per_tool_trace_meta[tool_index],
                     tool_name,
-                    exec_args,
+                    _public_invocation_args(exec_args),
                 )
                 if retrieve_meta_factory
                 else None
@@ -504,6 +516,86 @@ async def _reject_if_args_missing(
     }
 
 
+RESERVED_ARGUMENT_NAMES = frozenset(
+    {
+        "_attached_kb_names",
+        "_bind_active_mode",
+        "_bind_active_path",
+        "_bind_lesson_objective",
+        "_creation_context",
+        "_cron_in_context",
+        "_cron_owner",
+        "_db_path",
+        "_end_turn_on_card",
+        "_inspected_image_hashes",
+        "_language",
+        "_learner_message",
+        "_mastery_path_id",
+        "_mastery_session_mode",
+        "_mastery_source_context",
+        "_note_document_id",
+        "_note_read_state",
+        "_partner_authoring_context",
+        "_partner_group_context",
+        "_present_mastery_sources",
+        "_profile_recorded",
+        "_requested_visualizer",
+        "_research_registry",
+        "_revision_request_id",
+        "_sandbox_code_workdir",
+        "_sandbox_env",
+        "_sandbox_internal_root",
+        "_sandbox_mounts",
+        "_sandbox_source_dir",
+        "_sandbox_user_id",
+        "_sandbox_workdir",
+        "_session_id",
+        "_solve_session_id",
+        "_subagent",
+        "_teaching_delivery",
+        "_tool_loader",
+        "_tutoring_path_id",
+        "_turn_id",
+        "_visualize_context",
+        "_visualizer_registry",
+        "_vision_supported",
+        "_vault_path",
+        "_working_brief",
+        "_workspace_dir",
+        "_workspace_id",
+        "_workspace_root",
+    }
+)
+
+
+def _drop_server_owned_args(tool_args: dict[str, Any]) -> dict[str, Any]:
+    """Remove client-supplied arguments the runtime owns.
+
+    `_`-prefixed names reach tools as provenance the runtime injected:
+    `_learner_message` is the learner's own words, `_sandbox_mounts` is where
+    the turn may write, `_turn_id` is which turn produced the call. Tools read
+    them as fact.
+
+    Nothing enforces that on the way in. A model emits arbitrary JSON, and the
+    dispatch path never rejected a name it did not expect, so a model could
+    write `_learner_message` itself and have a built-in tool believe it. That is
+    how `mastery_grade` accepted a model-authored answer as grounds to
+    overwrite a committed learner answer (#2595).
+
+    Withholding the reserved names by name — rather than consulting each tool's
+    schema — is deliberate. The set of names the runtime injects is fixed and
+    small; which names an adapter's schema admits is not our question, and
+    answering it correctly turned out to mean reimplementing JSON Schema
+    (`properties`, `allOf`, `$ref`, `patternProperties`, `additionalProperties`
+    defaults) for no security gain. Adapter arguments that happen not to be
+    reserved are left alone, so an MCP server publishing `_id` keeps working.
+    """
+
+    if not any(str(key) in RESERVED_ARGUMENT_NAMES for key in tool_args):
+        return tool_args
+    return {k: v for k, v in tool_args.items() if str(k) not in RESERVED_ARGUMENT_NAMES}
+
+
 def _prepare_tool_args(
     tool_calls: list[dict[str, Any]],
     context: UnifiedContext,
@@ -511,10 +603,15 @@ def _prepare_tool_args(
     *,
     registry: ToolLookup | None = None,
 ) -> tuple[list[tuple[str, str, dict[str, Any]]], list[dict[str, Any]]]:
-    """Bind each call's execution args, keeping the model's originals.
+    """Bind each call's execution args, keeping the sanitised originals.
 
-    The originals are what a deferred re-bind starts from, so re-binding is
-    exactly as idempotent as the first bind (see :data:`PAUSE_LAST_TOOLS`).
+    The recorded originals are what a deferred re-bind starts from, so
+    re-binding is exactly as idempotent as the first bind (see
+    :data:`PAUSE_LAST_TOOLS`). They are recorded *after* the server-owned
+    arguments are withheld: a re-bind replays them straight into the augmenter,
+    so recording the raw JSON let any round containing a rebinding tool —
+    ``ask_user`` and ``workspace_export`` always qualify — re-admit a forged
+    ``_learner_message`` the first bind had already dropped.
     """
     prepared: list[tuple[str, str, dict[str, Any]]] = []
     raw_args: list[dict[str, Any]] = []
@@ -528,14 +625,15 @@ def _prepare_tool_args(
         )
         if not isinstance(tool_args, dict):
             tool_args = {}
-        canonical_name, resolved_args = _resolve_tool_request(registry, tool_name, tool_args)
+        declared_args = _drop_server_owned_args(tool_args)
+        canonical_name, resolved_args = _resolve_tool_request(registry, tool_name, declared_args)
         exec_args = (
             kwarg_augmenter(canonical_name, resolved_args, context)
             if kwarg_augmenter is not None
             else resolved_args
         )
         prepared.append((tool_call_id, tool_name, exec_args))
-        raw_args.append(dict(tool_args))
+        raw_args.append(dict(declared_args))
     return prepared, raw_args
 
 
@@ -630,6 +728,13 @@ def _provider_of(registry: ToolLookup | None, tool_name: str) -> tuple[str, str]
     return provider_identity(tool) if tool is not None else ("", "")
 
 
+def _public_invocation_args(arguments: dict[str, Any]) -> dict[str, Any]:
+    projection = arguments.get(TOOL_EVENT_PROJECTION)
+    if isinstance(projection, ToolEventProjection):
+        return {**projection.arguments, "query": projection.retrieval_query}
+    return arguments
+
+
 def _sensitive_arg_names(registry: ToolLookup, tool_name: str) -> frozenset[str]:
     """Parameter names this tool keeps out of its trace event."""
     try:
@@ -705,7 +810,12 @@ async def execute_tool_call(
     if status_meta is not None:
         running_message = ""
         if retrieve_meta is not None:
-            query = str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            projection = tool_args.get(TOOL_EVENT_PROJECTION)
+            query = (
+                projection.retrieval_query
+                if isinstance(projection, ToolEventProjection)
+                else str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            )
             running_message = f"Query: {query}" if query else start_retrieval_message
         await stream.progress(
             running_message,
@@ -779,6 +889,7 @@ async def execute_tool_call(
             "terminate_turn": getattr(result, "terminate_turn", False),
             "pause_for_user": getattr(result, "pause_for_user", None),
             "model_message": getattr(result, "model_message", None),
+            "public_result": getattr(result, "public_result", None),
         }
     except Exception as exc:
         # Unknown tool names arrive here too (the registry raises KeyError), so
@@ -860,21 +971,25 @@ async def _collect_outcome(
         result_text = str(result["result_text"])
         tool_meta = per_tool_trace_meta[tool_index]
         tool_extra_meta = result.get("metadata") if isinstance(result, dict) else None
+        public_result = result.get("public_result")
+        projected = isinstance(public_result, dict)
+        public_text = str(public_result.get("content", "")) if projected else result_text
+        public_meta = public_result.get("metadata") if projected else tool_extra_meta
         result_event_meta = merge_trace_metadata(tool_meta, {"trace_kind": "tool_result"})
-        if isinstance(tool_extra_meta, dict) and tool_extra_meta:
+        if isinstance(public_meta, dict) and public_meta:
             result_event_meta = merge_trace_metadata(
                 result_event_meta,
-                {"tool_metadata": dict(tool_extra_meta)},
+                {"tool_metadata": dict(public_meta)},
             )
         if tool_index not in suppress_ui_indices:
             await stream.tool_result(
                 tool_name=tool_name,
-                result=result_text,
+                result=public_text,
                 source=source,
                 stage=stage,
                 metadata=result_event_meta,
             )
-        aggregated_sources.extend(result.get("sources") or [])
+        aggregated_sources.extend((public_result if projected else result).get("sources") or [])
         tool_messages.append(
             {
                 "role": "tool",

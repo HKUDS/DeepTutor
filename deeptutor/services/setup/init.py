@@ -22,8 +22,8 @@ from deeptutor.services.path_service import get_path_service
 _setup_logger = None
 
 DEFAULT_INTERFACE_SETTINGS = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
+    # "system" follows the OS. "snow" remains the pure-white Default palette.
+    "theme": "system",
     "language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": {
@@ -105,6 +105,8 @@ DEFAULT_AGENTS_SETTINGS: dict[str, Any] = {
     "plugins": {
         "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
         "math_animator": {"temperature": 0.4, "max_tokens": 12000},
+        # A whole Remotion lesson in one reply, plus a reasoning model's thinking.
+        "video_lesson": {"temperature": 0.5, "max_tokens": 48000},
     },
     # Settings' "test this model" probe. A reasoning model spends its budget
     # thinking before it answers, so the 1024 that sufficed for a chat model

@@ -8,7 +8,7 @@ import pytest
 
 from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
-import deeptutor.core.entry_points as ep_module
+import deeptutor.plugins.entry_points as ep_module
 from deeptutor.runtime.stream_bus import StreamBus
 
 

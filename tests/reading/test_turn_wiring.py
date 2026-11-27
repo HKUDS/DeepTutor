@@ -95,6 +95,52 @@ def test_selection_is_bounded_because_it_enters_the_prompt() -> None:
     assert len(viewport["selection"]) == READING_SELECTION_MAX_CHARS
 
 
+def test_video_viewport_keeps_the_playback_time() -> None:
+    """A video question is grounded at the moment the learner paused on."""
+    assert _reading_viewport({"locator": 7, "time_seconds": 600.461}) == {
+        "locator": 7,
+        "time_seconds": 600.461,
+    }
+    # 0:00 is a real position, not an absent one.
+    assert _reading_viewport({"time_seconds": 0}) == {"time_seconds": 0.0}
+    assert _reading_viewport({"time_seconds": 10**9}) == {"time_seconds": 24 * 60 * 60}
+
+
+@pytest.mark.parametrize("value", [-1, "abc", float("nan"), float("inf"), True, None])
+def test_nonsense_playback_times_are_dropped(value: object) -> None:
+    assert _reading_viewport({"locator": 2, "time_seconds": value}) == {"locator": 2}
+
+
+def test_start_turn_accepts_the_video_viewport_the_reader_sends() -> None:
+    """The reader reports playback time on every video turn; rejecting it at
+    the protocol boundary left every question about a video unsent."""
+    from pydantic import ValidationError
+
+    from deeptutor.api.contracts.turn_protocol import StartTurnCommand
+
+    command = StartTurnCommand.model_validate(
+        {
+            "type": "start_turn",
+            "protocol_version": "2.0",
+            "content": "What does this part mean?",
+            "workspace_mode": "immersive_reading",
+            "reading_viewport": {"locator": 7, "time_seconds": 600.461},
+        }
+    )
+    assert command.reading_viewport is not None
+    assert command.reading_viewport.time_seconds == 600.461
+
+    with pytest.raises(ValidationError):
+        StartTurnCommand.model_validate(
+            {
+                "type": "start_turn",
+                "protocol_version": "2.0",
+                "content": "hi",
+                "reading_viewport": {"locator": 7, "unknown": 1},
+            }
+        )
+
+
 def test_explicit_reading_references_are_normalized_at_the_turn_boundary() -> None:
     assert _reading_references(
         [

@@ -29,6 +29,8 @@ export function nextOptimisticId(): number {
 interface IdentifiedMessage {
   id?: number;
   role: string;
+  failedSubmissionId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -50,8 +52,12 @@ export async function resolvePersistedMessage<T extends IdentifiedMessage>(
   const original = messages[index];
   if (typeof original.id === "number" && original.id >= 0) return original;
 
+  const submissionId = original.failedSubmissionId ?? original.metadata?.client_submission_id;
+  if (typeof submissionId !== "string" || !submissionId) return undefined;
   const refreshed = await refreshMessages();
-  const candidate = refreshed?.[index];
+  const candidates = refreshed?.filter((message) => message.role === expectedRole &&
+    (message.metadata?.client_submission_id ?? message.failedSubmissionId) === submissionId);
+  const candidate = candidates?.length === 1 ? candidates[0] : undefined;
   if (
     !candidate ||
     candidate.role !== expectedRole ||

@@ -1,19 +1,8 @@
-"""One-click background jobs for optional parser engines.
+"""Offline installation guidance and background model downloads for parsers.
 
-The Document Parsing settings page runs two kinds of background job without the
-user dropping to a shell:
-
-* **install** — ``pip install`` an engine's optional PyPI package.
-* **models**  — download an engine's model weights (e.g. Docling's layout/table
-  models via ``docling-tools models download``).
-
-Both mirror the MinerU model-download job (``mineru/models.py``): a single
-background subprocess with a cursor-based line log the UI starts, polls, and
-cancels. Commands come from fixed allow-lists (pip specs / downloader argv),
-never user input, so the subprocess argv can't be injected. Package installs use
-the bare package specs (the same strings as the ``[parse-*]`` extras) so pip
-never re-resolves DeepTutor itself; after a successful install we invalidate the
-import caches so the engine reports available in the same process (no restart).
+Optional packages must be installed while DeepTutor is stopped, using the
+installation path appropriate to the deployment. Only model downloads run as
+background subprocesses, with fixed downloader arguments and cursor-based logs.
 """
 
 from __future__ import annotations
@@ -35,21 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Engine id -> pip requirement specifiers. Mirrors the optional extras in
 # pyproject.toml. Engines absent here (text_only built-in, mineru external
-# CLI/API) have no one-click install.
+# CLI/API) have no optional-package installation guidance.
+from deeptutor.modules.catalog import manifests
+
 ENGINE_PIP_SPECS: dict[str, list[str]] = {
-    "pymupdf4llm": ["pymupdf4llm>=1.28.2"],
-    # ``all`` is upstream's supported way to install every built-in converter
-    # dependency (PDF, Office, Outlook, audio, and future additions).
-    "markitdown": ["markitdown[all]>=0.1.7"],
-    # Keep the base converter and every format-specific dependency aligned
-    # with the Docling compatibility floor.  ``format-video`` also brings the
-    # ASR dependencies used by audio; legacy Office still needs LibreOffice
-    # and video conversion still needs ffmpeg on the host, per Docling.
-    "docling": [
-        "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
-    ],
-    "liteparse": ["liteparse>=2.14.2"],
+    row["parser_engine"]: list(row["requirements"])
+    for row in manifests().values()
+    if "parser_engine" in row
 }
 
 # Engine id -> console-script argv that downloads its model weights. The script
@@ -65,7 +46,7 @@ _LINE_MIN_INTERVAL = 0.2
 
 
 def installable_engines() -> frozenset[str]:
-    """Engine ids that support one-click pip install."""
+    """Engine ids with supported optional-package installation guidance."""
     return frozenset(ENGINE_PIP_SPECS)
 
 
@@ -135,16 +116,28 @@ class BackgroundJobManager:
         self._cancel_requested = False
 
     def start_install(self, *, engine: str, specs: list[str]) -> dict[str, Any]:
-        # Always refresh an installed engine so one-click setup follows the
-        # newest release and picks up newly supported formats.
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--no-input", *specs]
-        return self._launch(
-            kind="install",
-            engine=engine,
-            cmd=cmd,
-            env={"PIP_DISABLE_PIP_VERSION_CHECK": "1"},
-            on_success=_invalidate_import_caches,
-        )
+        # Host-package changes cannot be safe while turns/API workers run.
+        # Model downloads remain background jobs because they do not mutate code.
+        if engine not in ENGINE_PIP_SPECS or specs != ENGINE_PIP_SPECS[engine]:
+            return {"ok": False, "message": "Unknown parser installation request."}
+        return {
+            "ok": False,
+            "message": (
+                "Live package installation is disabled. Docker: add parse-"
+                + engine
+                + " to DEEPTUTOR_EXTRAS in your existing deployment configuration, "
+                "preserving other extras; recreate the same service with its existing "
+                "configuration and mounts. Startup reapplies extras; inspect startup "
+                "logs for installation failures, then recheck availability. "
+                "Source checkout: stop DeepTutor, run `python scripts/install_extras.py parse-"
+                + engine
+                + "` from the checkout in the server's Python environment, then restart. "
+                "Wheel installation: stop DeepTutor, run `deeptutor module install parser-"
+                + engine
+                + "` in the server's Python environment, then restart. "
+                "Data mounts preserve user data, not installed Python packages."
+            ),
+        }
 
     def start_model_download(self, *, engine: str, cmd: list[str]) -> dict[str, Any]:
         return self._launch(kind="models", engine=engine, cmd=cmd)
@@ -194,13 +187,19 @@ class BackgroundJobManager:
                     "message": f"A {self._kind or 'job'} is already running ({self._engine}).",
                 }
             try:
+                # Downloaders are Python console scripts whose tqdm bars use
+                # block characters. Have them write UTF-8 and read it as UTF-8:
+                # an ANSI code page such as cp936 cannot decode those bytes, and
+                # a dead pump leaves the child blocked on a full pipe.
                 process = subprocess.Popen(  # nosec B603 - argv from fixed allow-lists
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     shell=False,
-                    env={**os.environ, **(env or {})},
+                    env={**os.environ, **(env or {}), "PYTHONUTF8": "1"},
                 )
             except Exception as exc:  # noqa: BLE001
                 self._state = "failed"

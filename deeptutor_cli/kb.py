@@ -140,6 +140,59 @@ def _render_eval_report(report: EvalReport, name: str, provider: str) -> None:
         console.print(line)
 
 
+def _parse_rewrite_flag(value: Optional[str]) -> Optional[bool]:
+    """Map a ``--rewrite`` value to the three-state rewrite flag, or None to defer to settings.
+
+    Args:
+        value: ``None`` (flag omitted, defer to settings), ``"off"`` or ``"standalone"``.
+
+    Returns:
+        ``False`` for ``"off"``, ``True`` for ``"standalone"``, ``None`` when omitted.
+
+    Raises:
+        typer.BadParameter: If ``value`` is not a recognized strategy.
+    """
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized == "off":
+        return False
+    if normalized == "standalone":
+        return True
+    raise typer.BadParameter(
+        f"unknown rewrite strategy '{value}'; expected 'off' or 'standalone'",
+        param_hint="--rewrite",
+    )
+
+
+def _load_eval_report(path: str) -> dict:
+    """Load a saved ``kb eval --save`` report for ``kb eval-diff``, exiting readably on error.
+
+    Args:
+        path: Path to a report JSON file written by ``kb eval --save``.
+
+    Returns:
+        The parsed report as a mapping, ready for
+        :func:`deeptutor.services.rag.eval.diff_reports`.
+
+    Raises:
+        typer.Exit: If the file is missing, is not valid JSON, or is not a JSON object.
+    """
+    target = Path(path).expanduser()
+    if not target.exists():
+        console.print(f"[red]Report not found: {target}[/]")
+        raise typer.Exit(code=1)
+    try:
+        loaded = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        console.print(f"[red]Could not read report '{target}': {exc}[/]")
+        raise typer.Exit(code=1) from exc
+    if not isinstance(loaded, dict):
+        console.print(f"[red]Report '{target}' is not a JSON object.[/]")
+        raise typer.Exit(code=1)
+    return loaded
+
+
 def register(app: typer.Typer) -> None:
     @app.command("list")
     def kb_list(
@@ -432,9 +485,16 @@ def register(app: typer.Typer) -> None:
         ),
         save: Optional[str] = typer.Option(None, "--save", help="Write the JSON report to a file."),
         fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
+        rewrite: Optional[str] = typer.Option(
+            None,
+            "--rewrite",
+            help="Force the query-rewrite layer: off | standalone. Omit to defer to settings.",
+        ),
     ) -> None:
         """Score a knowledge base's retrieval quality against a QA set."""
         from deeptutor.services.rag.eval import MatchPolicy, RetrievalEvaluator
+
+        rewrite_flag = _parse_rewrite_flag(rewrite)
 
         mgr = _get_kb_manager()
         if name not in mgr.list_knowledge_bases():
@@ -453,6 +513,7 @@ def register(app: typer.Typer) -> None:
                 query_limit=limit,
                 policy=MatchPolicy(min_ratio=min_ratio),
                 provider=provider,
+                rewrite=rewrite_flag,
             )
         except ValueError as exc:
             console.print(f"[red]{exc}[/]")
@@ -460,8 +521,14 @@ def register(app: typer.Typer) -> None:
 
         cases = eval_set.limited(limit)
         if fmt != "json":
+            suffix = ""
+            if rewrite_flag is True:
+                suffix = ", rewrite=standalone"
+            elif rewrite_flag is False:
+                suffix = ", rewrite=off"
             console.print(
-                f"[bold]Evaluating[/] '{name}' ({provider}) on {len(cases)} case(s), k={top_k} ..."
+                f"[bold]Evaluating[/] '{name}' ({provider}) on {len(cases)} case(s), "
+                f"k={top_k}{suffix} ..."
             )
 
         progress = _build_eval_progress(top_k, fmt)
@@ -480,6 +547,43 @@ def register(app: typer.Typer) -> None:
             return
 
         _render_eval_report(report, name, provider)
+
+    @app.command("eval-diff")
+    def kb_eval_diff(
+        baseline: str = typer.Argument(..., help="Baseline report JSON (from `kb eval --save`)."),
+        candidate: str = typer.Argument(..., help="Candidate report JSON (from `kb eval --save`)."),
+        fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
+    ) -> None:
+        """Diff two `kb eval` reports to quantify a retrieval change.
+
+        Records a baseline before a settings change (e.g. turning the query-rewrite
+        layer on), a candidate after, and shows the per-metric and per-case movement.
+        """
+        from deeptutor.services.rag.eval.diff import diff_reports
+
+        base_report = _load_eval_report(baseline)
+        cand_report = _load_eval_report(candidate)
+
+        try:
+            diff = diff_reports(
+                base_report,
+                cand_report,
+                baseline_label=Path(baseline).stem,
+                candidate_label=Path(candidate).stem,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+
+        if fmt == "json":
+            console.print_json(data=diff.to_dict())
+            return
+
+        for line in diff.summary_lines():
+            console.print(line)
+
+        if diff.has_regression:
+            raise typer.Exit(code=2)
 
     # ── GitHub source commands ──────────────────────────────────────
 

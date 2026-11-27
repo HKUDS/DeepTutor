@@ -70,43 +70,46 @@ function parseDraft(raw: string | null): ChatMarkdownNoteDraft | null {
 export function loadChatMarkdownNoteDraft(
   ownerId: string,
   sessionId: string | null,
-  storage: ChatMarkdownNoteStorage | null = typeof window === "undefined"
-    ? null
-    : window.localStorage,
+  storage?: ChatMarkdownNoteStorage | null,
 ): ChatMarkdownNoteDraft {
-  if (!storage) return EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
+  try {
+    const noteStorage = storage === undefined
+      ? typeof window === "undefined" ? null : window.localStorage
+      : storage;
+    if (!noteStorage) return EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
 
-  const key = storageKey(ownerId, sessionId);
-  const draft = parseDraft(storage.getItem(key));
-  if (!sessionId) return draft ?? EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
+    const key = storageKey(ownerId, sessionId);
+    const draft = parseDraft(noteStorage.getItem(key));
+    if (draft || !sessionId) return draft ?? EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
 
-  // A note started before a new chat receives its session id is adopted by
-  // that session instead of leaking into the next new chat.
-  const pending = parseDraft(storage.getItem(storageKey(ownerId, null)));
-  if (!draft && pending) {
-    try {
-      storage.setItem(key, JSON.stringify(pending));
-      storage.removeItem(storageKey(ownerId, null));
-    } catch {
-      // If adoption cannot be persisted, return the pending draft so this
-      // session still gets the content in memory.
+    // Adopt a note started before the server assigned this chat its ID.
+    const pending = parseDraft(noteStorage.getItem(storageKey(ownerId, null)));
+    if (pending) {
+      try {
+        noteStorage.setItem(key, JSON.stringify(pending));
+        noteStorage.removeItem(storageKey(ownerId, null));
+      } catch {
+        // Keep the pending content in memory if adoption cannot be persisted.
+      }
+      return pending;
     }
-    return pending;
+  } catch {
+    // Browser policy may deny the storage getter or reads. Editing still works.
   }
-  return draft ?? EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
+  return EMPTY_CHAT_MARKDOWN_NOTE_DRAFT;
 }
 
 export function saveChatMarkdownNoteDraft(
   ownerId: string,
   sessionId: string | null,
   draft: ChatMarkdownNoteDraft,
-  storage: ChatMarkdownNoteStorage | null = typeof window === "undefined"
-    ? null
-    : window.localStorage,
+  storage?: ChatMarkdownNoteStorage | null,
 ): void {
-  if (!storage) return;
   try {
-    storage.setItem(storageKey(ownerId, sessionId), JSON.stringify(draft));
+    const noteStorage = storage === undefined
+      ? typeof window === "undefined" ? null : window.localStorage
+      : storage;
+    noteStorage?.setItem(storageKey(ownerId, sessionId), JSON.stringify(draft));
   } catch {
     // Storage can be unavailable or full. The in-memory draft remains usable.
   }

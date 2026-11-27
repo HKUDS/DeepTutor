@@ -66,7 +66,9 @@ def build_question_card(
     until the answer is committed, and this payload is rendered to the learner.
     """
     public = public_pending_question(pending)
-    return {
+    from deeptutor.learning.visual_practice import public_visual
+
+    payload = {
         "question_id": public.question_id,
         "prompt": public.prompt,
         "question_type": public.question_type,
@@ -81,16 +83,27 @@ def build_question_card(
         # tap a letter cannot say "I don't know" or show their work.
         "allow_free_text": True,
     }
+    if pending.visual_context:
+        payload["visual"] = public_visual(pending.visual_context)
+    if pending.questions:
+        payload["questions"] = [build_question_card(q) for q in pending.questions]
+    return payload
 
 
 def build_grade_result(
     *,
     question_id: str,
-    is_correct: bool,
+    is_correct: bool | None,
     learner_answer: str,
     correct_label: str,
     choice_options: dict[str, str],
     explanation: str,
+    result: str = "",
+    independent: bool | None = None,
+    final: bool = True,
+    needs_clarification: bool = False,
+    feedback: str = "",
+    confidence: float | None = None,
 ) -> dict[str, Any]:
     """What the answered card shows once the gate has ruled on it.
 
@@ -99,14 +112,28 @@ def build_grade_result(
     it is graded — which is exactly when they are worth reading.
     """
     label = str(correct_label or "").strip()
-    return {
+    picked = str(learner_answer or "").strip()
+    payload = {
         "question_id": str(question_id or ""),
-        "is_correct": bool(is_correct),
+        "is_correct": is_correct,
+        "final": final,
+        "needs_clarification": needs_clarification,
+        "feedback": feedback,
+        "confidence": confidence,
         "learner_answer": str(learner_answer or ""),
+        # The option text behind the picked letter: the card may show the
+        # options in a different order than the tutor registered them, so the
+        # letter alone does not say what the learner chose.
+        "learner_body": str(choice_options.get(picked) or "") if picked else "",
         "correct_label": label,
         "correct_body": str(choice_options.get(label) or "") if label else "",
         "explanation": str(explanation or ""),
     }
+    if result:
+        payload["result"] = result
+    if independent is not None:
+        payload["independent"] = independent
+    return payload
 
 
 __all__ = [

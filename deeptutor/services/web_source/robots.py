@@ -20,6 +20,10 @@ from deeptutor.tools.web_fetch import (
 )
 
 DEFAULT_REQUEST_INTERVAL_S = 0.125
+#: A hostile robots.txt can otherwise park a crawl (and the shared per-host
+#: pace lock) on an arbitrarily long sleep; delays beyond a minute are treated
+#: as "no directive" and the default interval applies instead.
+MAX_HONORED_CRAWL_DELAY_S = 60.0
 _UNRESERVED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
 
 
@@ -90,7 +94,11 @@ def parse_robots_txt(raw: str) -> RobotsPolicy:
                     delay = float(value)
                 except ValueError:
                     continue
-                if math.isfinite(delay) and delay >= 0:
+                # Ignore absurd delays instead of honoring them: a hostile
+                # robots.txt could otherwise park every request to this host
+                # on one unbounded sleep (RFC 9309 lets crawlers cap
+                # unreasonable values).
+                if math.isfinite(delay) and 0 <= delay <= MAX_HONORED_CRAWL_DELAY_S:
                     delays.append(delay)
     groups.append((agents, rules, delays))
     product = DEFAULT_USER_AGENT.split("/", 1)[0].lower()

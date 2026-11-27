@@ -93,3 +93,20 @@ def test_zip_with_no_supported_members_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(HTTPException) as exc_info:
         _save_uploaded_files([upload], raw, allowed_extensions=ALLOWED)
     assert exc_info.value.status_code == 400
+
+
+def test_zip_member_already_in_the_kb_is_named_without_the_server_path(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "notes.txt").write_bytes(b"original")
+    upload = _zip_upload("bundle.zip", [("paper.md", b"# title"), ("notes.txt", b"replacement")])
+
+    with pytest.raises(HTTPException) as exc_info:
+        _save_uploaded_files([upload], raw, allowed_extensions=ALLOWED)
+
+    detail = exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert "'notes.txt', which is already in this knowledge base" in detail
+    assert str(tmp_path) not in detail and "Errno" not in detail
+    assert (raw / "notes.txt").read_bytes() == b"original"
+    assert not (raw / "paper.md").exists()

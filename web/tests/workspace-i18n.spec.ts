@@ -11,5 +11,8 @@ it('loads all workspace resource translations in the runtime namespace', async (
   }
   expect(t('Assigned resources')).toBe('分配资源')
   expect(t('MCP services')).toBe('MCP 服务')
+  expect(t('Workspace instructions')).toBe('工作区提示词')
+  expect(t('Clear instructions')).toBe('清空提示词')
+  expect(t('contextBudget.segment.workspace_instructions')).toBe('工作区提示词')
   expect(t('{{count}} resources selected', { count: 2 })).toBe('已选择 2 项资源')
 })

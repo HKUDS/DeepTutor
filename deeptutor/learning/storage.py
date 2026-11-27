@@ -39,6 +39,7 @@ from deeptutor.learning.models import (
     ReadingActivityRecord,
     ReadingLearningRecords,
     ReadingProgressRecord,
+    ReviewStrategyTemplate,
     TopicMetadata,
     TopicSource,
 )
@@ -50,6 +51,8 @@ logger = logging.getLogger(__name__)
 _schema_lock = threading.RLock()
 _initialized_db_paths: set[Path] = set()
 _T = TypeVar("_T")
+# How long an explanation that needs clarification is kept for the follow-up.
+PENDING_EXPLANATION_TTL_SECONDS = 24 * 3600
 _ACTIVE_INTERACTION_STATES = (
     InteractionStatus.REGISTERED.value,
     InteractionStatus.AWAITING_INPUT.value,
@@ -151,18 +154,137 @@ class LearningTransaction:
     def events(self) -> list[tuple[str, dict[str, Any], str, str]]:
         return list(self._events)
 
+    def record_module_preview(self, payload: dict[str, Any], *, session_id: str) -> int:
+        """Persist a draft without modifying progress or publishing a new revision."""
+        cursor = self._conn.execute(
+            """INSERT INTO mastery_events
+               (path_id, revision, event_type, payload_json, session_id, created_at)
+               VALUES (?, ?, 'path.modules_previewed', ?, ?, ?)""",
+            (
+                self.progress.book_id,
+                self.base_revision,
+                json.dumps(payload, ensure_ascii=False, allow_nan=False),
+                session_id,
+                time.time(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def module_preview(self, preview_id: int, *, session_id: str) -> dict[str, Any]:
+        if type(preview_id) is not int or preview_id < 1:
+            raise ValueError("Use the integer preview_id returned by a successful preview.")
+        row = self._conn.execute(
+            """SELECT payload_json, created_at FROM mastery_events
+               WHERE id = ? AND path_id = ? AND session_id = ?
+               AND event_type = 'path.modules_previewed'""",
+            (preview_id, self.progress.book_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Preview is unavailable in this path/session. Create a fresh preview.")
+        applied = self._conn.execute(
+            """SELECT revision FROM mastery_events WHERE path_id = ?
+               AND event_type = 'path.modules_revision_committed'
+               AND json_extract(payload_json, '$.preview_id') = ? LIMIT 1""",
+            (self.progress.book_id, preview_id),
+        ).fetchone()
+        if applied is None and time.time() - float(row["created_at"]) > 3600:
+            raise ValueError(
+                "Preview expired. Create and review a fresh preview before committing."
+            )
+        return {
+            **json.loads(row["payload_json"]),
+            "committed_revision": int(applied["revision"]) if applied else None,
+        }
+
+    def record_pending_explanation(
+        self,
+        knowledge_point_id: str,
+        explanation: str,
+        *,
+        base: str,
+        session_id: str,
+        turn_id: str,
+    ) -> None:
+        """Keep an explanation that needs clarification, without a new revision.
+
+        ``base`` is the explanation that was already pending before this turn,
+        so a retried turn can rebuild its answer instead of appending twice.
+        """
+        self._conn.execute(
+            """INSERT INTO mastery_events
+               (path_id, revision, event_type, payload_json, session_id, turn_id, created_at)
+               VALUES (?, ?, 'qualitative.clarification_requested', ?, ?, ?, ?)""",
+            (
+                self.progress.book_id,
+                self.base_revision,
+                json.dumps(
+                    {
+                        "knowledge_point_id": knowledge_point_id,
+                        "explanation": explanation,
+                        "base": base,
+                    },
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ),
+                session_id,
+                turn_id,
+                time.time(),
+            ),
+        )
+
+    def pending_explanation(self, knowledge_point_id: str, *, session_id: str, turn_id: str) -> str:
+        """The explanation still awaiting clarification in this session, if any.
+
+        Nothing is pending once the request has expired, or once the path
+        moved on after it: a final assessment (of this or another objective),
+        a deferral, a question posed on another objective, or a reset or
+        revision of the path. Ordering uses event ids rather than timestamps,
+        so the final ``partial`` that recorded the request does not cancel it.
+        """
+        row = self._conn.execute(
+            """SELECT id, payload_json, turn_id, created_at FROM mastery_events
+               WHERE path_id = ? AND session_id = ?
+               AND event_type = 'qualitative.clarification_requested'
+               AND json_extract(payload_json, '$.knowledge_point_id') = ?
+               ORDER BY id DESC LIMIT 1""",
+            (self.progress.book_id, session_id, knowledge_point_id),
+        ).fetchone()
+        if row is None:
+            return ""
+        if time.time() - float(row["created_at"]) > PENDING_EXPLANATION_TTL_SECONDS:
+            return ""
+        moved_on = self._conn.execute(
+            """SELECT 1 FROM mastery_events
+               WHERE path_id = ? AND id > ?
+               AND (event_type IN ('mastery.assessed', 'objective.deferred', 'path.reset',
+                                   'path.modules_revision_committed')
+                    OR (event_type = 'interaction.registered'
+                        AND json_extract(payload_json, '$.knowledge_point_id') != ?))
+               LIMIT 1""",
+            (self.progress.book_id, int(row["id"]), knowledge_point_id),
+        ).fetchone()
+        if moved_on is not None:
+            return ""
+        payload = json.loads(row["payload_json"] or "{}")
+        if turn_id and (row["turn_id"] or "") == turn_id:
+            return str(payload.get("base") or "")
+        return str(payload.get("explanation") or "")
+
     @staticmethod
     def _interaction_from_row(row: sqlite3.Row | None) -> MasteryInteraction | None:
         if row is None:
             return None
+        question = json.loads(row["question_json"])
+        grouped = question.get("question_type") == "group"
         return MasteryInteraction(
             interaction_id=row["interaction_id"],
             path_id=row["path_id"],
-            question=json.loads(row["question_json"]),
+            question=question,
             status=InteractionStatus(row["status"]),
             session_id=row["session_id"] or "",
             turn_id=row["turn_id"] or "",
-            user_answer=row["user_answer"] or "",
+            user_answer="" if grouped else row["user_answer"] or "",
+            answers=json.loads(row["user_answer"] or "{}") if grouped else {},
             result=json.loads(row["result_json"] or "{}"),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
@@ -229,7 +351,9 @@ class LearningTransaction:
                 json.dumps(interaction.question.model_dump(mode="json"), ensure_ascii=False),
                 interaction.session_id,
                 interaction.turn_id,
-                interaction.user_answer,
+                json.dumps(interaction.answers, ensure_ascii=False)
+                if interaction.question.questions
+                else interaction.user_answer,
                 json.dumps(interaction.result, ensure_ascii=False),
                 interaction.created_at,
                 now,
@@ -534,6 +658,19 @@ class LearningStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_reading_activities_recent
                         ON reading_activities(created_at DESC, activity_id DESC);
+
+                    -- Learner-created review interval strategies. Preset
+                    -- templates live in code and are never stored here; a
+                    -- path's binding snapshots whatever it needs, so deleting
+                    -- a row never corrupts existing scheduling.
+                    CREATE TABLE IF NOT EXISTS mastery_review_strategies (
+                        template_id TEXT PRIMARY KEY,
+                        strategy_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_review_strategies_created
+                        ON mastery_review_strategies(created_at DESC);
                     """
                 )
                 self._converge_single_membership(conn)
@@ -956,6 +1093,7 @@ class LearningStore:
         self._import_legacy_if_needed(path_id)
         bounded_limit = max(1, min(int(limit), 1000))
         with self._connect() as conn:
+            conn.execute("BEGIN")
             row = conn.execute(
                 "SELECT * FROM mastery_paths WHERE path_id = ?", (path_id,)
             ).fetchone()
@@ -1263,6 +1401,91 @@ class LearningStore:
         }
         return sorted(stored | legacy)
 
+    # ---- account review interval strategies -------------------------------
+
+    @staticmethod
+    def _strategy_from_row(row: sqlite3.Row) -> ReviewStrategyTemplate:
+        template = ReviewStrategyTemplate.model_validate(json.loads(row["strategy_json"]))
+        template.builtin = False
+        return template
+
+    def list_review_strategies(self) -> list[ReviewStrategyTemplate]:
+        """Learner-created strategies, newest first. Presets live in code."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM mastery_review_strategies
+                ORDER BY created_at DESC, template_id
+                """
+            ).fetchall()
+        return [self._strategy_from_row(row) for row in rows]
+
+    def get_review_strategy(self, template_id: str) -> ReviewStrategyTemplate | None:
+        template_id = self._validate_id(template_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_review_strategies WHERE template_id = ?",
+                (template_id,),
+            ).fetchone()
+        return self._strategy_from_row(row) if row is not None else None
+
+    def save_review_strategy(self, template: ReviewStrategyTemplate) -> ReviewStrategyTemplate:
+        """Insert or update one custom strategy.
+
+        Preset templates cannot be shadowed or persisted: their ids are
+        reserved so a binding always resolves to the code-defined preset.
+        """
+        from deeptutor.learning.review_strategy import BUILTIN_TEMPLATE_IDS
+
+        if template.builtin or template.template_id in BUILTIN_TEMPLATE_IDS:
+            raise ValueError(
+                f"template_id {template.template_id!r} is reserved for a built-in preset"
+            )
+        now = time.time()
+        stored = template.model_copy(
+            update={"builtin": False, "updated_at": now},
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO mastery_review_strategies (
+                        template_id, strategy_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(template_id) DO UPDATE SET
+                        strategy_json = excluded.strategy_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        stored.template_id,
+                        json.dumps(stored.model_dump(mode="json"), ensure_ascii=False),
+                        stored.created_at,
+                        now,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return stored
+
+    def delete_review_strategy(self, template_id: str) -> bool:
+        """Remove one custom strategy. Paths bound to it keep their snapshot."""
+        template_id = self._validate_id(template_id)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM mastery_review_strategies WHERE template_id = ?",
+                    (template_id,),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return cursor.rowcount == 1
+
     # ---- account Reading learning records --------------------------------
 
     @staticmethod
@@ -1547,6 +1770,7 @@ class LearningStore:
         """Read the atlas in a constant number of bounded SQLite queries."""
 
         with self._connect() as conn:
+            conn.execute("BEGIN")
             progress_rows = conn.execute(
                 """
                 SELECT p.* FROM mastery_paths p

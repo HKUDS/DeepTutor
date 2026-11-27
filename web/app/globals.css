@@ -2,6 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Feature-page standards. Queries measure usable content after the sidebar
+   and gutters, so the same cards behave consistently in both route groups. */
+.dt-page-container {
+  container: feature-page / inline-size;
+}
+
+.dt-page-icon {
+  /* Revealed per UI layout; see features/ui-layout/modern/modern.css. */
+  display: none;
+}
+
+.dt-page-title {
+  font-size: 27px;
+  /* A UI layout token: see features/ui-layout/{classic,modern}. */
+  font-family: var(--dt-page-title-font, theme("fontFamily.sans"));
+}
+
+.dt-page-action,
+[data-page-actions] > button,
+[data-page-actions] > a,
+[data-page-actions] > div > button,
+[data-page-actions] > div > a {
+  min-height: 44px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.dt-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.dt-page-grid > * {
+  min-width: 0;
+}
+
+@container feature-page (min-width: 520px) {
+  .dt-page-grid-2,
+  .dt-page-grid-3,
+  .dt-page-grid-4,
+  .dt-page-grid-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container feature-page (min-width: 640px) {
+  .dt-page-title { font-size: 30px; }
+  .dt-page-header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .dt-page-action,
+  [data-page-actions] > button,
+  [data-page-actions] > a,
+  [data-page-actions] > div > button,
+  [data-page-actions] > div > a { min-height: 36px; }
+}
+
+@container feature-page (min-width: 800px) {
+  .dt-page-grid-3,
+  .dt-page-grid-5,
+  .dt-page-grid-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container feature-page (min-width: 1040px) {
+  .dt-page-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .dt-page-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
 @layer base {
   /* ────────────────────────────────────────────────────────────────────────
      Theme palettes — four families:
@@ -367,6 +441,118 @@
 /* ─── Prose: base ─── */
 .prose {
   @apply font-serif text-[16px];
+}
+
+/* ─── Prose: language-aware CJK stacks ───
+   The shared serif/sans stacks in tailwind.config.js intentionally lead with
+   Simplified Chinese faces so `zh` replies never hit an arbitrary browser
+   default. That same ordering serves every other CJK language badly: a
+   Japanese reply on Windows renders in SimSun (Simplified glyph forms, kana
+   from a Chinese face) because SimSun answers before any Japanese font is
+   reached. Assistant messages set `lang` from the reply language (see
+   `lib/content-lang.ts` + `AssistantResponse`), and these rules list the
+   region-correct faces FIRST while keeping the Simplified Chinese ones as
+   trailing fallbacks for machines without the regional fonts. `zh` and `en`
+   match no rule here and keep the default stacks — do not reorder the shared
+   stacks to fix this, Chinese text would pick up Japanese glyph forms. */
+.prose:lang(ja),
+.font-serif:lang(ja) {
+  font-family:
+    var(--font-serif),
+    'Hiragino Mincho ProN',
+    'Yu Mincho',
+    'Noto Serif JP',
+    'MS Mincho',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(ja) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(ja) {
+  font-family:
+    var(--font-sans),
+    'Hiragino Sans',
+    'Yu Gothic',
+    'Noto Sans JP',
+    'Meiryo',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
+}
+
+.prose:lang(ko),
+.font-serif:lang(ko) {
+  font-family:
+    var(--font-serif),
+    'Nanum Myeongjo',
+    'Batang',
+    'Noto Serif KR',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(ko) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(ko) {
+  font-family:
+    var(--font-sans),
+    'Nanum Gothic',
+    'Malgun Gothic',
+    'Apple SD Gothic Neo',
+    'Noto Sans KR',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
+}
+
+.prose:lang(zh-Hant),
+.prose:lang(zh-TW),
+.font-serif:lang(zh-Hant),
+.font-serif:lang(zh-TW) {
+  font-family:
+    var(--font-serif),
+    'Songti TC',
+    'Noto Serif TC',
+    'PMingLiU',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(zh-Hant) :is(h1, h2, h3, h4, h5, h6),
+.prose:lang(zh-TW) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(zh-Hant),
+.font-sans:lang(zh-TW) {
+  font-family:
+    var(--font-sans),
+    'PingFang TC',
+    'Microsoft JhengHei',
+    'Noto Sans TC',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
 }
 
 .prose pre {
@@ -752,6 +938,51 @@
   animation: dt-breathing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Whoever a turn was handed to, in the orb's place. A partner's face or an
+   agent's mark on a soft tile; while they work a hairline ring breathes out
+   from it — the orb's "still going" in their shape. */
+.dt-answerer-mark {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+.dt-answerer-mark[data-kind="subagent"] { border-radius: 6px; }
+.dt-answerer-tile {
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.dt-answerer-mark.is-working::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: dt-answerer-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+}
+.dt-answerer-mark[data-kind="subagent"].is-working::after { border-radius: 8px; }
+@keyframes dt-answerer-ring {
+  0%, 100% { opacity: 0.25; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+.dt-answerer-name {
+  margin-right: -4px;
+  color: var(--foreground);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-answerer-mark.is-working::after { animation: none; opacity: 0.7; }
+}
+
 /* Trace detail, opening.
    Entry only, deliberately. A height transition would need the body mounted
    while collapsed, and a long transcript has dozens of collapsed rows — that
@@ -1016,7 +1247,7 @@ body[data-picker-open] .dt-breathing-text {
   }
 }
 
-/* ----- Immersive watching -----------------------------------------------
+/* ----- Reading media source browser -------------------------------------
    Watching shares the conversation renderer and owns its responsive video surface. */
 .dt-watching-shell {
   position: absolute;
@@ -1386,4 +1617,46 @@ a[href^="#dt-locator-"]:hover {
 .watching-surface[data-browsing] .watching-mobile-tabs {
   visibility: hidden;
   pointer-events: none;
+}
+
+/* Learning typography is opt-in. Absolute baseline sizes avoid compounded scaling
+   in nested content. No preferences are attached to the document font size. */
+.learning-text {
+  font-size: calc(var(--learning-text-base, 16px) * var(--learning-font-scale, 1)) !important;
+  line-height: var(--learning-line-height, 1.75) !important;
+}
+.learning-text p,
+.learning-text li,
+.learning-text blockquote,
+.learning-text table {
+  line-height: var(--learning-line-height, 1.75);
+}
+.learning-text table {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+}
+.learning-text h1 {
+  font-size: calc(24px * var(--learning-font-scale, 1));
+  line-height: calc(32px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h2 {
+  font-size: calc(20px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h3 {
+  font-size: calc(18px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h4 {
+  font-size: calc(16px * var(--learning-font-scale, 1));
+  line-height: calc(24px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h5,
+.learning-text h6 {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+  line-height: calc(20px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text .md-code-block,
+.learning-text .learning-text-excluded {
+  font-size: 16px;
+  line-height: 1.5;
 }

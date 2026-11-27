@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { fetchAuthStatus } from "@/lib/auth";
 
+export interface LearningPolicyState {
+  /** Surfaces this account may open. Everything else is hidden, not a 403. */
+  allowedSurfaces: string[];
+}
+
 export interface AuthStatusState {
   /** Whether auth is enabled on the backend. */
   enabled: boolean;
@@ -16,6 +21,12 @@ export interface AuthStatusState {
   statusAvailable: boolean;
   /** True until the first status fetch resolves. */
   loading: boolean;
+  /**
+   * Effective learning policy from ``GET /api/auth/status``. Null for accounts
+   * without one. The shell reads ``allowedSurfaces`` so denied features are
+   * absent instead of offered and then rejected (#1222).
+   */
+  learningPolicy: LearningPolicyState | null;
 }
 
 const INITIAL: AuthStatusState = {
@@ -25,7 +36,19 @@ const INITIAL: AuthStatusState = {
   userId: null,
   statusAvailable: false,
   loading: true,
+  learningPolicy: null,
 };
+
+function learningPolicyFromStatus(
+  status: Awaited<ReturnType<typeof fetchAuthStatus>>,
+): LearningPolicyState | null {
+  const policy = status?.learning_policy;
+  if (!policy) return null;
+  const surfaces = (policy.allowed_surfaces ?? ["chat", "reading"]).filter(
+    (surface) => surface.trim().length > 0,
+  );
+  return { allowedSurfaces: surfaces.length ? surfaces : ["chat", "reading"] };
+}
 
 /**
  * Resolve auth state at runtime from the backend (`/api/auth/status`).
@@ -48,6 +71,7 @@ function loadAuthStatus(): Promise<AuthStatusState> {
         : null,
     statusAvailable: status !== null,
     loading: false,
+    learningPolicy: learningPolicyFromStatus(status),
   }));
 }
 

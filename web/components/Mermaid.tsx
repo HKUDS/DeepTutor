@@ -109,7 +109,9 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
 
     let cancelled = false;
     const renderChart = async () => {
-      if (!chart.trim() || !containerRef.current) return;
+      // The error view has no SVG container. A corrected chart must still
+      // reach the renderer so success can mount that container again.
+      if (!chart.trim()) return;
 
       try {
         const mermaid = await loadMermaid();

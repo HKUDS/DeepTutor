@@ -28,14 +28,13 @@ from typing import cast
 import uuid
 
 from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
-from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.core.capability_protocol import (
-    CapabilityManifest,
     StreamBusProtocol,
     TurnCapability,
 )
 from deeptutor.core.context import UnifiedContext
 from deeptutor.learning.identity import resolve_mastery_path_binding
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 
 
@@ -55,16 +54,7 @@ def resolve_mastery_path_id(context: UnifiedContext) -> str:
 
 
 class MasteryPathCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="mastery_path",
-        description=(
-            "Mastery-based tutoring: a dedicated agent loop drives an adaptive "
-            "mastery path with a hard, per-type mastery gate and spaced review."
-        ),
-        stages=["responding"],
-        tools_used=[*MASTERY_TOOL_NAMES, "rag", "read_source", "ask_user"],
-        cli_aliases=["mastery"],
-    )
+    manifest = builtin_capability_manifest("mastery_path")
 
     async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         binding = resolve_mastery_path_binding(

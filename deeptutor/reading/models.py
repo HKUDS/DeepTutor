@@ -228,8 +228,8 @@ class MaterialManifest:
     # Embedded images stored under ``media/`` (DOCX/PPTX today; PDFs render
     # their own images in the raw view). Zero for older materials.
     media_count: int = 0
-    # Uploaded Markdown remains literal source text; only captured web pages
-    # opt into structured rendering.
+    # Captured web pages and uploaded Markdown files render as Markdown (math
+    # included); every other text source stays literal.
     content_format: ContentFormat = "plain_text"
     source_type: str = "upload"
     source_url: str = ""

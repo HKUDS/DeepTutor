@@ -146,7 +146,7 @@ def test_failed_publish_restores_source_destination_and_assignment(as_user, monk
 
 
 def test_legacy_account_selection_redirect_is_private_to_owner(as_user):
-    from fastapi import HTTPException
+    from deeptutor.core.errors import AccessError
 
     with as_user("alice"):
         _make_kb("atlas", b"source")
@@ -154,7 +154,7 @@ def test_legacy_account_selection_redirect_is_private_to_owner(as_user):
         move_kb(qualified_kb_id("atlas"), destination)
         assert resolve_kb("user:kb:atlas").id == qualified_kb_id("atlas", destination)
     with as_user("bob"):
-        with pytest.raises(HTTPException):
+        with pytest.raises(AccessError):
             resolve_kb("user:kb:atlas")
 
 

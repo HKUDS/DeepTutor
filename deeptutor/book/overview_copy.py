@@ -33,6 +33,25 @@ REQUIRED_KEYS = frozenset(
 )
 
 _COPY: dict[str, dict[str, Any]] = {
+    "pt": {
+        "chapter_title": "Como ler este livro",
+        "chapter_summary": "Visão geral gerada automaticamente do grafo de conceitos e do índice de capítulos do livro.",
+        "objectives": [
+            "Ter uma visão rápida do mapa completo de capítulos",
+            "Entender como os conceitos dependem uns dos outros",
+            "Escolher o caminho de leitura que melhor atende aos seus objetivos",
+        ],
+        "intro_title": "Como ler este livro",
+        "intro_body": (
+            "O diagrama abaixo mapeia os {concepts} conceitos principais deste livro e como eles dependem uns dos outros. "
+            "O índice a seguir lista todos os {chapters} capítulos — leia de cima para baixo para seguir a ordem recomendada, "
+            "ou vá direto ao capítulo que mais despertar sua curiosidade."
+        ),
+        "untitled_book": "Este livro",
+        "concept_map_title": "Mapa de conceitos",
+        "chapter_index_title": "Índice de capítulos",
+        "chapter_index_heading": "## Índice de capítulos",
+    },
     "en": {
         "chapter_title": "How to read this book",
         "chapter_summary": (
@@ -73,6 +92,114 @@ _COPY: dict[str, dict[str, Any]] = {
         "concept_map_title": "概念图",
         "chapter_index_title": "章节索引",
         "chapter_index_heading": "## 章节索引",
+    },
+    "vi": {
+        "chapter_title": "Cách đọc cuốn sách này",
+        "chapter_summary": "Tổng quan được tạo tự động về sơ đồ khái niệm và mục lục các chương của sách.",
+        "objectives": [
+            "Nắm toàn bộ bản đồ các chương chỉ trong một cái nhìn",
+            "Hiểu các khái niệm phụ thuộc lẫn nhau như thế nào",
+            "Chọn lộ trình đọc phù hợp với mục tiêu của bạn",
+        ],
+        "intro_title": "Cách đọc cuốn sách này",
+        "intro_body": (
+            "Sơ đồ bên dưới thể hiện {concepts} khái niệm cốt lõi của cuốn sách và "
+            "mối quan hệ phụ thuộc giữa chúng. Mục lục chương ngay sau đó liệt kê "
+            "cả {chapters} chương — bạn có thể đọc từ trên xuống dưới theo lộ trình "
+            "được đề xuất, hoặc chuyển thẳng đến phần mình quan tâm nhất."
+        ),
+        "untitled_book": "Cuốn sách này",
+        "concept_map_title": "Sơ đồ khái niệm",
+        "chapter_index_title": "Mục lục chương",
+        "chapter_index_heading": "## Mục lục chương",
+    },
+    "fr": {
+        "chapter_title": "Comment lire ce livre",
+        "chapter_summary": (
+            "Vue d’ensemble générée automatiquement à partir du graphe de concepts "
+            "et de l’index des chapitres."
+        ),
+        "objectives": [
+            "Voir la carte complète des chapitres en un coup d’œil",
+            "Comprendre les dépendances entre les concepts",
+            "Choisir le parcours de lecture adapté à vos objectifs",
+        ],
+        "intro_title": "Comment lire ce livre",
+        "intro_body": (
+            "Le schéma ci-dessous cartographie les {concepts} concepts clés de ce livre "
+            "et leurs dépendances. L’index des chapitres qui suit liste les {chapters} "
+            "chapitres — lisez de haut en bas pour suivre le parcours recommandé, ou "
+            "allez directement au sujet qui vous intéresse le plus."
+        ),
+        "untitled_book": "Ce livre",
+        "concept_map_title": "Carte des concepts",
+        "chapter_index_title": "Index des chapitres",
+        "chapter_index_heading": "## Index des chapitres",
+    },
+    "tr": {
+        "chapter_title": "Bu kitap nasıl okunur",
+        "chapter_summary": (
+            "Kitabın kavram grafiğinin ve bölüm dizininin otomatik oluşturulmuş özeti."
+        ),
+        "objectives": [
+            "Tüm bölüm haritasını tek bakışta görün",
+            "Kavramların birbirine nasıl bağlı olduğunu anlayın",
+            "Hedeflerinize uygun okuma yolunu seçin",
+        ],
+        "intro_title": "Bu kitap nasıl okunur",
+        "intro_body": (
+            "Aşağıdaki diyagram, bu kitaptaki {concepts} temel kavramı ve bunların "
+            "birbirine nasıl bağlı olduğunu gösterir. Ardından gelen bölüm dizini "
+            "{chapters} bölümün tamamını listeler; önerilen yol için yukarıdan aşağıya "
+            "okuyabilir ya da en çok merak ettiğiniz bölüme doğrudan geçebilirsiniz."
+        ),
+        "untitled_book": "Bu kitap",
+        "concept_map_title": "Kavram haritası",
+        "chapter_index_title": "Bölüm dizini",
+        "chapter_index_heading": "## Bölüm dizini",
+    },
+    "it": {
+        "chapter_title": "Come leggere questo libro",
+        "chapter_summary": (
+            "Panoramica generata automaticamente della mappa concettuale e dell'indice dei capitoli del libro."
+        ),
+        "objectives": [
+            "Avere una panoramica completa della mappa dei capitoli a colpo d'occhio",
+            "Comprendere le relazioni tra i concetti chiave",
+            "Scegliere il percorso di lettura più adatto ai propri obiettivi",
+        ],
+        "intro_title": "Come leggere questo libro",
+        "intro_body": (
+            "Il diagramma seguente mostra i {concepts} concetti fondamentali di questo libro e le loro "
+            "interconnessioni. L'indice successivo elenca tutti i {chapters} capitoli; puoi leggerli "
+            "in ordine sequenziale oppure passare direttamente al capitolo di tuo interesse."
+        ),
+        "untitled_book": "Questo libro",
+        "concept_map_title": "Mappa concettuale",
+        "chapter_index_title": "Indice dei capitoli",
+        "chapter_index_heading": "## Indice dei capitoli",
+    },
+    "hu": {
+        "chapter_title": "Így olvassa ezt a könyvet",
+        "chapter_summary": (
+            "A könyv fogalomgráfjából és fejezetjegyzékéből automatikusan készült áttekintés."
+        ),
+        "objectives": [
+            "Egy pillantással lássa a teljes fejezettérképet",
+            "Értse meg, hogyan függenek össze a fogalmak",
+            "Válassza ki a céljaihoz illő olvasási útvonalat",
+        ],
+        "intro_title": "Így olvassa ezt a könyvet",
+        "intro_body": (
+            "Az alábbi ábra a könyv {concepts} fő fogalmát és azok egymásra épülését mutatja. "
+            "A következő fejezetjegyzék mind a {chapters} fejezetet felsorolja — haladjon "
+            "fentről lefelé az ajánlott sorrendhez, vagy ugorjon egyenesen arra, ami a "
+            "leginkább érdekli."
+        ),
+        "untitled_book": "Ez a könyv",
+        "concept_map_title": "Fogalomtérkép",
+        "chapter_index_title": "Fejezetjegyzék",
+        "chapter_index_heading": "## Fejezetjegyzék",
     },
 }
 

@@ -267,11 +267,14 @@ Please analyze the above exam paper content, extract all question information, a
         if result is None:
             raise ValueError("JSON parsing returned None")
     except Exception as e:
+        # ``result_text`` may be None (empty provider response), which is the
+        # very case the branch above raises for — slicing None here would mask
+        # that ValueError with a TypeError.
+        preview = (result_text or "")[:500]
         print(f"✗ JSON parsing error: {e!s}")
-        print(f"LLM response content: {result_text[:500]}...")
+        print(f"LLM response content: {preview}...")
         raise ValueError(
-            f"Failed to parse LLM JSON response: {e}. "
-            f"Raw response (first 500 chars): {result_text[:500]!r}"
+            f"Failed to parse LLM JSON response: {e}. Raw response (first 500 chars): {preview!r}"
         ) from e
 
     questions = result.get("questions", [])
@@ -346,7 +349,7 @@ def extract_questions_from_paper(paper_dir: str, output_dir: str | None = None) 
         llm_config = get_llm_config()
     except ValueError as e:
         print(f"✗ {e!s}")
-        print("Tip: Configure an active LLM profile in Settings > Catalog")
+        print("Tip: Configure an active LLM profile in Settings > Language models")
         return False
 
     questions = extract_questions_with_llm(

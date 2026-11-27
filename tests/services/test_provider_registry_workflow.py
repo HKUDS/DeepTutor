@@ -123,6 +123,82 @@ def test_new_model_reuses_connection_and_later_key_changes_without_copying_secre
     assert options[-1]["profile_name"] == "New account"
 
 
+@pytest.mark.parametrize("service", ["llm", "task"])
+def test_minimax_model_references_follow_protocol_changes_without_rewriting_models(
+    tmp_path, service
+):
+    store, current = fixture(tmp_path)
+    catalog = merge_registry_edit(
+        current, provider_edit(provider="minimax", base_url="", api_format="auto")
+    )
+    catalog = add_model(
+        catalog,
+        service=service,
+        ref={
+            "connection_id": "account",
+            "binding": "minimax",
+            "default_base_url": "https://api.minimax.io/v1",
+        },
+    )
+    catalog = merge_registry_edit(
+        catalog,
+        {
+            "kind": "default",
+            "service": service,
+            "profile_id": "new-profile",
+            "model_id": "new-model",
+        },
+    )
+    catalog = store.save(catalog)
+    original_models = deepcopy(catalog["services"])
+    assert (
+        resolve_llm_runtime_config(catalog, service=store, service_name=service).effective_url
+        == "https://api.minimax.io/v1"
+    )
+    catalog = store.save(
+        merge_registry_edit(
+            catalog,
+            provider_edit(
+                provider="minimax",
+                base_url="",
+                api_format="anthropic",
+            ),
+        )
+    )
+    resolved = resolve_llm_runtime_config(catalog, service=store, service_name=service)
+    assert resolved.api_format == "anthropic"
+    assert resolved.effective_url == "https://api.minimax.io/anthropic"
+    assert catalog["services"] == original_models
+    catalog = store.save(
+        merge_registry_edit(
+            catalog,
+            provider_edit(
+                provider="minimax",
+                base_url="https://gateway.test/minimax",
+                api_format="anthropic",
+            ),
+        )
+    )
+    assert (
+        resolve_llm_runtime_config(catalog, service=store, service_name=service).effective_url
+        == "https://gateway.test/minimax"
+    )
+    catalog = store.save(
+        merge_registry_edit(
+            catalog,
+            provider_edit(
+                provider="minimax",
+                base_url="",
+                api_format="openai_chat",
+            ),
+        )
+    )
+    resolved = resolve_llm_runtime_config(catalog, service=store, service_name=service)
+    assert resolved.api_format == "openai_chat"
+    assert resolved.effective_url == "https://api.minimax.io/v1"
+    assert catalog["services"] == original_models
+
+
 def test_switch_one_legacy_model_provider_without_touching_sibling_or_unknown_fields(tmp_path):
     store, current = fixture(tmp_path)
     catalog = merge_registry_edit(current, provider_edit())
@@ -381,7 +457,10 @@ def test_capability_detection_uses_metadata_not_names():
                 "architecture": {"input_modalities": ["text"], "output_modalities": ["image"]},
             }
         ]
-    ) == [{"category": "generation", "evidence": "metadata"}]
+    ) == [
+        {"category": "generation", "evidence": "metadata"},
+        {"category": "imagegen", "evidence": "metadata"},
+    ]
     assert detect_capabilities(
         [
             {"supportedGenerationMethods": ["embedContent"]},
@@ -492,3 +571,94 @@ def test_managed_account_and_model_names_survive_catalog_refresh(tmp_path):
     )
     assert managed["name"] == "My signed-in account"
     assert managed["models"][0]["name"] == "My model label"
+
+
+@pytest.mark.parametrize("link", ["reference", "legacy_connection"])
+def test_manual_service_adapter_and_url_survive_save_and_reach_runtime(tmp_path, link):
+    store, catalog = fixture(tmp_path)
+    overrides = {
+        "tts": {"enabled": True, "binding": "minimax", "base_url": "https://speech.test/v1"}
+    }
+    catalog = merge_registry_edit(catalog, provider_edit(service_overrides=overrides))
+    profile = catalog["services"]["tts"]["profiles"][0]
+    if link == "reference":
+        profile["provider_ref"] = {"connection_id": "account", "binding": "custom"}
+    else:
+        profile["connection_id"] = "account"
+    saved = store.save(catalog)
+    source = next(c for c in saved["connections"] if c["id"] == "account")
+    assert source["service_overrides"] == overrides
+    resolved = resolve_profile_provider(saved, "tts", saved["services"]["tts"]["profiles"][0])
+    assert resolved["binding"] == "minimax"
+    assert resolved["base_url"] == "https://speech.test/v1"
+    assert resolved["api_key"] == "new-secret"
+
+
+def test_manual_service_changes_do_not_rekey_or_remove_existing_models(tmp_path):
+    store, catalog = fixture(tmp_path)
+    before = deepcopy(catalog["services"])
+    catalog = merge_registry_edit(
+        catalog,
+        {
+            "kind": "provider",
+            "ref": {"service": "llm", "profile_id": "llm"},
+            "fields": {
+                "service_overrides": {
+                    "llm": {"enabled": False},
+                    "tts": {"enabled": True, "binding": "custom"},
+                }
+            },
+        },
+    )
+    saved = store.save(catalog)
+    saved["services"]["llm"]["profiles"][0].pop("service_overrides")
+    assert saved["services"] == before
+
+
+# ── #2451 (profile side): an explicitly-set profile api_format must not be
+# silently clobbered by the linked connection's value.
+
+
+def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
+    store, catalog = fixture(tmp_path)
+
+
+def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
+    store, catalog = fixture(tmp_path)
+    # merge_registry_edit is what materializes the "account" connection the
+    # profile links to; without it saved["connections"] stays empty.
+    catalog = merge_registry_edit(catalog, provider_edit())
+    profile = catalog["services"]["llm"]["profiles"][0]
+    profile["provider_ref"] = {"connection_id": "account", "binding": "custom"}
+    if profile_format is not None:
+        profile["api_format"] = profile_format
+    saved = store.save(catalog)
+    source = next(c for c in saved["connections"] if c["id"] == "account")
+    if connection_format is not None:
+        source["api_format"] = connection_format
+    saved = store.save(saved)
+    return resolve_profile_provider(saved, "llm", saved["services"]["llm"]["profiles"][0])
+
+
+def test_profile_explicit_api_format_wins_over_connection(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format="openai_responses", connection_format="auto"
+    )
+
+    assert resolved["api_format"] == "openai_responses"
+
+
+def test_profile_without_api_format_inherits_connection(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format=None, connection_format="openai_responses"
+    )
+
+    assert resolved["api_format"] == "openai_responses"
+
+
+def test_api_format_defaults_to_auto_when_unset(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format=None, connection_format=None
+    )
+
+    assert resolved["api_format"] == "auto"

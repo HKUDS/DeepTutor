@@ -13,9 +13,7 @@ import {
   MessageSquare,
   Microscope,
   PenLine,
-  Signpost,
   Sparkles,
-  Youtube,
   type LucideIcon,
 } from "lucide-react";
 
@@ -137,20 +135,11 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     defaultTools: [],
   },
   {
-    value: "immersive_watching",
-    label: "Immersive Watching",
-    description: "Learn from YouTube with timestamp-grounded tutoring",
-    icon: Youtube,
-    allowedTools: ["web_search", "exec", "reason"],
-    defaultTools: [],
-    secondary: true,
-  },
-  {
-    value: "course_study",
-    label: "Course Study",
-    description: "See where a course stands and what to do next",
-    icon: Signpost,
-    allowedTools: ["web_search", "exec", "reason"],
+    value: "video_lesson",
+    label: "Video Lesson",
+    description: "Turn a question into an animated explainer you can play",
+    icon: Clapperboard,
+    allowedTools: [],
     defaultTools: [],
   },
   {
@@ -183,7 +172,6 @@ export const MASTERY_CAPABILITY_VALUE = "mastery_path";
 
 export const VISIBLE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
   (capability) =>
-    capability.value !== "course_study" &&
     capability.value !== "immersive_reading" &&
     !capability.legacy,
 );
@@ -191,9 +179,7 @@ export const VISIBLE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
 /** Actions offered inside Reading and Mastery; workspace identity is separate. */
 export const WORKSPACE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
   (capability) =>
-    capability.value !== "course_study" &&
-    capability.value !== "mastery_path" &&
-    capability.value !== "immersive_watching",
+    capability.value !== "mastery_path",
 );
 
 export function getChatCapability(value: string | null): ChatCapabilityDef {
@@ -277,7 +263,6 @@ export function visibleCapabilityPresentations(
   return capabilities
     .filter(
       (capability) =>
-        capability.value !== "course_study" &&
         capability.value !== "immersive_reading" &&
         !capability.legacy,
     )

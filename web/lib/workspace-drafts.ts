@@ -5,6 +5,25 @@ export type WorkspaceDraft = {
   text: string
   attachments: { filename: string; base64?: string; mimeType?: string }[]
 }
+
+export type WorkspaceDraftLocation = {
+  workspaceId: string
+  pathname: string
+}
+
+/**
+ * Snapshot the scope a composer is writing into. Callers capture this at
+ * typing time: by the time a deferred save or an unmount cleanup runs, the
+ * URL may already point at the destination page, and the draft would land
+ * under the wrong key.
+ */
+export function currentWorkspaceDraftLocation(): WorkspaceDraftLocation {
+  return {
+    workspaceId: activeWorkspaceId(),
+    pathname: window.location.pathname,
+  }
+}
+
 async function key(workspaceId = activeWorkspaceId(), pathname = window.location.pathname): Promise<string> {
   const location = `${workspaceId}:${pathname}`
   const status = await fetchAuthStatus()

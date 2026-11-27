@@ -1,0 +1,37 @@
+name: PR Auto-Labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, review_requested]
+
+concurrency:
+  group: pr-labeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  label:
+    name: Apply restrained PR module labels & reviewer routing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted labeler script from default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/pr-labeler.mjs
+
+      - name: Compute labels and enforce v1.7.0 reviewer rule
+        run: node .github/scripts/pr-labeler.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          EVENT_ACTION: ${{ github.event.action }}

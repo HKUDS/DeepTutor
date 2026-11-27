@@ -9,6 +9,7 @@ import typer
 
 from deeptutor.app import DeepTutorApp
 from deeptutor.services.notebook.service import NotebookCorruptedError
+from deeptutor.utils.file_types import FileTypeRouter
 
 from .common import console, print_notebook_table
 
@@ -28,7 +29,7 @@ def register(app: typer.Typer) -> None:
         """Create a notebook."""
         client = DeepTutorApp()
         notebook = client.create_notebook(name=name, description=description)
-        console.print(json.dumps(notebook, ensure_ascii=False, indent=2, default=str))
+        console.print_json(json.dumps(notebook, ensure_ascii=False, default=str))
 
     @app.command("show")
     def show_notebook(
@@ -47,7 +48,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]Notebook not found:[/] {notebook_id}")
             raise typer.Exit(code=1)
         if fmt == "json":
-            console.print(json.dumps(notebook, ensure_ascii=False, indent=2, default=str))
+            console.print_json(json.dumps(notebook, ensure_ascii=False, default=str))
             return
         console.print(f"[bold]{notebook.get('name', '')}[/] ({notebook.get('id', '')})")
         console.print(str(notebook.get("description", "") or ""))
@@ -92,7 +93,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]File not found:[/] {file_path}")
             raise typer.Exit(code=1)
 
-        content = path.read_text(encoding="utf-8")
+        content = FileTypeRouter.decode_bytes(path.read_bytes())
         record_title = title or path.stem
 
         client = DeepTutorApp()
@@ -121,7 +122,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]File not found:[/] {file_path}")
             raise typer.Exit(code=1)
 
-        content = path.read_text(encoding="utf-8")
+        content = FileTypeRouter.decode_bytes(path.read_bytes())
 
         client = DeepTutorApp()
         updated = client.update_record(notebook_id, record_id, output=content)

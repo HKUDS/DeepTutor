@@ -1,13 +1,12 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, MessageSquare } from 'lucide-react'
 import { notify } from '@/lib/notifications'
 import { randomUuid } from '@/lib/random-uuid'
 import { learningLibrary } from '@/lib/learning-library'
-import { activeWorkspaceId } from '@/lib/workspace-scope'
-import { useLearningCreation, requestedLearningCreation } from '@/components/learning/LibraryWorkspace'
+import { useCreateRequest, requestedLearningCreation } from '@/components/learning/create-request'
 import { bookRoute } from "@/lib/learning-routes";
 import { useTranslation } from 'react-i18next'
 
@@ -28,12 +27,14 @@ import { RESET_BOOK_PROGRESS, emptyBookProgress, reduceBookEvent } from '@/lib/b
 import { bookEventKind, bookEventPageId, useBookStream } from '@/lib/use-book-stream'
 
 import BookChatPanel from './components/BookChatPanel'
+import BookStructureEditor from './components/BookStructureEditor'
 import BookCreator from './components/BookCreator'
 import BookHealthBanner from './components/BookHealthBanner'
 import BookLibrary from './components/BookLibrary'
 import BookPausedBanner from './components/BookPausedBanner'
 import BookGenerationActivity from './components/BookGenerationActivity'
 import BookSidebar from './components/BookSidebar'
+import { BookCrumb } from '@/components/layout/instance-crumbs'
 import PageReader from './components/PageReader'
 import LearningCapturePanel from './components/LearningCapturePanel'
 import SpineEditor from './components/SpineEditor'
@@ -107,12 +108,15 @@ function BookPageInner() {
   const routeParams = useParams<{ bookId?: string; pageId?: string }>()
   const requestedBookId = routeParams.bookId?.trim() || null
   const requestedPageId = routeParams.pageId?.trim() || null
+  // A conversation opened from the sidebar lands on its page with the chat open.
+  const requestedChatId = useSearchParams().get('chat')?.trim() || null
   const [books, setBooks] = useState<Book[]>([])
   const [canCreateBook, setCanCreateBook] = useState(true)
   const [loadingBooks, setLoadingBooks] = useState(true)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [view, setView] = useState<View>(requestedBookId ? 'opening' : requestedLearningCreation() ? 'creator' : 'list')
 
+  const [structureOpen, setStructureOpen] = useState(false)
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const selectionRequestRef = useRef(0)
   const [detail, setDetail] = useState<BookDetail | null>(null)
@@ -132,7 +136,12 @@ function BookPageInner() {
 
   // Phase 3 state
   const [pendingDeepDiveTopic, setPendingDeepDiveTopic] = useState<string | null>(null)
-  const [chatOpen, setChatOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(Boolean(requestedChatId))
+  const [shownChatId, setShownChatId] = useState(requestedChatId)
+  if (shownChatId !== requestedChatId) {
+    setShownChatId(requestedChatId)
+    if (requestedChatId) setChatOpen(true)
+  }
   const [rebuildingBook, setRebuildingBook] = useState(false)
   const [resumingBook, setResumingBook] = useState(false)
   const [pausingBook, setPausingBook] = useState(false)
@@ -193,7 +202,7 @@ function BookPageInner() {
       const data = await learningLibrary<Book>('books')
       setBooks(data.items)
       setCanCreateBook(data.can_create)
-      setBooksError(data.unavailable_workspaces.length ? t('Some workspaces could not be loaded. Available content is shown.') : null)
+      setBooksError(null)
     } catch {
       setBooksError(t('Failed to load books'))
     } finally {
@@ -375,8 +384,10 @@ function BookPageInner() {
   const selectedPageChatSessionId = useMemo(() => {
     if (!detail?.book || !selectedPage) return null
     const sessions = detail.book.metadata?.page_chat_sessions
+    // The conversation asked for by the URL, when it was held on this page.
+    if (requestedChatId && selectedPage.id === requestedPageId) return requestedChatId
     return sessions?.[selectedPage.id] || null
-  }, [detail?.book, selectedPage])
+  }, [detail?.book, selectedPage, requestedChatId, requestedPageId])
 
   const canEditBook = detail?.book.can_edit !== false
   const expectedRevision = detail?.book.revision
@@ -398,7 +409,7 @@ function BookPageInner() {
     setView('creator')
   }
 
-  const creation = useLearningCreation(handleNewBook)
+  useCreateRequest(handleNewBook)
 
   // Defined after handleSelectBook below.
   const lastDeepLinkedBookId = useRef<string | null>(null)
@@ -486,10 +497,10 @@ function BookPageInner() {
     void refreshLearningCaptures(selectedBookId)
   }, [view, selectedBookId, refreshLearningCaptures])
 
-  const handleDeleteBook = async (id: string, workspaceId = activeWorkspaceId()) =>
+  const handleDeleteBook = async (id: string) =>
     guard('Delete book', async () => {
       // The library card already requires a second click to confirm.
-      await bookApi.delete(id, workspaceId)
+      await bookApi.delete(id)
       if (selectedBookId === id) {
         setSelectedBookId(null)
         setDetail(null)
@@ -999,6 +1010,13 @@ function BookPageInner() {
       )
     })
 
+  const refreshAfterEdit = async () => {
+    if (!selectedBookId) return
+    const data = await loadBookDetail(selectedBookId)
+    if (selectedPageId && data.pages.some(page => page.id === selectedPageId)) await hydratePage(selectedPageId)
+    else setSelectedPageId(data.pages[0]?.id || null)
+  }
+
   // ── Render ─────────────────────────────────────────────────────────
 
   // A client-side route change may arrive before the next book's detail.
@@ -1006,8 +1024,17 @@ function BookPageInner() {
   const displayView = requestedBookId && (selectedBookId !== requestedBookId || detail?.book.id !== requestedBookId)
     ? 'opening' : view
 
+  const openBook = detail?.book || pendingBook || null
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full min-w-0 flex-col">
+      {/* 「书 / this book」: the book switches to the others from the bar. */}
+      {requestedBookId && openBook && (
+        <div className="flex min-w-0 shrink-0 items-center">
+          <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
+          {detail?.spine && canEditBook && <button className="ml-auto mr-4 text-sm" onClick={() => setStructureOpen(true)}>{t('Edit book structure')}</button>}
+        </div>
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1">
       {displayView !== 'list' && displayView !== 'creator' && displayView !== 'opening' && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -1022,7 +1049,8 @@ function BookPageInner() {
         />
       )}
 
-      <main className="relative flex flex-1 overflow-hidden bg-[var(--background)]">
+      <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--background)]">
+        {structureOpen && detail?.spine && canEditBook && <BookStructureEditor key={detail.book.id} detail={detail} onChanged={refreshAfterEdit} onClose={() => setStructureOpen(false)} />}
         {/* One slot, one place, every view. The predecessor put a gradient
             progress card *inside* the creator's scrolling content and a
             second chip floating over the corner, so starting generation
@@ -1056,7 +1084,6 @@ function BookPageInner() {
             </div>
           )}
 
-          {creation.dialog}
           {displayView === 'list' && (
             <BookLibrary
               books={books}
@@ -1064,21 +1091,16 @@ function BookPageInner() {
               error={booksError}
               onRetry={() => void refreshBooks()}
               canCreate={canCreateBook}
-              onNewBook={creation.begin}
-              onSelectBook={(id, workspaceId) => {
-                if (workspaceId !== activeWorkspaceId()) router.push(bookRoute(id, null, workspaceId))
-                else void handleSelectBook(id)
-              }}
-              onDeleteBook={(id, workspaceId) => void handleDeleteBook(id, workspaceId)}
+              onNewBook={handleNewBook}
+              onSelectBook={id => void handleSelectBook(id)}
+              onDeleteBook={id => void handleDeleteBook(id)}
             />
           )}
 
           {displayView === 'creator' && (
             <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-              <div className="mx-auto max-w-4xl px-6 pt-6">
-                <button type="button" onClick={() => void handleSelectBook(null)} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={14} />{t('All books')}</button>
-              </div>
               <BookCreator
+                back={<button type="button" onClick={() => void handleSelectBook(null)} className="dt-section-back inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={14} />{t('All books')}</button>}
                 book={pendingBook}
                 onCreate={handleCreate}
                 loading={creating}
@@ -1199,7 +1221,7 @@ function BookPageInner() {
                 {/* The wrapper goes with the panel: a bordered strip with
                     nothing in it is the same occupied space by another name. */}
                 {learningCaptures.length > 0 && (
-                <div className="shrink-0 border-t border-[var(--border)] px-8 py-3">
+                <div className="shrink-0 px-8 py-3">
                   <LearningCapturePanel
                     captures={learningCaptures}
                     loading={loadingLearningCaptures}
@@ -1242,9 +1264,11 @@ function BookPageInner() {
             onClose={() => setChatOpen(false)}
             initialSessionId={selectedPageChatSessionId}
             onSessionResolved={sessionId => void handlePageChatSession(sessionId)}
+            onBookChanged={refreshAfterEdit}
           />
         )}
       </main>
+      </div>
     </div>
   )
 }

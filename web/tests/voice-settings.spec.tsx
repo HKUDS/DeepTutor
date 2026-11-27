@@ -17,7 +17,11 @@ vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => mock.fetch(...args),
 }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (s: string) => s, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (s: string, opts?: Record<string, unknown>) =>
+      opts ? s.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => String(opts[key] ?? '')) : s,
+    i18n: { language: 'en' },
+  }),
 }))
 vi.mock('@/hooks/useVoiceAutoplay', () => ({
   useVoiceAutoplay: () => ({
@@ -128,6 +132,7 @@ function Harness({ workspace = false, timeout }: { workspace?: boolean; timeout?
 }
 beforeEach(() => {
   mock.fetch.mockReset()
+  mock.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: 'unsupported', scope: 'none', voices: [] }) })
   mock.notify.mockReset()
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
   URL.createObjectURL = vi.fn(() => 'blob:preview')
@@ -140,7 +145,7 @@ it('selects model families without inventing voices for unknown models', () => {
   expect(voiceModelOptions(options, 'private-model')?.voices).toEqual([])
 })
 
-it('shows provider-specific voices, speed and language choices and accepts private IDs', () => {
+it('shows speech parameters without exposing bundled voice choices', () => {
   const update = vi.fn()
   render(
     <VoiceModelFields
@@ -153,13 +158,9 @@ it('shows provider-specific voices, speed and language choices and accepts priva
       disabled={false}
     />
   )
-  expect(screen.getByRole('option', { name: 'Vivi 2.0' })).toBeTruthy()
+  expect(screen.queryByRole('option', { name: 'Vivi 2.0' })).toBeNull()
   expect(screen.queryByRole('option', { name: 'Sisi 1.0' })).toBeNull()
   expect(screen.getByRole('spinbutton', { name: 'Speech speed' }).getAttribute('max')).toBe('2')
-  fireEvent.change(screen.getByRole('combobox', { name: 'Voice ID' }), {
-    target: { value: 'private-speaker' },
-  })
-  expect(update).toHaveBeenCalledWith('voice', 'private-speaker')
   fireEvent.change(screen.getByRole('spinbutton', { name: 'Request timeout (seconds)' }), {
     target: { value: '180' },
   })
@@ -187,21 +188,20 @@ it('shows the Qwen-Audio voice, regional guidance and documentation for the sele
       disabled={false}
     />
   )
-  expect(screen.getByRole('combobox', { name: 'Suggested voice' })).toHaveValue('longanlingxin')
+  expect(screen.queryByRole('combobox', { name: 'Suggested voice' })).toBeNull()
   expect(screen.getByText(preset.configuration_note)).toBeTruthy()
   expect(screen.getByRole('link', { name: 'Provider voice documentation' })).toHaveAttribute('href', preset.docs_url)
   expect(screen.getByText(/Fetching the model list does not test speech synthesis/)).toBeTruthy()
 })
 
-it('switching model updates an incompatible preset voice and clears unsupported instructions', async () => {
+it('switching model preserves an explicit voice without substituting a static voice', async () => {
   render(<Harness workspace />)
   fireEvent.click(screen.getByRole('button', { name: /Draft voice/ }))
   fireEvent.change(screen.getByRole('combobox', { name: 'Model \/ resource ID' }), {
     target: { value: 'seed-tts-1.0' },
   })
-  expect((screen.getByRole('combobox', { name: 'Voice ID' }) as HTMLInputElement).value).toBe(
-    'sisi-v1'
-  )
+  expect(mock.settings.draft.services.tts.profiles[0].models[1].voice).toBe('vivi-v2')
+  await waitFor(() => expect(screen.getByText('settings.voiceDiscovery.unsupported')).toBeTruthy())
   expect(screen.queryByRole('textbox', { name: 'Voice instructions' })).toBeNull()
   expect(mock.settings.draft.services.tts.active_model_id).toBe('old')
 })
@@ -254,6 +254,23 @@ it('reports failures and allows retry without applying settings', async () => {
   expect(screen.getByRole('button', { name: 'Preview voice' }).hasAttribute('disabled')).toBe(false)
 })
 
+it('shows the HTTP status for a non-JSON error body instead of a JSON parse error', async () => {
+  mock.fetch.mockResolvedValue({
+    ok: false,
+    status: 502,
+    json: async () => {
+      throw new SyntaxError("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON")
+    },
+  })
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('button', { name: 'Preview voice' }))
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toBe('Voice preview failed (HTTP 502).')
+  )
+  expect(screen.queryByText(/Unexpected token/)).toBeNull()
+  expect(screen.getByRole('button', { name: 'Preview voice' }).hasAttribute('disabled')).toBe(false)
+})
+
 it('lets a slow preview use the configured timeout and cancels at that deadline', async () => {
   vi.useFakeTimers()
   try {
@@ -274,6 +291,12 @@ it('lets a slow preview use the configured timeout and cancels at that deadline'
 })
 
 it('shows a playback timeout instead of silently returning to idle', async () => {
+  class FakeAudio {
+    play = vi.fn(() => Promise.resolve())
+    pause = vi.fn()
+    load = vi.fn()
+  }
+  vi.stubGlobal('Audio', FakeAudio)
   mock.fetch.mockResolvedValue({ ok: false, status: 504 })
   render(<PlayAudioButton content="Hello" autoPlayFresh={false} />)
   fireEvent.click(screen.getByRole('button', { name: 'Play aloud' }))

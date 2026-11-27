@@ -1,0 +1,9 @@
+{
+  "schema_version": "deeptutor.plugin-catalog/v2",
+  "meta": {
+    "generated_at": "2026-08-31T00:00:00Z",
+    "reviewed_at": "2026-08-31T00:00:00Z",
+    "reviewers": ["DeepTutor maintainers"]
+  },
+  "entries": []
+}

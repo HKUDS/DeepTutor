@@ -48,8 +48,8 @@ test("a route only ever sets the mode a NEW conversation starts in", () => {
   // The default needs no parameter: a bare route is a study conversation.
   assert.equal(masterySessionRoute("p1", "study"), "/learning/mastery/p1/sessions");
   assert.equal(
-    masterySessionRoute("p 1", "review", "c1"),
-    "/learning/mastery/p%201/sessions?mode=review&course=c1",
+    masterySessionRoute("p 1", "review"),
+    "/learning/mastery/p%201/sessions?mode=review",
   );
 });
 

@@ -452,7 +452,7 @@ async def test_build_inventory_fresh_shadows_historical_on_same_sid() -> None:
 async def test_build_inventory_adds_server_resolved_reading_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.services.session import source_inventory
+    from deeptutor.reading import references
 
     seen: list[dict[str, Any]] = []
 
@@ -466,7 +466,7 @@ async def test_build_inventory_adds_server_resolved_reading_units(
             )
         ]
 
-    monkeypatch.setattr(source_inventory, "resolve_reading_sources", resolve)
+    monkeypatch.setattr(references, "resolve_reading_sources", resolve)
     inv = await build_inventory(
         FakeStore(),
         session_id="s1",
@@ -493,10 +493,10 @@ async def test_build_inventory_adds_server_resolved_reading_units(
 async def test_historical_reading_units_are_re_resolved_from_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.services.session import source_inventory
+    from deeptutor.reading import references
 
     monkeypatch.setattr(
-        source_inventory,
+        references,
         "resolve_reading_sources",
         lambda refs: (
             [
@@ -754,6 +754,44 @@ async def test_collect_prior_images_returns_branch_images_most_recent_first() ->
     assert [entry["id"] for entry in collected] == ["img-2", "img-1"]
     assert all(entry["type"] == "image" for entry in collected)
     assert collected[0]["url"].endswith("second.png")
+
+
+@pytest.mark.asyncio
+async def test_collect_prior_images_marks_records_historical_with_source_message() -> None:
+    """#2632: re-injected records must carry their origin so the multimodal
+    layer can tell the model they came from an earlier message."""
+    messages = [
+        {
+            "id": 131,
+            "role": "user",
+            "content": "look at this",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-131",
+                    "type": "image",
+                    "filename": "plot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-131/plot.png",
+                }
+            ],
+        },
+        {"id": 132, "role": "assistant", "content": "ok", "parent_message_id": 131},
+        {
+            "id": 227,
+            "role": "user",
+            "content": "and then?",
+            "parent_message_id": 132,
+            "attachments": [],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=227)
+
+    assert [entry["id"] for entry in collected] == ["img-131"]
+    assert collected[0]["historical"] is True
+    assert collected[0]["source_message_id"] == "131"
 
 
 @pytest.mark.asyncio

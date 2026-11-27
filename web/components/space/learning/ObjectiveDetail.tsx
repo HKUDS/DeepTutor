@@ -115,6 +115,10 @@ export function ObjectiveDetail({
         </Row>
       )}
 
+      {report.explained && <Row label={t("Explained")}>{report.explained.summary}</Row>}
+      {!!report.required_visual_tasks?.length && <Row label={t("Independent visual evidence")}>{report.demonstrated_visual_tasks?.length ?? 0} / {report.required_visual_tasks.length}</Row>}
+      {!!report.required_visual_tasks?.some((task) => !report.demonstrated_visual_tasks?.includes(task)) && <p className="text-xs text-[var(--muted-foreground)]">{t("Independent visual evidence is still required for this objective.")}</p>}
+      {report.attempts.some((attempt) => attempt.independent === false) && <p className="text-xs text-[var(--muted-foreground)]">{t("Assisted practice is recorded separately from independent mastery.")}</p>}
       {evidence.length > 0 && (
         <div>
           <div className="text-xs text-[var(--muted-foreground)]">
@@ -130,6 +134,7 @@ export function ObjectiveDetail({
               >
                 <span>
                   {t(evidence.result)} · {t(evidence.assessment_type)}
+                  {evidence.visual_context?.task && ` · ${t("Visual practice")}${evidence.hints_used ? ` · ${t("Assisted")}` : ""}`}
                   {evidence.quality !== null &&
                     ` · ${Math.round(evidence.quality * 100)}%`}
                 </span>

@@ -36,9 +36,14 @@ class CodexHTTPError(RuntimeError):
 class OpenAICodexProvider(LLMProvider):
     """Use OpenAI Codex OAuth tokens to call the Responses API."""
 
-    def __init__(self, default_model: str = CODEX_DEFAULT_MODEL_ID):
+    def __init__(
+        self,
+        default_model: str = CODEX_DEFAULT_MODEL_ID,
+        extra_headers: dict[str, str] | None = None,
+    ):
         super().__init__(api_key=None, api_base=None)
         self.default_model = default_model
+        self.extra_headers = dict(extra_headers or {})
 
     async def _load_token(self) -> CodexToken:
         return await get_codex_oauth_service().get_token()
@@ -51,11 +56,14 @@ class OpenAICodexProvider(LLMProvider):
         reasoning_effort: str | None,
         tool_choice: str | dict[str, Any] | None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        session_id: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> LLMResponse:
         model_name = model or self.default_model
         model_slug = _strip_model_prefix(model_name)
         system_prompt, input_items = convert_messages(messages)
 
+        prompt_cache_key = _prompt_cache_key(messages, session_id)
         body: dict[str, Any] = {
             "model": model_slug,
             "store": False,
@@ -64,7 +72,7 @@ class OpenAICodexProvider(LLMProvider):
             "input": input_items,
             "text": {"verbosity": "medium"},
             "include": ["reasoning.encrypted_content"],
-            "prompt_cache_key": _prompt_cache_key(messages),
+            "prompt_cache_key": prompt_cache_key,
             "tool_choice": convert_tool_choice(tool_choice) or "auto",
             "parallel_tool_calls": True,
         }
@@ -72,13 +80,26 @@ class OpenAICodexProvider(LLMProvider):
             body["reasoning"] = {"effort": reasoning_effort}
         if tools:
             body["tools"] = convert_tools(tools)
+            # Preserve optional parameters instead of letting Responses normalize
+            # every field into a required strict-schema argument.
+            for tool in body["tools"]:
+                if tool.get("type") == "function":
+                    tool.setdefault("strict", False)
 
         service = get_codex_oauth_service()
         async with service.inference_guard():
             try:
                 token = await self._load_token()
                 service.validate_runtime_profile(token, model_slug, reasoning_effort)
-                headers = _build_headers(token.account_id, token.access_token)
+                resolved_effort = _runtime_reasoning_effort(model_slug, reasoning_effort)
+                if resolved_effort:
+                    body["reasoning"] = {"effort": resolved_effort}
+                headers = _build_headers(
+                    token.account_id,
+                    token.access_token,
+                    session_id=prompt_cache_key,
+                    extra_headers={**self.extra_headers, **(extra_headers or {})},
+                )
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
                         CODEX_RESPONSES_URL,
@@ -145,8 +166,17 @@ class OpenAICodexProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del max_tokens, temperature, kwargs
-        return await self._call_codex(messages, tools, model, reasoning_effort, tool_choice)
+        del max_tokens, temperature
+        session_id = _pop_session_id(kwargs)
+        return await self._call_codex(
+            messages,
+            tools,
+            model,
+            reasoning_effort,
+            tool_choice,
+            session_id=session_id,
+            extra_headers=kwargs.pop("extra_headers", None),
+        )
 
     async def chat_stream(
         self,
@@ -161,7 +191,8 @@ class OpenAICodexProvider(LLMProvider):
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del max_tokens, temperature, on_reasoning_delta, kwargs
+        del max_tokens, temperature, on_reasoning_delta
+        session_id = _pop_session_id(kwargs)
         return await self._call_codex(
             messages,
             tools,
@@ -169,10 +200,43 @@ class OpenAICodexProvider(LLMProvider):
             reasoning_effort,
             tool_choice,
             on_content_delta,
+            session_id=session_id,
+            extra_headers=kwargs.pop("extra_headers", None),
         )
 
     def get_default_model(self) -> str:
         return self.default_model
+
+
+def _normalize_reasoning_effort(requested: str | None, supported_levels: object) -> str | None:
+    """Honor low-reasoning callers without sending an unsupported off switch."""
+    if requested not in {"none", "minimal"} or not isinstance(supported_levels, (list, tuple)):
+        return requested
+    if requested in supported_levels:
+        return requested
+    for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+        if effort in supported_levels:
+            return effort
+    return requested
+
+
+def _runtime_reasoning_effort(model_slug: str, requested: str | None) -> str | None:
+    # Book blocks request "none" to favor visible output. Codex model support
+    # varies; use the owner's advertised capabilities after account validation.
+    if requested not in {"none", "minimal"}:
+        return requested
+    from deeptutor.multi_user.personal_models import owner_catalog_service
+
+    catalog = owner_catalog_service().load()
+    for profile in catalog.get("services", {}).get("llm", {}).get("profiles", []):
+        if profile.get("managed_by") != "openai_codex_oauth":
+            continue
+        for model in profile.get("models", []):
+            if model.get("model") == model_slug:
+                return _normalize_reasoning_effort(
+                    requested, model.get("codex_supported_reasoning_levels")
+                )
+    return requested
 
 
 def _strip_model_prefix(model: str) -> str:
@@ -181,7 +245,12 @@ def _strip_model_prefix(model: str) -> str:
     return model
 
 
-def _build_headers(account_id: str, token: str) -> dict[str, str]:
+def _build_headers(
+    account_id: str,
+    token: str,
+    session_id: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
     if not token:
         raise RuntimeError(
             "OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`."
@@ -196,6 +265,31 @@ def _build_headers(account_id: str, token: str) -> dict[str, str]:
     }
     if account_id:
         headers["chatgpt-account-id"] = str(account_id)
+    if session_id:
+        headers["session-id"] = session_id
+    # OAuth identity and the request's transport/session contract belong to
+    # this adapter. Other profile/call headers follow HTTP's case-insensitive
+    # override rules, matching the SDK-backed providers.
+    managed = {
+        "authorization",
+        "chatgpt-account-id",
+        "cookie",
+        "cookie2",
+        "host",
+        "content-length",
+        "connection",
+        "transfer-encoding",
+        "accept",
+        "content-type",
+        "session-id",
+    }
+    for name, value in (extra_headers or {}).items():
+        if name.lower() in managed:
+            continue
+        for existing in list(headers):
+            if existing.lower() == name.lower():
+                del headers[existing]
+        headers[name] = value
     return headers
 
 
@@ -224,14 +318,23 @@ async def _request_codex(
             return await consume_sse(response, on_content_delta)
 
 
-def _prompt_cache_key(messages: list[dict[str, Any]]) -> str:
-    # Routing affinity must survive ordinary history growth. The system prefix
-    # identifies reusable instructions; the provider still verifies all tokens.
+def _pop_session_id(kwargs: dict[str, Any]) -> str | None:
+    return str(kwargs.pop("deeptutor_session_id", "") or "").strip() or None
+
+
+def _prompt_cache_key(messages: list[dict[str, Any]], session_id: str | None = None) -> str:
+    # Routing affinity must survive ordinary history growth. A conversation id,
+    # when the caller supplies one, scopes the key to that conversation so two
+    # chats sharing the same system prompt do not share a cache route; it is
+    # hashed so the raw id is not sent upstream. Without one, fall back to the
+    # first system message, which identifies the reusable instructions. Later
+    # system messages (e.g. a rolling summary) can change between calls and
+    # must not move the key. The provider still verifies all tokens.
+    if session_id:
+        return hashlib.sha256(f"session:{session_id}".encode()).hexdigest()
     prefix = []
-    for message in messages:
-        if message.get("role") != "system":
-            break
-        prefix.append({"role": "system", "content": message.get("content")})
+    if messages and messages[0].get("role") == "system":
+        prefix.append({"role": "system", "content": messages[0].get("content")})
     raw = json.dumps(prefix, ensure_ascii=True, sort_keys=True)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

@@ -149,7 +149,7 @@ def get_providers_info() -> list[dict]:
 
 def get_default_provider(**kwargs) -> BaseSearchProvider:
     """
-    Get the default provider from Settings > Catalog.
+    Get the default provider from Settings > Search.
 
     Args:
         **kwargs: Arguments to pass to provider constructor.
@@ -173,16 +173,21 @@ def _register_builtin_providers() -> None:
         aliyun_iqs,
         bocha,
         brave,
+        deepseek,
         doubao,
         duckduckgo,
         firecrawl,
+        google_browser_scraper,
         jina,
         perplexity,
         qianfan,
+        searchapi,
         searxng,
         serper,
         serply,
+        specstream,
         tavily,
+        youcom,
         zhipu,
     )
 
@@ -190,16 +195,21 @@ def _register_builtin_providers() -> None:
         aliyun_iqs,
         bocha,
         brave,
+        deepseek,
         doubao,
         duckduckgo,
         firecrawl,
+        google_browser_scraper,
         jina,
         perplexity,
         qianfan,
+        searchapi,
         searxng,
         serper,
         serply,
+        specstream,
         tavily,
+        youcom,
         zhipu,
     )
 

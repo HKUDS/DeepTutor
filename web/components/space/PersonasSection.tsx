@@ -1,5 +1,6 @@
 "use client";
 
+import { pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
@@ -241,7 +242,6 @@ export default function PersonasSection() {
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={UserRound}
         title={t("Personas")}
         description={t(
           "Behavior presets that shape the assistant's tone and style. Apply one per chat turn from the composer.",
@@ -294,7 +294,7 @@ export default function PersonasSection() {
           </button>
         </div>
       ) : (
-        <ul className="grid gap-3 md:grid-cols-2">
+        <ul className={pageGridClass(2)}>
           {personas.map((persona) => {
             const readOnly = Boolean(persona.read_only);
             return (

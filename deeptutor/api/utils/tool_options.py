@@ -94,7 +94,18 @@ async def build_tool_options(
     for tool in registry.deferred_tools():
         try:
             definition = tool.get_definition()
-        except Exception:
+        except Exception as exc:
+            # The definition is the only place a deferred tool's name lives,
+            # so identify the failure by provider and adapter class instead
+            # of dropping it from the options without a trace.
+            kind, provider_id = provider_identity(tool)
+            logger.warning(
+                "tool options skipped %s tool %r (provider %r): get_definition() failed: %s",
+                kind or "unknown",
+                type(tool).__name__,
+                provider_id or "unknown",
+                exc,
+            )
             continue
         kind, provider_id = provider_identity(tool)
         if (kind or "mcp") != "mcp":

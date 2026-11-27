@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { WatchingProvider } from "@/context/WatchingContext";
 import { ChatMessageList } from "@/features/chat/messages";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import { compactTracePreview } from "@/features/chat/trace/memory";
@@ -118,7 +117,7 @@ function conversation(
   onSubmitUserReply = vi.fn(),
 ) {
   return (
-    <WatchingProvider>
+
       <ChatMessageList
         messages={[
           { id: 1, role: "assistant", parentMessageId: null, content, events },
@@ -128,7 +127,7 @@ function conversation(
         onCopyAssistantMessage={async () => undefined}
         onRegenerateMessage={() => undefined}
       />
-    </WatchingProvider>
+
   );
 }
 

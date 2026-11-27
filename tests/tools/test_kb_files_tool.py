@@ -103,6 +103,8 @@ class TestMountGate:
             "workspace_read",
             "workspace_search",
             "workspace_present",
+            "write_note",
+            "search_notes",
             "obsidian_read",
             "rag",
             "kb_files",

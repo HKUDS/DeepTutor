@@ -10,7 +10,8 @@ The active session id is injected server-side by the pipeline as
 ``_solve_session_id``; the model never supplies it. ``solve_finish_step`` emits
 a ``_context_checkpoint`` so the loop folds the just-finished step's tool
 chatter into a one-line summary — the loop-native equivalent of the old
-pipeline's per-step message reset.
+pipeline's per-step message reset — and carries the current plan as the
+checkpoint's ``state``, which each fold replaces with the latest copy.
 """
 
 from __future__ import annotations
@@ -118,6 +119,23 @@ class SolvePlanTool(BaseTool):
             )
         analysis = str(kwargs.get("analysis") or "").strip()
         session = get_session(session_id)
+        if session.steps:
+            # A second solve_plan would wipe progress and skip the replan budget.
+            return ToolResult(
+                content=json.dumps(
+                    {
+                        "status": "plan_exists",
+                        "plan": session.progress_text(),
+                        "instruction": (
+                            "A plan is already set. Continue it; call solve_replan "
+                            "only if the approach has genuinely failed."
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                success=False,
+                metadata={"solve_plan": {"status": "plan_exists"}},
+            )
         session.set_plan(analysis, steps)
         first = session.next_step()
         return _json_result(
@@ -194,12 +212,16 @@ class SolveFinishStepTool(BaseTool):
             ),
         }
         # The checkpoint summary persists this step's outcome while the loop
-        # folds its intermediate tool messages away (see AgentLoop).
+        # folds its intermediate tool messages away (see AgentLoop). The fold
+        # also drops this result and the solve_plan one, so the plan rides
+        # along as checkpoint state: the loop keeps only its latest copy.
         checkpoint = f"[{step.id}] {step.goal} — done. {summary}".strip()
         return _json_result(
             payload,
             meta_key="solve_finish_step",
-            extra_meta={"_context_checkpoint": {"summary": checkpoint}},
+            extra_meta={
+                "_context_checkpoint": {"summary": checkpoint, "state": session.progress_text()}
+            },
         )
 
 

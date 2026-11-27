@@ -196,7 +196,7 @@ async def test_catalog_defaults_drive_read_aloud_and_request_overrides(monkeypat
     assert resolved.adapter == resolved.provider_name == "minimax"
     assert resolved.model == TTS_PROVIDERS["minimax"].default_model == "speech-2.8-hd"
     assert resolved.base_url == "https://api.minimax.io/v1"
-    assert resolved.voice == "English_expressive_narrator"
+    assert resolved.voice == ""
     assert resolved.response_format == "mp3"
 
     def handle(request):

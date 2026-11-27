@@ -64,6 +64,28 @@ loop:
     Begin investigating: call read_source as needed, then write your objective,
     thorough investigation.
 
+  # Cache-shaped split of the same message: everything that repeats across
+  # turns (mode, manifest, attached sources) comes first, and the only per-turn
+  # bytes — the user's request — come last, so the repeated prefix is a prompt
+  # cache hit. Falls back to the single-message user_template above when these
+  # keys are absent.
+  preamble_template: |
+    Current mode: {mode}
+
+    Manifest of readable sources (use read_source to load full text by id):
+    {manifest}
+
+    Full text of this turn's attached sources (already loaded for you — do not
+    call read_source for these again):
+    {sources}
+
+    Begin investigating: call read_source for any further sources you need,
+    then write your objective, thorough investigation.
+
+  question_template: |
+    The user's current request:
+    {question}
+
   forced_finish: |
     Investigation budget reached. Stop calling tools and write your objective,
     thorough investigation now from what you have gathered.

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-phase="starting">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>Open DeepTutor</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <header class="titlebar"><span class="titlebar-name"><img class="brand-mono" src="../assets/mark.png" alt="">Open DeepTutor</span></header>
+  <main class="stage">
+    <div class="stage-inner">
+      <section class="brand">
+        <img class="mark brand-mono" src="../assets/mark.png" alt="" draggable="false">
+        <img class="wordmark brand-mono" src="../assets/wordmark.png" alt="DeepTutor" draggable="false">
+        <p class="tagline" id="tagline"></p>
+      </section>
+
+      <section class="loading" id="loading" aria-live="polite">
+        <div
+          class="track"
+          id="progress-track"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="10"
+        >
+          <span class="track-fill" id="progress-fill"></span>
+        </div>
+        <p class="step" id="step"></p>
+        <div class="slow-hint" id="slow-hint" hidden>
+          <p class="slow-hint-text" id="slow-hint-text"></p>
+          <button type="button" id="slow-logs" class="text-link"></button>
+        </div>
+      </section>
+
+      <section class="problem" id="problem" hidden role="alert">
+        <h1 id="problem-title"></h1>
+        <p id="problem-body"></p>
+        <pre id="problem-detail"></pre>
+        <div class="actions">
+          <button type="button" id="retry" class="primary"></button>
+          <button type="button" id="logs" class="ghost"></button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot" id="edition"></footer>
+  <script src="renderer.js"></script>
+</body>
+</html>

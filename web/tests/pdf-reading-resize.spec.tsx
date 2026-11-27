@@ -12,11 +12,13 @@ const pdf = vi.hoisted(() => ({ ratios: new Map<number, number>() }));
 vi.mock("@/lib/pdfjs-loader", () => ({
   outputScale: () => 1,
   pdfjsWasmUrl: () => "/pdfjs/wasm/",
+  pdfjsCMapUrl: () => "/pdfjs/cmaps/",
   loadPdfjs: async () => ({
     getDocument: () => ({
       destroy: async () => undefined,
       promise: Promise.resolve({
         getPage: async (locator: number) => ({
+          cleanup: () => undefined,
           getViewport: ({ scale }: { scale: number }) => ({
             width: 600 * scale,
             height: 600 * (pdf.ratios.get(locator) ?? 1.414) * scale,

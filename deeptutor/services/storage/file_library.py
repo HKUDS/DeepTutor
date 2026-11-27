@@ -80,6 +80,10 @@ def _run_migrations(conn) -> None:
 # ---------------------------------------------------------------------------
 
 
+class FileLibraryContentConflict(ValueError):
+    """Restoring an entry would duplicate another active content hash."""
+
+
 class FileLibraryStore:
     """Persistent file library store.
 
@@ -115,6 +119,12 @@ class FileLibraryStore:
 
         conn = sqlite3.connect(str(self._db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
+        conn.create_function(
+            "unicode_casefold",
+            1,
+            lambda value: value.casefold() if isinstance(value, str) else value,
+            deterministic=True,
+        )
         try:
             with conn:
                 yield conn
@@ -357,10 +367,23 @@ class FileLibraryStore:
             exists = conn.execute("SELECT 1 FROM library_files WHERE id = ?", (file_id,)).fetchone()
             if exists is None:
                 return False
-            conn.execute(
-                "UPDATE library_files SET is_deleted = 0, deleted_at = NULL, updated_at = ? WHERE id = ? AND is_deleted = 1",
-                (now, file_id),
-            )
+            try:
+                conn.execute(
+                    "UPDATE library_files SET is_deleted = 0, deleted_at = NULL, updated_at = ? WHERE id = ? AND is_deleted = 1",
+                    (now, file_id),
+                )
+            except sqlite3.IntegrityError as exc:
+                if exc.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+                    duplicate = conn.execute(
+                        "SELECT 1 FROM library_files WHERE is_deleted = 0 AND id != ? "
+                        "AND sha256 = (SELECT sha256 FROM library_files WHERE id = ?)",
+                        (file_id, file_id),
+                    ).fetchone()
+                    if duplicate is not None:
+                        raise FileLibraryContentConflict(
+                            "A file with the same content is already active in your library."
+                        ) from exc
+                raise
             conn.commit()
             return True
 
@@ -396,12 +419,15 @@ class FileLibraryStore:
     def _search_files_sync(self, query: str) -> list[dict[str, Any]]:
         if not query:
             return []
-        pattern = f"%{query}%"
+        # Escape LIKE metacharacters so '_' and '%' in the query match
+        # literally (substring search), not as single-char / any-run wildcards.
+        escaped = query.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM library_files
-                WHERE is_deleted = 0 AND filename LIKE ?
+                WHERE is_deleted = 0 AND unicode_casefold(filename) LIKE ? ESCAPE '\\'
                 ORDER BY created_at DESC, id DESC
                 """,
                 (pattern,),

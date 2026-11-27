@@ -1,0 +1,57 @@
+name: Memory snapshot evaluation
+
+on:
+  push:
+    paths:
+      - 'deeptutor/services/memory/evaluation.py'
+      - 'deeptutor/services/memory/evaluation_rag.py'
+      - 'examples/memory_evaluation/**'
+      - 'tests/services/memory/test_evaluation.py'
+      - 'tests/services/memory/test_evaluation_rag.py'
+      - 'tests/fixtures/memory_evaluation/**'
+      - '.github/workflows/memory-evaluation.yml'
+  pull_request:
+    paths:
+      - 'deeptutor/services/memory/evaluation.py'
+      - 'deeptutor/services/memory/evaluation_rag.py'
+      - 'examples/memory_evaluation/**'
+      - 'tests/services/memory/test_evaluation.py'
+      - 'tests/services/memory/test_evaluation_rag.py'
+      - 'tests/fixtures/memory_evaluation/**'
+      - '.github/workflows/memory-evaluation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push supersedes every earlier run for the same PR/branch. Without this,
+# each fix-up commit leaves the previous full matrix running to completion,
+# delaying feedback for the author and every other PR in the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install source and test dependencies
+        run: python -m pip install -e . pytest pytest-asyncio
+      - name: Run evaluator regressions
+        run: python -m pytest tests/services/memory/test_evaluation.py tests/services/memory/test_evaluation_rag.py -q
+      - name: Run neighboring memory tests on Linux
+        if: runner.os == 'Linux'
+        run: python -m pytest tests/services/memory -q
+      - name: Run packaged preflight without a model
+        run: python examples/memory_evaluation/run.py --cases tests/fixtures/memory_evaluation/cases.jsonl --output preflight.json

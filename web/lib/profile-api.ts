@@ -40,6 +40,9 @@ export interface ProfileInfo {
   role: AccountRole;
   created_at: string;
   disabled?: boolean;
+  /** True while the account still uses an administrator-assigned password. */
+  must_change_password?: boolean;
+  can_change_password?: boolean;
   /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
   avatar?: string;
 }
@@ -50,6 +53,29 @@ function extractDetail(data: unknown, fallback: string): string {
     if (typeof detail === "string") return detail;
   }
   return fallback;
+}
+
+/** Change the signed-in user's own password (requires the current one). */
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await apiFetch(apiUrl("/api/auth/profile/password"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (res.ok) return;
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    // Non-JSON error body: fall through to the generic message.
+  }
+  throw new Error(extractDetail(data, "Failed to change password"));
 }
 
 /** Fetch the signed-in user's own profile. */

@@ -11,6 +11,8 @@ export type ContextBudget = {
   used_tokens: number;
   free_tokens: number;
   model?: string;
+  /** Effective reasoning effort of the measured request, when one was set. */
+  reasoning_effort?: string;
   counter?: string;
   deferred_tool_count?: number;
   segments: ContextBudgetSegment[];
@@ -32,11 +34,13 @@ const SEGMENT_COLORS: Record<string, string> = {
   persona_style: "#f97316",
   partner_turn_policy: "#d946ef",
   memory: "#a855f7",
+  learning_journal: "#3b82f6",
   knowledge_base_note: "#8b5cf6",
   skills: "#06b6d4",
   sources: "#0891b2",
   notebooks: "#e879a3",
   workspace: "#65a30d",
+  workspace_instructions: "#0d9488",
   capability: "#64748b",
 };
 
@@ -260,6 +264,12 @@ export default function ContextBudgetChip({
               {budget.model ? (
                 <span className="min-w-0 truncate text-[10.5px] text-[var(--muted-foreground)]/70">
                   {budget.model}
+                  {budget.reasoning_effort ? (
+                    <span className="text-[var(--muted-foreground)]/50">
+                      {" · "}
+                      {t("Reasoning effort")}: {budget.reasoning_effort}
+                    </span>
+                  ) : null}
                 </span>
               ) : null}
             </div>

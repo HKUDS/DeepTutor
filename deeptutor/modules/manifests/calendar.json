@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "calendar",
+  "distribution": "deeptutor-calendar",
+  "requires": [],
+  "optional": [
+    "mastery",
+    "partners"
+  ],
+  "paths": [
+    "deeptutor/services/calendar",
+    "deeptutor/services/cron",
+    "deeptutor/api/routers/calendar.py",
+    "deeptutor/tools/cron_tool.py"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {
+    "cron": {
+      "class_path": "deeptutor.tools.builtin:CronTool",
+      "order": 24
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.calendar:router",
+      "options": {
+        "prefix": "/api/calendar",
+        "tags": [
+          "calendar"
+        ]
+      },
+      "auth": "learning",
+      "order": 640
+    }
+  ],
+  "commands": [],
+  "navigation": [
+    "/calendar"
+  ],
+  "services": [
+    {
+      "id": "cron",
+      "start": "deeptutor.services.cron.module_service:start_cron",
+      "stop": "deeptutor.services.cron.module_service:stop_cron"
+    }
+  ],
+  "requirements": [
+    "croniter>=6.0.0,<7.0.0",
+    "python-dateutil>=2.9.0,<3.0.0"
+  ],
+  "executables": []
+}

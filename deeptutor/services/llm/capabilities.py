@@ -103,6 +103,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,
         "has_thinking_tags": False,
     },
+    "claude_code": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -154,14 +163,6 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,  # Depends on underlying model
         "system_in_messages": True,
     },
-    # OrcaRouter (aggregator, generally OpenAI-compatible)
-    "orcarouter": {
-        "supports_response_format": True,  # Depends on underlying model
-        "supports_streaming": True,
-        "supports_tools": True,
-        "supports_vision": True,  # Depends on underlying model
-        "system_in_messages": True,
-    },
     # Groq (fast inference)
     "groq": {
         "supports_response_format": True,
@@ -192,6 +193,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_tools": True,
         "supports_vision": True,
         "system_in_messages": True,
+    },
+    # xAI Grok: the OpenAI-compatible endpoint supports tools, structured
+    # output and image input across the current Grok families.
+    "xai": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
     },
     # DashScope / Alibaba Cloud (Qwen family)
     # Uses OpenAI-compatible API with native function calling support.
@@ -282,6 +293,22 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
         "has_thinking_tags": True,
         "supports_vision": False,
     },
+    # DeepSeek-V4.1-Flash is natively multimodal: the vision add-on of the
+    # experimental V4 Flash became part of the main model. ``deepseek-flash``
+    # is its name on DeepSeek's own API; gateways publish dated ids such as
+    # ``deepseek-v4.1-flash-1017``. Keep these overrides narrow so every other
+    # DeepSeek text model stays fail-closed, and keep them vision-only so the
+    # broader ``deepseek`` entry still supplies response-format and
+    # thinking-tag handling. Gateways that namespace model ids (OpenRouter,
+    # resellers on Model Studio) need their own entries, as the Qwen-VL rules
+    # below already do.
+    # https://api-docs.deepseek.com/news/news260910/
+    "deepseek-v4.1-flash": {"supports_vision": True},
+    "deepseek-flash": {"supports_vision": True},
+    "deepseek-v4-flash-vision-exp": {"supports_vision": True},
+    "deepseek/deepseek-v4.1-flash": {"supports_vision": True},
+    "deepseek/deepseek-flash": {"supports_vision": True},
+    "vanchin/deepseek-v4.1-flash": {"supports_vision": True},
     # Qwen text models often share the same provider/gateway as Qwen-VL.
     # Keep thinking-tag handling broad, but only mark explicit VL/vision model
     # names as image-capable so RAG image indexing can fail closed.
@@ -638,6 +665,22 @@ def supports_vision(binding: str, model: str | None = None) -> bool:
     return bool(value)
 
 
+def supports_vision_declared(
+    declared: object, binding: str | None, model: str | None = None
+) -> bool:
+    """Vision support, with a model's own declaration winning over the tables.
+
+    Catalog capability overrides register against the provider the runtime may
+    detect from ``base_url``, which is not always the profile's declared
+    binding, so the declaration has to be honoured before the lookup. The
+    settings picker and the save-time gate both use this rule, otherwise they
+    disagree about the same model (#2037 follow-up).
+    """
+    if type(declared) is bool:
+        return declared
+    return supports_vision(binding, model)
+
+
 def supports_vision_url(binding: str, model: str | None = None) -> bool:
     """Whether the provider accepts remote URL image references.
 
@@ -694,7 +737,7 @@ def get_effective_temperature(
 #: supplies, so each request carries the turn's own session id. Stated here
 #: rather than tested inline: the chat loop and the explore capability both
 #: need it, and neither should have to name a provider to run a turn.
-SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex", "claude_code"})
 
 
 def threads_session_id(binding: str | None) -> bool:

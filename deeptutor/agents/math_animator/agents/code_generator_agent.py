@@ -229,10 +229,17 @@ class CodeGeneratorAgent(BaseAgent):
                 )
                 if structured_attempt >= max_retries:
                     break
+                # Once the budget cannot grow, another truncated call repeats
+                # the same failure instead of repairing it (#1914).
+                if (
+                    outcome.truncated
+                    and escalated_max_tokens(base_max_tokens, truncations) <= max_tokens
+                ):
+                    break
                 await asyncio.sleep(min(0.25 * (2**structured_attempt), 2.0))
 
         raise GeneratedCodeOutputError(
-            f"Math animator {stage} returned no usable code after {attempts} attempts. "
+            f"Math animator {stage} returned no usable code after {structured_attempt + 1} attempts. "
             f"Last attempt: {last_failure}"
         ) from last_error
 

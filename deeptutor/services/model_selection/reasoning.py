@@ -31,6 +31,11 @@ def supported_reasoning_efforts(
         "anthropic_compatible": "custom_anthropic",
     }.get(provider, provider)
     spec = find_by_name(provider)
+    if spec and spec.name in {"minimax", "minimax_anthropic"}:
+        if model.lower() == "minimax-m3.1-flash":
+            return ["low", "medium", "high", "xhigh", "max"]
+        if model.lower() == "minimax-m3":
+            return ["none", "adaptive"]
     binary_choices = None
     if spec is None or spec.backend in {"openai_compat", "azure_openai"}:
         # Use the actual wire mapper, including custom model-family inference.
@@ -64,7 +69,15 @@ def supported_reasoning_efforts(
     elif provider in {"anthropic", "custom_anthropic"} or "claude" in name:
         if any(
             part in name
-            for part in ("opus-4-7", "opus-4-8", "opus-5", "sonnet-5", "fable-5", "mythos-5")
+            for part in (
+                "opus-4-7",
+                "opus-4-8",
+                "opus-5",
+                "sonnet-5",
+                "haiku-5",
+                "fable-5",
+                "mythos-5",
+            )
         ):
             levels = ["none", "adaptive"]
         elif any(

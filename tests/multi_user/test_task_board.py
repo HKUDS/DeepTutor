@@ -10,9 +10,14 @@ from deeptutor.api.routers import auth, task_board
 from deeptutor.services.auth import TokenPayload
 from deeptutor.services.task_board import (
     CreateCard,
+    LinkStatus,
+    LinkTasks,
+    StatusColors,
+    TaskBoard,
     TaskBoardStore,
     UpdateCard,
     get_task_board_store,
+    workspace_board,
 )
 from deeptutor.services.workspace import get_content_workspace_service
 from deeptutor.services.workspace.activity import WorkspaceActivityMiddleware
@@ -99,7 +104,9 @@ def test_learning_policy_allows_board_reads_and_writes_only_with_chat_surface(cl
 
 
 def test_create_edit_move_archive_restore_and_reload(client):
-    assert client.get("/api/task-board", headers=headers()).json() == {"cards": []}
+    assert (
+        client.get("/api/task-board", headers=headers()).json() == TaskBoard(cards=[]).model_dump()
+    )
     response = client.post(
         "/api/task-board/cards", json={"title": "  Review derivatives  "}, headers=headers()
     )
@@ -133,7 +140,9 @@ def test_create_edit_move_archive_restore_and_reload(client):
 )
 def test_rejects_invalid_new_cards(client, payload):
     assert client.post("/api/task-board/cards", json=payload, headers=headers()).status_code == 422
-    assert client.get("/api/task-board", headers=headers()).json() == {"cards": []}
+    assert (
+        client.get("/api/task-board", headers=headers()).json() == TaskBoard(cards=[]).model_dump()
+    )
 
 
 @pytest.mark.parametrize(
@@ -152,7 +161,10 @@ def test_other_accounts_cannot_read_or_modify_cards(client):
     card = client.post(
         "/api/task-board/cards", json={"title": "Private task"}, headers=headers()
     ).json()["cards"][0]
-    assert client.get("/api/task-board", headers=headers("bob")).json() == {"cards": []}
+    assert (
+        client.get("/api/task-board", headers=headers("bob")).json()
+        == TaskBoard(cards=[]).model_dump()
+    )
     response = client.patch(
         f"/api/task-board/cards/{card['id']}", json={"archived": True}, headers=headers("bob")
     )
@@ -160,48 +172,72 @@ def test_other_accounts_cannot_read_or_modify_cards(client):
     assert client.get("/api/task-board", headers=headers()).json()["cards"] == [card]
 
 
-def test_workspace_selection_and_archived_workspace_guard(client, as_user):
+def test_each_workspace_reads_its_own_board_and_assignment_guards(client, as_user):
     with as_user("alice"):
         service = get_content_workspace_service()
         first = service.create_workspace("First")
         second = service.create_workspace("Second")
-    first_query = {"dt_workspace": first["workspace_id"]}
-    second_query = {"dt_workspace": second["workspace_id"]}
+        # Cards filed nowhere predate per-workspace boards; General keeps them.
+        legacy = get_task_board_store().create(CreateCard(title="Legacy task")).cards[0]
+
+    def board(workspace):
+        return client.get(
+            "/api/task-board", headers=headers(), params={"dt_workspace": workspace}
+        ).json()["cards"]
+
     card = client.post(
         "/api/task-board/cards",
-        json={"title": "Scoped task"},
+        json={"title": "First task"},
         headers=headers(),
-        params=first_query,
+        params={"dt_workspace": first["workspace_id"]},
     ).json()["cards"][0]
-    assert client.get("/api/task-board", headers=headers(), params=second_query).json() == {
-        "cards": []
-    }
-    assert client.get("/api/task-board", headers=headers()).json() == {"cards": []}
+    assert card["workspace_id"] == first["workspace_id"]
+    assert board(first["workspace_id"]) == [card]
+    assert [row["id"] for row in board("")] == [legacy.id]
+    assert board(second["workspace_id"]) == []
+    url = f"/api/task-board/cards/{card['id']}"
+    moved = client.patch(
+        url,
+        json={"workspace_id": second["workspace_id"]},
+        headers=headers(),
+        params={"dt_workspace": first["workspace_id"]},
+    )
+    assert moved.json()["cards"] == []
+    assert [row["id"] for row in board(second["workspace_id"])] == [card["id"]]
+    assert client.patch(url, json={"workspace_id": "missing"}, headers=headers()).status_code == 404
+    with as_user("bob"):
+        other = get_content_workspace_service().create_workspace("Private")
     assert (
         client.patch(
-            f"/api/task-board/cards/{card['id']}",
-            json={"status": "done"},
-            headers=headers(),
-            params=second_query,
+            url, json={"workspace_id": other["workspace_id"]}, headers=headers()
         ).status_code
         == 404
     )
-    assert client.get(
-        "/api/task-board", headers=headers("bob"), params=first_query
-    ).status_code in {403, 404, 409}
+    assert (
+        client.get(
+            "/api/task-board", headers=headers(), params={"dt_workspace": other["workspace_id"]}
+        ).status_code
+        == 404
+    )
     with as_user("alice"):
-        with workspace_context(first["workspace_id"]):
-            assert get_task_board_store().read().cards[0].id == card["id"]
         service.update_workspace(first["workspace_id"], archived=True)
     assert (
         client.patch(
-            f"/api/task-board/cards/{card['id']}",
-            json={"status": "done"},
-            headers=headers(),
-            params=first_query,
+            url, json={"workspace_id": first["workspace_id"]}, headers=headers()
         ).status_code
         == 404
     )
+    # A request scoped to the old workspace cannot mutate the moved card.
+    assert (
+        client.patch(
+            url,
+            json={"status": "done"},
+            headers=headers(),
+            params={"dt_workspace": first["workspace_id"]},
+        ).status_code
+        == 404
+    )
+    assert board(second["workspace_id"])[0]["status"] == "todo"
 
 
 def test_concurrent_connections_preserve_cards_and_independent_fields(tmp_path):
@@ -229,3 +265,302 @@ def test_concurrent_connections_preserve_cards_and_independent_fields(tmp_path):
     updated = TaskBoardStore(path).read().cards[0]
     assert updated.note == "Keep this note"
     assert updated.status == "done"
+
+
+def test_associations_preserve_latest_order_and_independent_status_switch(tmp_path):
+    store = TaskBoardStore(tmp_path / "tasks.sqlite")
+    first = store.create(CreateCard(title="First"), "study").cards[0]
+    second = store.create(CreateCard(title="Second"), "study").cards[1]
+    linked = store.link_tasks(
+        "chat", LinkTasks(workspace_id="study", task_ids=[first.id, second.id])
+    )
+    assert linked.session_links[0].task_ids == [first.id, second.id]
+    reordered = store.link_tasks(
+        "chat", LinkTasks(workspace_id="study", task_ids=[second.id, first.id])
+    )
+    assert reordered.session_links[0].task_ids == [first.id, second.id]
+    disabled = store.link_status("chat", LinkStatus(workspace_id="study", enabled=False))
+    assert not disabled.session_links[0].status_link_enabled
+    assert disabled.session_links[0].task_ids == [first.id, second.id]
+    removed = store.link_tasks("chat", LinkTasks(workspace_id="study", task_ids=[first.id]))
+    assert removed.session_links[0].task_ids == [first.id]
+    relinked = store.link_tasks(
+        "chat", LinkTasks(workspace_id="study", task_ids=[first.id, second.id])
+    )
+    assert relinked.session_links[0].status_link_enabled
+    assert relinked.session_links[0].task_ids[-1] == second.id
+    store.move_session_links(["chat"], "study", "other")
+    assert store.read().session_links[0].workspace_id == "other"
+    assert store.read().session_links[0].task_ids == []
+    assert store.context_text("other", "chat") == ""
+    assert [card.id for card in workspace_board(store.read(), "study").cards] == [
+        first.id,
+        second.id,
+    ]
+
+
+def test_workspace_task_context_and_linked_context_use_live_cards(tmp_path):
+    store = TaskBoardStore(tmp_path / "tasks.sqlite")
+    assigned = store.create(CreateCard(title="Workspace task")).cards[0]
+    linked = store.create(CreateCard(title="Linked task"), "study").cards[1]
+    store.update(assigned.id, UpdateCard(workspace_id="study"))
+    store.link_tasks("chat-one", LinkTasks(workspace_id="study", task_ids=[linked.id]))
+    assert "Workspace task" in store.context_text("study", "chat-two")
+    assert '"linked_to_conversation": false' in store.context_text("study", "chat-two")
+    assert "Linked task" in store.context_text("study", "chat-one")
+    store.update(linked.id, UpdateCard(status="done", note="Newest note"), workspace_id="study")
+    assert "Newest note" in store.context_text("study", "chat-one")
+    assert '"status": "done"' in store.context_text("study", "chat-one")
+    assert store.context_text("other", "chat-one") == ""
+    store.update(assigned.id, UpdateCard(archived=True), workspace_id="study")
+    assert "Workspace task" not in store.context_text("study", "chat-two")
+    assert "Linked task" in store.context_text("study", "chat-two")
+
+
+def test_link_validation_is_transactional_and_colors_are_durable(tmp_path):
+    store = TaskBoardStore(tmp_path / "tasks.sqlite")
+    card = store.create(CreateCard(title="Keep")).cards[0]
+    original = store.link_tasks("chat", LinkTasks(task_ids=[card.id]))
+    with pytest.raises(KeyError):
+        store.link_tasks("chat", LinkTasks(task_ids=["missing"]))
+    assert store.read() == original
+    colors = StatusColors(todo="#123456", doing="#abcdef", done="#777777")
+    saved = store.set_colors(colors)
+    assert TaskBoardStore(store.path).read().colors == colors
+    assert saved.revision > original.revision
+    store.update(card.id, UpdateCard(archived=True))
+    with pytest.raises(KeyError):
+        store.link_tasks("other-chat", LinkTasks(task_ids=[card.id]))
+
+
+def test_legacy_workspace_tasks_are_imported_once_without_losing_archive_state(as_user):
+    from deeptutor.services.path_service import get_path_service
+
+    with as_user("alice"):
+        service = get_content_workspace_service()
+        workspace = service.create_workspace("Original")
+        with workspace_context(workspace["workspace_id"]):
+            legacy_path = get_path_service().get_workspace_dir() / "task-board" / "cards.sqlite"
+            legacy = TaskBoardStore(legacy_path)
+            card = legacy.create(CreateCard(title="Legacy task")).cards[0]
+            legacy.update(card.id, UpdateCard(status="done", archived=True))
+        store = get_task_board_store()
+        imported = store.read().cards[0]
+        assert imported.title == "Legacy task"
+        assert imported.archived and imported.status == "done"
+        assert imported.workspace_id == workspace["workspace_id"]
+        store.update(
+            imported.id,
+            UpdateCard(title="New title", archived=False),
+            workspace_id=workspace["workspace_id"],
+        )
+        assert len(get_task_board_store().read().cards) == 1
+        assert get_task_board_store().read().cards[0].title == "New title"
+        assert legacy_path.exists()
+
+
+def test_session_link_routes_validate_session_and_account(client, as_user):
+    import asyncio
+
+    from deeptutor.services.session import get_session_store
+
+    with as_user("alice"):
+        session = asyncio.run(get_session_store().create_session())
+    card = client.post("/api/task-board/cards", json={"title": "Task"}, headers=headers()).json()[
+        "cards"
+    ][0]
+    url = f"/api/task-board/sessions/{session['id']}"
+    assert client.put(url, json={"task_ids": [card["id"]]}, headers=headers()).status_code == 200
+    assert (
+        client.put(url, json={"task_ids": [card["id"]]}, headers=headers("bob")).status_code == 404
+    )
+    assert (
+        client.put(
+            "/api/task-board/sessions/missing", json={"task_ids": [card["id"]]}, headers=headers()
+        ).status_code
+        == 404
+    )
+    updated = client.patch(url + "/status", json={"enabled": False}, headers=headers()).json()
+    assert not updated["session_links"][0]["status_link_enabled"]
+    assert (
+        client.put(
+            "/api/task-board/colors", json={"todo": "not-a-color"}, headers=headers()
+        ).status_code
+        == 422
+    )
+    assert (
+        client.put(
+            "/api/task-board/colors",
+            json={"todo": "#111111", "doing": "#222222", "done": "#333333"},
+            headers=headers(),
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/task-board", headers=headers("bob")).json()["colors"]
+        == StatusColors().model_dump()
+    )
+
+
+@pytest.mark.asyncio
+async def test_events_observe_commits_from_another_store_connection(as_user):
+    import json
+
+    class Request:
+        headers: dict[str, str] = {}
+        query_params: dict[str, str] = {}
+
+        async def is_disconnected(self):
+            return False
+
+    with as_user("alice"):
+        stream = await task_board.board_events(Request())
+        assert "no-transform" in stream.headers["cache-control"]
+        assert stream.headers["content-encoding"] == "identity"
+        events = stream.body_iterator
+        first = await anext(events)
+        assert json.loads(first.split("data: ")[1])["revision"] == 0
+        writer = TaskBoardStore(get_task_board_store().path)
+        writer.create(CreateCard(title="Other worker"))
+        second = await anext(events)
+        snapshot = json.loads(second.split("data: ")[1])
+        assert snapshot["cards"][0]["title"] == "Other worker"
+        assert snapshot["revision"] == 1
+        await events.aclose()
+
+
+@pytest.mark.parametrize("changes", [{"status": "done"}, {"archived": True}, {"workspace_id": ""}])
+def test_card_writes_require_the_source_workspace(client, as_user, changes):
+    with as_user("alice"):
+        service = get_content_workspace_service()
+        first = service.create_workspace("First")["workspace_id"]
+        second = service.create_workspace("Second")["workspace_id"]
+    created = client.post(
+        "/api/task-board/cards",
+        json={"title": "First task"},
+        headers=headers(),
+        params={"dt_workspace": first},
+    ).json()
+    url = f"/api/task-board/cards/{created['cards'][0]['id']}"
+    for workspace in (second, ""):
+        response = client.patch(
+            url,
+            json=changes,
+            headers=headers(),
+            params={"dt_workspace": workspace},
+        )
+        assert response.status_code == 404
+    assert (
+        client.get("/api/task-board", headers=headers(), params={"dt_workspace": first}).json()
+        == created
+    )
+    assert (
+        client.patch(
+            url,
+            json={"status": "done"},
+            headers=headers(),
+            params={"dt_workspace": first},
+        ).json()["cards"][0]["status"]
+        == "done"
+    )
+
+
+def test_task_links_require_matching_request_session_and_card_workspaces(client, as_user):
+    import asyncio
+
+    from deeptutor.services.session import get_session_store
+
+    with as_user("alice"):
+        workspace = get_content_workspace_service().create_workspace("Study")["workspace_id"]
+        general_session = asyncio.run(get_session_store().create_session())
+        legacy = get_task_board_store().create(CreateCard(title="Legacy General")).cards[0]
+        with workspace_context(workspace):
+            session = asyncio.run(get_session_store().create_session())
+    card = client.post(
+        "/api/task-board/cards",
+        json={"title": "Scoped task"},
+        headers=headers(),
+        params={"dt_workspace": workspace},
+    ).json()["cards"][0]
+    url = f"/api/task-board/sessions/{session['id']}"
+    payload = {"workspace_id": workspace, "task_ids": [card["id"]]}
+    assert client.put(url, json=payload, headers=headers()).status_code == 404
+    assert (
+        client.patch(
+            url + "/status", json={"workspace_id": workspace, "enabled": False}, headers=headers()
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put(
+            url, json=payload, headers=headers(), params={"dt_workspace": workspace}
+        ).status_code
+        == 200
+    )
+    before = client.get(
+        "/api/task-board", headers=headers(), params={"dt_workspace": workspace}
+    ).json()
+    assert (
+        client.put(
+            url,
+            json={**payload, "task_ids": [card["id"], legacy.id]},
+            headers=headers(),
+            params={"dt_workspace": workspace},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get("/api/task-board", headers=headers(), params={"dt_workspace": workspace}).json()
+        == before
+    )
+    general_url = f"/api/task-board/sessions/{general_session['id']}"
+    assert (
+        client.put(general_url, json={"task_ids": [card["id"]]}, headers=headers()).status_code
+        == 404
+    )
+    # Legacy null ownership still supports editing and linking in General.
+    assert (
+        client.put(general_url, json={"task_ids": [legacy.id]}, headers=headers()).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/api/task-board/cards/{legacy.id}", json={"status": "done"}, headers=headers()
+        ).json()["cards"][0]["status"]
+        == "done"
+    )
+
+
+def test_moving_a_card_detaches_its_old_conversations(tmp_path):
+    store = TaskBoardStore(tmp_path / "tasks.sqlite")
+    card = store.create(CreateCard(title="Scoped task"), "first").cards[0]
+    store.link_tasks("chat", LinkTasks(workspace_id="first", task_ids=[card.id]))
+    store.update(card.id, UpdateCard(workspace_id="second"), workspace_id="first")
+    assert store.read().session_links[0].task_ids == []
+    assert workspace_board(store.read(), "first").cards == []
+    assert store.context_text("first", "chat") == ""
+    assert workspace_board(store.read(), "second").cards[0].id == card.id
+
+
+def test_legacy_cross_workspace_links_are_hidden_from_ui_and_model(tmp_path):
+    import sqlite3
+
+    store = TaskBoardStore(tmp_path / "tasks.sqlite")
+    local = store.create(CreateCard(title="Local task"), "first").cards[0]
+    foreign = store.create(CreateCard(title="Foreign task"), "second").cards[1]
+    store.link_tasks("chat", LinkTasks(workspace_id="first", task_ids=[local.id]))
+    # A pre-isolation database can contain links which new writes must reject.
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            "INSERT INTO session_tasks(workspace_id,session_id,task_id) VALUES (?,?,?)",
+            ("first", "chat", foreign.id),
+        )
+    scoped = workspace_board(store.read(), "first")
+    assert [card.id for card in scoped.cards] == [local.id]
+    assert scoped.session_links[0].task_ids == [local.id]
+    assert "Local task" in store.context_text("first", "chat")
+    assert "Foreign task" not in store.context_text("first", "chat")
+    before = store.read()
+    with pytest.raises(KeyError):
+        store.link_tasks("chat", LinkTasks(workspace_id="first", task_ids=[local.id, foreign.id]))
+    assert store.read() == before

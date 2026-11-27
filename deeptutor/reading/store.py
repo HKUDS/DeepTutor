@@ -26,7 +26,7 @@ that produced the corrupted-notebook reports.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import replace as dataclass_replace
 import hashlib
 import json
@@ -42,7 +42,7 @@ import time
 from typing import Any, Iterator, Literal, Mapping, Sequence
 import uuid
 
-from deeptutor.reading.extract import extract_material, synthesise_outline
+from deeptutor.reading.extract import MARKDOWN_SUFFIXES, extract_material, synthesise_outline
 from deeptutor.reading.models import (
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
@@ -60,6 +60,7 @@ from deeptutor.reading.models import (
 )
 from deeptutor.services.file_io import atomic_write_text as _atomic_write
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.session.selection_grounding import rendered_markdown_text
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ class ReadingStore:
         if not db_path.is_file():
             return None
         try:
-            with sqlite3.connect(db_path, timeout=30) as conn:
+            with closing(sqlite3.connect(db_path, timeout=30)) as conn:
                 conn.row_factory = sqlite3.Row
                 return conn.execute(
                     "SELECT * FROM reading_materials WHERE material_id = ?",
@@ -379,6 +380,11 @@ class ReadingStore:
                 has_raw_view=extraction.render_mode == "pdf",
                 render_mode=extraction.render_mode,
                 media_count=len(media_rows),
+                # Markdown files are written to be rendered; showing their
+                # source leaves every formula as raw ``$...$``.
+                content_format=(
+                    "web_markdown" if path.suffix.lower() in MARKDOWN_SUFFIXES else "plain_text"
+                ),
             )
             # Manifest last: its presence is the "this material is usable"
             # signal, so it must not appear before the units it describes.
@@ -1097,6 +1103,11 @@ class ReadingStore:
             row = _read_json(legacy_path) if legacy_path is not None else None
         return ReadingPosition.from_dict(row) if isinstance(row, dict) else ReadingPosition()
 
+    def has_position(self, material_id: str) -> bool:
+        """Whether this material already has a persisted Reading viewport."""
+        self.manifest(material_id)
+        return self._state_path(material_id, POSITIONS_DIR).exists()
+
     def save_position(self, material_id: str, position: ReadingPosition) -> ReadingPosition:
         """Validate and atomically persist a material viewport."""
         manifest = self.manifest(material_id)
@@ -1348,20 +1359,29 @@ class ReadingStore:
             unit_text = self.unit_text(material_id, annotation.locator)
         else:
             unit_text = ""
+        # Markdown units are rendered before display, and the browser measures
+        # TextPositionSelectors against that rendered text — a coordinate space
+        # the raw unit cannot reproduce (``**bold**`` loses its asterisks,
+        # ``$x^2$`` becomes KaTeX markup). For those units positions are stored
+        # as sent. Ground the quote in the same conservative Markdown projection
+        # used by chat selections; unsupported math rendering is never guessed.
+        rendered_positions = manifest.content_format == "web_markdown"
+        quote_text = rendered_markdown_text(unit_text) if rendered_positions else unit_text
         position_text = ""
         if position_selector:
-            if position_selector.end > len(unit_text):
+            if not rendered_positions and position_selector.end > len(unit_text):
                 raise ReadingError("TextPositionSelector extends past this reading unit")
             if position_selector.end - position_selector.start > MAX_TEXT_SELECTOR_CHARS:
                 raise ReadingError("TextPositionSelector span is too long")
-            position_text = unit_text[position_selector.start : position_selector.end]
+            if not rendered_positions:
+                position_text = unit_text[position_selector.start : position_selector.end]
         if quote_selector:
             normalised_exact = _normalise_selector_text(quote_selector.exact)
             if not normalised_exact:
                 raise ReadingError("TextQuoteSelector exact text is empty")
             if annotation.quote and _normalise_selector_text(annotation.quote) != normalised_exact:
                 raise ReadingError("annotation quote does not match its TextQuoteSelector")
-            if position_selector:
+            if position_selector and not rendered_positions:
                 if _normalise_selector_text(position_text) != normalised_exact:
                     raise ReadingError("text quote and position selectors describe different text")
                 if not _quote_context_matches(
@@ -1372,10 +1392,10 @@ class ReadingStore:
                     raise ReadingError("TextQuoteSelector context does not match this reading unit")
                 canonical_exact = position_text
             else:
-                span = _find_quote_span(unit_text, quote_selector)
+                span = _find_quote_span(quote_text, quote_selector)
                 if span is None:
                     raise ReadingError("TextQuoteSelector does not occur in this reading unit")
-                canonical_exact = unit_text[slice(*span)]
+                canonical_exact = quote_text[slice(*span)]
             canonical_quote = dataclass_replace(quote_selector, exact=canonical_exact)
             annotation = dataclass_replace(
                 annotation,
@@ -1385,6 +1405,13 @@ class ReadingStore:
                     for selector in annotation.selectors
                 ),
             )
+        elif position_selector and rendered_positions:
+            # Browser offsets are not server offsets. Without a grounded quote
+            # there is no authoritative text to attach to this position.
+            span = _find_quote_span(quote_text, TextQuoteSelector(exact=annotation.quote))
+            if span is None:
+                raise ReadingError("Markdown positions require a quote from this reading unit")
+            annotation = dataclass_replace(annotation, quote=quote_text[slice(*span)])
         elif position_selector:
             if annotation.quote and _normalise_selector_text(
                 annotation.quote
@@ -1532,6 +1559,9 @@ def _carry_dir(source: Path, target: Path) -> None:
             shutil.copy2(entry, destination)
 
 
+_MAX_FILENAME_CHARS = 180
+
+
 def _safe_filename(name: str, *, fallback: str) -> str:
     """A filesystem-safe basename for the stored original.
 
@@ -1544,7 +1574,15 @@ def _safe_filename(name: str, *, fallback: str) -> str:
     if os.altsep:
         base = base.replace(os.altsep, "_")
     base = base.strip(". ") or Path(fallback).name or "material"
-    return base[:180]
+    if len(base) <= _MAX_FILENAME_CHARS:
+        return base
+    # Cut the stem, not the extension: the stored original is found again by
+    # its suffix (a PDF is only re-extracted when the raw file ends in .pdf).
+    suffix = Path(base).suffix
+    if len(suffix) > 16:
+        suffix = ""
+    stem = base[: len(base) - len(suffix)][: _MAX_FILENAME_CHARS - len(suffix)]
+    return stem.rstrip(". ") + suffix
 
 
 def _guess_mime(filename: str) -> str:

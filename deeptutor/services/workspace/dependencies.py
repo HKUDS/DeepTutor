@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
+import logging
 import sqlite3
+
+from deeptutor.services.file_io import read_text
+
+_LOGGER = logging.getLogger(__name__)
 
 MODES = {
     "mastery_path": "learning",
     "immersive_reading": "reading",
     "immersive_watching": "timed_media",
 }
+
+
+def _warn(warnings: list[str] | None, message: str) -> None:
+    """Unreadable sources stay skipped, but each skip is surfaced exactly once."""
+    if warnings is not None and message in warnings:
+        return
+    _LOGGER.warning("%s", message)
+    if warnings is not None:
+        warnings.append(message)
 
 
 def _preferences(row):
@@ -24,13 +39,23 @@ def _preferences(row):
 
 
 def dependency_closure(
-    paths, sessions: list[dict], features: list[str], *, session_ids: set[str] | None = None
+    paths,
+    sessions: list[dict],
+    features: list[str],
+    *,
+    session_ids: set[str] | None = None,
+    warnings: list[str] | None = None,
+    target_workspace_id: str | None = None,
 ) -> tuple[set[str], set[str]]:
     """Move connected stores together so sources left behind keep valid links."""
-    sessions = _with_historical_references(paths, sessions)
-    selected, ids = _forward_closure(paths, sessions, features, session_ids=session_ids)
+    sessions = _with_historical_references(paths, sessions, warnings)
+    if target_workspace_id is not None and "knowledge_bases" not in features:
+        sessions = _reuse_accessible_knowledge(sessions, target_workspace_id)
+    selected, ids = _forward_closure(
+        paths, sessions, features, session_ids=session_ids, warnings=warnings
+    )
     groups = [
-        _forward_closure(paths, sessions, [feature])
+        _forward_closure(paths, sessions, [feature], warnings=warnings)
         for feature in (
             "book",
             "learning",
@@ -78,7 +103,11 @@ def dependency_closure(
                 reverse_ids.add(sid)
         if reverse_ids - ids:
             related, related_ids = _forward_closure(
-                paths, sessions, list(selected - {"chat"}), session_ids=ids | reverse_ids
+                paths,
+                sessions,
+                list(selected - {"chat"}),
+                session_ids=ids | reverse_ids,
+                warnings=warnings,
             )
             selected |= related
             ids |= related_ids
@@ -86,8 +115,60 @@ def dependency_closure(
             return selected, ids
 
 
+def _reuse_accessible_knowledge(sessions, target_id):
+    """Omit a copy dependency only when the unchanged reference resolves identically.
+
+    This changes the planning view, never the stored preferences. In particular,
+    matching names in two different catalogs are not interchangeable (#2289).
+    """
+    from deeptutor.core.errors import AccessError
+    from deeptutor.multi_user.knowledge_access import resolve_kb
+    from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    reusable = {}
+
+    def can_reuse(ref):
+        if not isinstance(ref, str):
+            return False
+        if ref not in reusable:
+            try:
+                source = resolve_kb(ref)
+                with workspace_context(target_id):
+                    destination = resolve_kb(ref)
+                reusable[ref] = (source.base_dir.resolve(), source.name) == (
+                    destination.base_dir.resolve(),
+                    destination.name,
+                )
+            except (AccessError, WorkspaceError, FileNotFoundError, ValueError):
+                reusable[ref] = False
+        return reusable[ref]
+
+    result = []
+    for row in sessions:
+        prefs = _preferences(row)
+        refs = list(prefs.get("knowledge_bases") or [])
+        if prefs.get("kb_name"):
+            refs.append(prefs["kb_name"])
+        if refs and all(can_reuse(ref) for ref in refs):
+            prefs["knowledge_bases"] = []
+            prefs.pop("kb_name", None)
+            prefs["workspace_dependencies"] = {
+                key: value
+                for key, value in prefs.get("workspace_dependencies", {}).items()
+                if key not in {"knowledge_bases", "kb_name"}
+            }
+        result.append({**row, "preferences_json": json.dumps(prefs)})
+    return result
+
+
 def _forward_closure(
-    paths, sessions: list[dict], features: list[str], *, session_ids: set[str] | None = None
+    paths,
+    sessions: list[dict],
+    features: list[str],
+    *,
+    session_ids: set[str] | None = None,
+    warnings: list[str] | None = None,
 ) -> tuple[set[str], set[str]]:
     selected = set(features)
     all_chats = "chat" in selected and session_ids is None
@@ -101,8 +182,9 @@ def _forward_closure(
         if path.name not in {"manifest.json", "inputs.json"}:
             continue
         try:
-            book = json.loads(path.read_text())
-        except (OSError, ValueError):
+            book = json.loads(read_text(path))
+        except (OSError, ValueError) as exc:
+            _warn(warnings, f"Skipping unreadable book manifest {path}: {exc}")
             continue
         books.append(book)
         if book.get("chat_session_id"):
@@ -164,7 +246,7 @@ def _forward_closure(
             scanned.add("learning")
             db = paths.get_workspace_dir() / "learning" / "mastery" / "mastery.sqlite3"
             if db.exists():
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     tables = {
                         row[0]
                         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -193,7 +275,7 @@ def _forward_closure(
             scanned.add("reading")
             db = paths.get_workspace_dir() / "reading" / "_catalog.sqlite3"
             if db.exists():
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     if conn.execute(
                         "SELECT 1 FROM sqlite_master WHERE name='reading_workspace_sessions'"
                     ).fetchone():
@@ -210,8 +292,9 @@ def _forward_closure(
             scanned.add(feature)
             for path in (paths.get_workspace_dir() / feature).rglob("*.json"):
                 try:
-                    document = json.loads(path.read_text())
-                except (OSError, ValueError):
+                    document = json.loads(read_text(path))
+                except (OSError, ValueError) as exc:
+                    _warn(warnings, f"Skipping unreadable {feature} document {path}: {exc}")
                     continue
                 _collect_references(document, prefs, ids, selected)
         if previous == (frozenset(selected), frozenset(ids)):
@@ -263,7 +346,7 @@ def _question_sessions(paths, entry_ids=None) -> set[str]:
     db = paths.get_chat_history_db()
     if not db.exists():
         return set()
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='notebook_entries'").fetchone():
             return set()
         if entry_ids:
@@ -283,9 +366,16 @@ def _question_sessions(paths, entry_ids=None) -> set[str]:
         }
 
 
-def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
+def _with_historical_references(
+    paths, sessions: list[dict], warnings: list[str] | None = None
+) -> list[dict]:
     """Old request snapshots retain references no longer selected by the last turn."""
     prefs = {row["id"]: _preferences(row) for row in sessions}
+    # A key the session already carries is the learner's current choice, even
+    # when the value is an empty list. Historical snapshots may only fill in
+    # references the session never recorded; otherwise a session can never be
+    # detached from a knowledge base (the old snapshot keeps resurrecting it).
+    explicit = {sid: frozenset(value) for sid, value in prefs.items()}
     aliases = {
         "historyReferences": "history_references",
         "notebookReferences": "notebook_references",
@@ -300,14 +390,14 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
     }
     references = set(aliases.values())
 
-    def collect(value, into):
+    def collect(value, into, locked=frozenset()):
         if isinstance(value, list):
             for child in value:
-                collect(child, into)
+                collect(child, into, locked)
         elif isinstance(value, dict):
             for key, child in value.items():
                 key = aliases.get(key, key)
-                if key in references and child:
+                if key in references and key not in locked and child:
                     if isinstance(child, list):
                         current = into.setdefault(key, [])
                         for item in child:
@@ -315,16 +405,20 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
                                 current.append(item)
                     else:
                         into.setdefault(key, child)
-                collect(child, into)
+                collect(child, into, locked)
 
     db = paths.get_chat_history_db()
     if db.exists():
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             for sid, raw in conn.execute("SELECT session_id,metadata_json FROM messages"):
                 if sid in prefs and raw:
                     try:
-                        collect(json.loads(raw), prefs[sid])
-                    except (ValueError, TypeError):
+                        collect(json.loads(raw), prefs[sid], explicit[sid])
+                    except (ValueError, TypeError) as exc:
+                        _warn(
+                            warnings,
+                            f"Skipping unreadable message metadata for session {sid}: {exc}",
+                        )
                         continue
             for sid, followup in conn.execute(
                 "SELECT session_id,followup_session_id FROM notebook_entries"
@@ -342,8 +436,13 @@ def _with_historical_references(paths, sessions: list[dict]) -> list[dict]:
             if isinstance(value, str):
                 try:
                     value = json.loads(value)
-                except ValueError:
+                except ValueError as exc:
+                    sid = row.get("session_id") or "unknown"
+                    _warn(
+                        warnings,
+                        f"Skipping unreadable PocketBase message metadata for session {sid}: {exc}",
+                    )
                     continue
             if row.get("session_id") in prefs:
-                collect(value, prefs[row["session_id"]])
+                collect(value, prefs[row["session_id"]], explicit[row["session_id"]])
     return [{**row, "preferences_json": json.dumps(prefs[row["id"]])} for row in sessions]

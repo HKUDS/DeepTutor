@@ -1,9 +1,23 @@
+import { clearFailedSubmission } from "@/lib/failed-submissions";
 import { scopedUrl } from "@/lib/workspace-scope";
 import { notifySessionsChanged } from "@/lib/session-events";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import { browserReturnPath, loginHref } from "@/shared/auth/return-url";
+
+/** Fail closed when the configured backend cannot fence an uncertain send. */
+export async function supportsSubmissionReplacement(): Promise<boolean> {
+  try {
+    return await withClientCache("session-store-capabilities", async () => {
+      const response = await apiFetch(apiUrl(scopedUrl("/api/sessions/capabilities")));
+      if (!response.ok) throw new Error("Session capabilities unavailable");
+      const capabilities: unknown = await response.json();
+      return typeof capabilities === "object" && capabilities !== null &&
+        "submission_replacement" in capabilities && capabilities.submission_replacement === true;
+    });
+  } catch { return false; }
+}
 
 export interface SessionMessage {
   id: number;
@@ -91,8 +105,16 @@ export interface SessionPreferences {
   mastery_path_id?: string;
   /** "outline" | "study" | "review" — what this mastery conversation is for. */
   mastery_session_mode?: string;
+  /** Note page a notebook companion conversation is held beside. */
+  note_document_id?: string;
+  /** Create mode: the artifact kind ("skill" | "persona") every turn of this
+   *  conversation authors towards; "" / absent when not in create mode. */
+  create_target?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
+  /** Who the conversation is handed to — `partner:<id>` / `subagent:<name>`;
+   *  "" / absent when DeepTutor answers. Rewritten with every turn. */
+  answer_by?: string;
   /** What this conversation narrowed its skill / MCP reach to. Absent or empty
    *  means it inherits everything its workspace allows. */
   skills?: string[];
@@ -101,15 +123,32 @@ export interface SessionPreferences {
    *  shown at that branch point. Missing keys default to the latest
    *  sibling (most recently created child). */
   selected_branches?: Record<string, number>;
-  /** Study-course organization. Empty/absent means Unclassified. */
-  course_id?: string;
-  /** Source conversation for nested selected-text tutor threads. */
+  /** The conversation a side chat was opened beside. */
   parent_session_id?: string;
+  /** ``selection_tutor`` marks a side chat (the name predates side chats). */
   session_kind?: "chat" | "selection_tutor" | "immersive_reading";
+  /** The partner group a side chat convenes; a partner or an agent answering
+   *  one is ``answer_by``. Written by the backend on each turn. */
+  side_chat_group_id?: string;
+  /** ``selection`` tutored one passage; ``conversation`` is about the whole
+   *  parent conversation. Written by the backend on each side-chat turn. */
+  tutor_scope?: "selection" | "conversation";
+  /** The passage a ``selection`` thread was opened from, clipped by the server. */
+  tutor_selected_text?: string;
+  /** The message a side chat was opened from; absent for a bare side chat and
+   *  for threads created before this was recorded. Drives the message-level
+   *  Little Tutor entry. */
+  tutor_source_message_id?: number | string | null;
+  /** Internal: the legacy-thread backfill has already run for this row, so a
+   *  detached thread is not attached again. */
+  tutor_source_backfill_attempted?: boolean;
   /** Owning Immersive Reading workspace, present only for reading sessions. */
   reading_workspace_id?: string;
   /** Material active when the reading conversation was created. */
   reading_material_id?: string;
+  /** The book page whose tutor chat this is, written with the book's own record. */
+  book_id?: string;
+  book_page_id?: string;
   pinned?: boolean;
   archived?: boolean;
 }
@@ -167,7 +206,7 @@ export interface SessionDetail {
     "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
-  summary_up_to_msg_id?: number;
+  summary_up_to_msg_id?: number | string;
   preferences?: SessionPreferences;
   messages: SessionMessage[];
   active_turns?: ActiveTurnSummary[];
@@ -226,7 +265,7 @@ export async function listSessions(
   );
 }
 
-/** Fetch the complete session index in bounded pages for course organization. */
+/** Fetch the complete session index in bounded pages for conversation organization. */
 export async function listAllSessions(options?: {
   force?: boolean;
   allWorkspaces?: boolean;
@@ -251,14 +290,12 @@ export async function searchSessions(
   limit = 50,
   offset = 0,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchPage> {
   const qs = new URLSearchParams({
     q: query,
     limit: String(limit),
     offset: String(offset),
   });
-  if (options?.allWorkspaces) qs.set("all_workspaces", "true");
   const response = await apiFetch(apiUrl(`/api/sessions/search?${qs}`), {
     cache: "no-store",
     signal,
@@ -270,7 +307,6 @@ export async function searchSessions(
 export async function searchAllSessions(
   query: string,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchResult[]> {
   const pageSize = 100;
   const sessions: SessionSearchResult[] = [];
@@ -281,7 +317,6 @@ export async function searchAllSessions(
       pageSize,
       offset,
       signal,
-      options,
     );
     for (const session of page.sessions) {
       const key = `${sessionWorkspaceId(session)}:${session.session_id}`;
@@ -304,6 +339,26 @@ export async function getSession(
     signal,
   });
   return expectJson<SessionDetail>(response);
+}
+
+export type SubmissionReplacementReceipt = {
+  status: "started"; session_id: string; submission_id: string;
+  turn: { id: string; status: string };
+};
+
+export async function replaceSubmission(
+  originalSubmissionId: string, request: Record<string, unknown>,
+): Promise<SubmissionReplacementReceipt> {
+  const { type: _type, protocol_version: _version, ...payload } = request;
+  return expectJson<SubmissionReplacementReceipt>(await apiFetch(apiUrl("/api/sessions/submission-replacement"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ original_submission_id: originalSubmissionId, request: payload }),
+  }));
+}
+
+/** Opening an old Watching conversation is the explicit migration boundary. */
+export async function migrateWatchingSession(sessionId: string): Promise<SessionDetail> {
+  return expectJson<SessionDetail>(await apiFetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/migrate-watching`), { method: "POST" }));
 }
 
 /**
@@ -381,11 +436,12 @@ export async function getMessageTrace(
 
 export type SessionOrganizationPatch = Partial<{
   workspace_id: string | null;
-  course_id: string;
   parent_session_id: string;
   session_kind: "chat" | "selection_tutor";
   pinned: boolean;
   archived: boolean;
+  /** Which message a Little Tutor thread is filed under; null detaches it. */
+  tutor_source_message_id: number | string | null;
 }>;
 
 export async function updateSessionOrganization(
@@ -407,11 +463,41 @@ export async function updateSessionOrganization(
   return data.session;
 }
 
+/** A conversation's title, status and preferences — no transcript. */
+export async function getSessionOrganization(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/organization`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ session: SessionSummary }>(response);
+  return data.session;
+}
+
+/** The side chats opened from a conversation, newest first. */
+export async function listSessionThreads(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary[]> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/threads`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ threads: SessionSummary[] }>(response);
+  return data.threads ?? [];
+}
+
 export async function deleteSession(sessionId: string, workspaceId?: string): Promise<void> {
   const response = await apiFetch(apiUrl(scopedUrl(`/api/sessions/${sessionId}`, workspaceId)), {
     method: "DELETE",
   });
-  await expectJson<{ deleted: boolean }>(response);
+  const data = await expectJson<{ deleted: boolean }>(response);
+  if (!data.deleted) throw new Error("Session was not deleted");
+  clearFailedSubmission(sessionId);
   invalidateClientCache("sessions:");
   notifySessionsChanged();
 }
@@ -432,17 +518,44 @@ export async function recordQuizResults(
   await expectJson<{ recorded: boolean }>(response);
 }
 
+export interface DeleteMessageResult {
+  /** Little Tutor threads the server detached from the deleted messages. */
+  detachedThreadIds: string[];
+  /** Every message row the delete removed (a turn's user + assistant rows). */
+  deletedMessageIds: number[];
+}
+
 export async function deleteMessage(
   sessionId: string,
   messageId: number,
-): Promise<void> {
+): Promise<DeleteMessageResult> {
   const response = await apiFetch(
     apiUrl(`/api/sessions/${sessionId}/messages/${messageId}`),
     {
       method: "DELETE",
     },
   );
-  await expectJson<{ deleted: boolean }>(response);
+  const payload = await expectJson<{
+    deleted: boolean;
+    detached_thread_ids?: string[];
+    deleted_message_ids?: number[];
+  }>(response);
+  // Older servers omit both lists. Keep the caller's own id as the only known
+  // deleted row; never invent thread ids for a response that has none.
+  return {
+    detachedThreadIds: Array.isArray(payload.detached_thread_ids)
+      ? payload.detached_thread_ids.filter(
+          (threadId): threadId is string =>
+            typeof threadId === "string" && threadId.length > 0,
+        )
+      : [],
+    deletedMessageIds: Array.isArray(payload.deleted_message_ids)
+      ? payload.deleted_message_ids.filter(
+          (deletedId): deletedId is number =>
+            typeof deletedId === "number" && Number.isFinite(deletedId),
+        )
+      : [messageId],
+  };
 }
 
 export async function updateBranchSelection(

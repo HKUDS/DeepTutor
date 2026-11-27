@@ -1,5 +1,8 @@
 "use client";
 
+import { useTaskBoard } from "@/lib/task-board-store";
+import { sessionTaskColor } from "@/lib/task-board-api";
+import { activeWorkspaceId } from "@/lib/workspace-scope";
 import { ActivityOrb } from "@/components/activity";
 
 /**
@@ -40,12 +43,14 @@ function SettledMark({
   size,
   mark,
   kind,
+  taskColor,
 }: {
+  taskColor?: string;
   size: number;
   mark: SessionMark;
   kind: SessionKind;
 }) {
-  const filled = mark === "unread" || mark === "failed";
+  const filled = Boolean(taskColor) || mark === "unread" || mark === "failed";
   const shape = `transition-[fill] duration-300 ease-out ${
     filled ? "fill-current" : "fill-transparent"
   }`;
@@ -59,6 +64,7 @@ function SettledMark({
       viewBox="0 0 12 12"
       width={size}
       height={size}
+      style={taskColor ? { color: taskColor, opacity: 1 } : undefined}
       className={`transition-[color,opacity] duration-300 ease-out ${
         mark === "failed"
           ? "text-amber-500 opacity-100 dark:text-amber-400"
@@ -67,7 +73,7 @@ function SettledMark({
             : "text-[var(--muted-foreground)] opacity-45 group-hover/session:opacity-75"
       }`}
     >
-      {kind === "reading" ? (
+      {kind === "reading" && !taskColor ? (
         // A page: the ring stood on end with its corners let out. Same box,
         // stroke and ink, so it reads as the same mark in another key.
         <rect
@@ -155,6 +161,7 @@ export function sessionKindOf(session: {
 
 interface SessionAvatarProps {
   sessionId: string;
+  workspaceId?: string;
   mark?: SessionMark;
   kind?: SessionKind;
   size?: number;
@@ -177,12 +184,17 @@ interface SessionAvatarProps {
  * and the mark column says only what state the session is in.
  */
 export function SessionAvatar({
-  sessionId: _sessionId,
+  sessionId,
+  workspaceId = activeWorkspaceId(),
   mark = "idle",
   kind = "chat",
   size = 12,
   className = "",
 }: SessionAvatarProps) {
+  const { board } = useTaskBoard();
+  const taskColor = mark !== "running"
+    ? sessionTaskColor(board, sessionId, workspaceId)
+    : undefined;
   const ring = Math.round(size * RING_RATIO);
   const running = mark === "running";
 
@@ -209,7 +221,7 @@ export function SessionAvatar({
           running ? "scale-[1.55] opacity-0" : "scale-100 opacity-100"
         }`}
       >
-        <SettledMark size={ring} mark={mark} kind={kind} />
+        <SettledMark size={ring} mark={mark} kind={kind} taskColor={taskColor} />
       </span>
     </span>
   );

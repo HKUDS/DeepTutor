@@ -299,6 +299,38 @@ async def test_add_documents_fails_bounded_when_new_index_stalls(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["initialize", "add_new", "add_existing"])
+async def test_failed_figure_publication_does_not_modify_persisted_index(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """#1802: a failed asset write must happen before an index accepts the document."""
+    pipeline_module, storage_module, _ = _llamaindex_modules()
+    pipeline = _make_pipeline(tmp_path, monkeypatch)
+    writes = []
+    monkeypatch.setattr(storage_module, "create_index", lambda *a, **k: writes.append("create"))
+    monkeypatch.setattr(storage_module, "insert_documents", lambda *a, **k: writes.append("insert"))
+    if operation == "add_existing":
+        existing = tmp_path / "kb" / "llamaindex_storage"
+        existing.mkdir(parents=True)
+        monkeypatch.setattr(
+            storage_module,
+            "resolve_add_storage_plan",
+            lambda *_: storage_module.AddStoragePlan(existing, existing),
+        )
+
+    def fail_publication(*args, **kwargs):
+        raise OSError("Cannot publish source figures for KB 'kb': disk is full")
+
+    monkeypatch.setattr(pipeline_module.VisualAssetStore, "publish", fail_publication)
+    with pytest.raises(OSError, match="disk is full"):
+        if operation == "initialize":
+            await pipeline.initialize("kb", ["doc.pdf"])
+        else:
+            await pipeline.add_documents("kb", ["doc.pdf"])
+    assert writes == []
+
+
+@pytest.mark.asyncio
 async def test_initialize_succeeds_when_indexing_completes(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -306,6 +338,7 @@ async def test_initialize_succeeds_when_indexing_completes(
     _pipeline_module, storage_module, _ = _llamaindex_modules()
     pipeline = _make_pipeline(tmp_path, monkeypatch)
     monkeypatch.setattr(storage_module, "create_index", lambda *a, **k: 7)
+    monkeypatch.setattr(storage_module, "verify_persisted_index", lambda path: None)
 
     assert await pipeline.initialize("kb", ["doc.pdf"]) is True
 

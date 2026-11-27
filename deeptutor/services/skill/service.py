@@ -55,6 +55,7 @@ from pathlib import Path
 import re
 import shutil
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -481,11 +482,13 @@ class SkillService:
         if resolved is None:
             raise SkillNotFoundError(name)
         skill_dir, _source = resolved
+        # POSIX form, sorted as text: the model asks for files the way SKILL.md
+        # links them ("references/outline.md"), whatever the server's OS.
         files: list[str] = []
-        for path in sorted(skill_dir.rglob("*")):
+        for path in skill_dir.rglob("*"):
             if path.is_file() and not path.name.startswith("."):
-                files.append(str(path.relative_to(skill_dir)))
-        return files
+                files.append(path.relative_to(skill_dir).as_posix())
+        return sorted(files)
 
     # ── runtime loading (manifest + always) ─────────────────────────────
 
@@ -694,9 +697,18 @@ class SkillService:
             staging.mkdir(parents=True)
             skipped = self._copy_support_tree(source, staging)
             (staging / "SKILL.md").write_text(adapted, encoding="utf-8")
-            if target_dir.exists():
-                shutil.rmtree(target_dir)
-            staging.rename(target_dir)
+            previous = self._root / f".{slug}.previous-{uuid4().hex}"
+            had_previous = target_dir.exists()
+            if had_previous:
+                target_dir.rename(previous)
+            try:
+                staging.rename(target_dir)
+            except BaseException:
+                if had_previous:
+                    previous.rename(target_dir)
+                raise
+            if had_previous:
+                shutil.rmtree(previous)
         finally:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)
@@ -1035,8 +1047,8 @@ def get_admin_skill_service() -> SkillService:
 
 
 def get_skill_service() -> SkillService:
+    from deeptutor.core.identities import is_partner_user_id
     from deeptutor.multi_user.context import get_current_user
-    from deeptutor.services.partners.scope import is_partner_user_id
     from deeptutor.services.workspace import get_content_workspace_service
 
     root = (

@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
+import pytest
 from rich.console import Console
 
 
@@ -15,6 +16,93 @@ def test_gemini_embedding_fallback_prefers_stable_embedding2() -> None:
         "gemini-embedding-2",
         "gemini-embedding-001",
     )
+
+
+def test_github_copilot_is_featured_with_prefixed_fallback_models() -> None:
+    from deeptutor_cli.init_wizard import FEATURED_LLM_PROVIDERS, LLM_FALLBACK_MODELS
+
+    assert "github_copilot" in FEATURED_LLM_PROVIDERS
+    assert LLM_FALLBACK_MODELS["github_copilot"][0] == "github-copilot/gpt-4.1"
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "exception", "no-models"])
+def test_github_copilot_init_logs_in_and_uses_live_models(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    import typer
+
+    from deeptutor.runtime.banner import labels_for
+    from deeptutor.services import github_copilot_auth
+    from deeptutor.services.llm.provider_core import github_copilot_provider
+    from deeptutor_cli import init_cmd
+
+    probes = []
+
+    class FakeProvider:
+        def __init__(self, *, default_model):
+            probes.append(default_model)
+
+        async def chat(self, **kwargs):
+            probes.append("chat")
+            if outcome == "exception":
+                raise RuntimeError("unavailable model")
+            return SimpleNamespace(
+                finish_reason="error" if outcome == "error" else "stop",
+                content="unavailable model" if outcome == "error" else "OK",
+            )
+
+        async def aclose(self):
+            probes.append("close")
+
+    monkeypatch.setattr(github_copilot_provider, "GitHubCopilotProvider", FakeProvider)
+
+    async def login(*, print_fn):
+        print_fn("Code: ABCD-1234")
+        return SimpleNamespace(account_id="octocat")
+
+    async def models():
+        return [] if outcome == "no-models" else ["github-copilot/gpt-4.1", "github-copilot/gpt-5"]
+
+    monkeypatch.setattr(github_copilot_auth, "load_github_token", lambda: None)
+    monkeypatch.setattr(github_copilot_auth, "login_github_copilot", login)
+    monkeypatch.setattr(github_copilot_auth, "list_github_copilot_models", models)
+    monkeypatch.setattr(
+        init_cmd.wiz,
+        "select_model",
+        lambda _console, _strings, *, models, current: models[-1],
+    )
+
+    output = StringIO()
+    if outcome != "success":
+        with pytest.raises(typer.Exit) as exc:
+            init_cmd._github_copilot_step(
+                Console(file=output),
+                labels_for("en"),
+                base_url="https://api.githubcopilot.com",
+                current_model="",
+                display_provider="GitHub Copilot",
+            )
+        assert exc.value.exit_code == 1
+        assert probes == (
+            [] if outcome == "no-models" else ["github-copilot/gpt-5", "chat", "close"]
+        )
+        return
+    choice = init_cmd._github_copilot_step(
+        Console(file=output, force_terminal=False),
+        labels_for("en"),
+        base_url="https://api.githubcopilot.com",
+        current_model="",
+        display_provider="GitHub Copilot",
+    )
+
+    assert choice.binding == "github_copilot"
+    assert choice.api_key == ""
+    assert choice.model == "github-copilot/gpt-5"
+    assert choice.probed is True
+    assert choice.probe_ok is True
+    assert "Code: ABCD-1234" in output.getvalue()
+    assert probes == ["github-copilot/gpt-5", "chat", "close"]
 
 
 def test_embedding_setup_preserves_saved_endpoint_for_same_provider() -> None:
@@ -243,7 +331,7 @@ def test_probe_embedding_detects_native_custom_url_with_query(monkeypatch) -> No
     assert "requests" in request["json"]
 
 
-def test_probe_llm_uses_max_completion_tokens_for_gpt5(monkeypatch) -> None:
+def test_probe_llm_gives_reasoning_models_a_safe_output_budget(monkeypatch) -> None:
     from deeptutor_cli import init_wizard
 
     _FakeClient.captured = []
@@ -253,13 +341,13 @@ def test_probe_llm_uses_max_completion_tokens_for_gpt5(monkeypatch) -> None:
         base_url="https://example.test/v1",
         api_key="sk-test",
         binding="openai",
-        model="gpt-5-mini",
+        model="gpt-5.6-terra",
     )
 
     assert ok is True
     assert error == ""
     body = _FakeClient.captured[0]["json"]
-    assert body["max_completion_tokens"] == 1
+    assert body["max_completion_tokens"] == 4096
     assert "max_tokens" not in body
 
 
@@ -277,7 +365,7 @@ def test_probe_llm_keeps_max_tokens_for_legacy_chat_models(monkeypatch) -> None:
     )
 
     body = _FakeClient.captured[0]["json"]
-    assert body["max_tokens"] == 1
+    assert body["max_tokens"] == 4096
     assert "max_completion_tokens" not in body
 
 
@@ -295,7 +383,7 @@ def test_probe_llm_keeps_anthropic_native_max_tokens(monkeypatch) -> None:
     )
 
     body = _FakeClient.captured[0]["json"]
-    assert body["max_tokens"] == 1
+    assert body["max_tokens"] == 4096
     assert "max_completion_tokens" not in body
 
 

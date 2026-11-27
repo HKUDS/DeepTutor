@@ -55,7 +55,12 @@ def test_non_version_release_tags_skip_publication(publication: str) -> None:
     document, publish_job_name = _workflow(publication)
     validator = document["jobs"]["validate-release-tag"]
 
-    assert validator["if"] == "startsWith(github.event.release.tag_name, 'v')"
+    tag_expression = (
+        "inputs.tag || github.event.release.tag_name"
+        if publication == "pypi"
+        else "github.event.release.tag_name"
+    )
+    assert validator["if"] == f"startsWith({tag_expression}, 'v')"
     assert document["jobs"][publish_job_name]["needs"] == "validate-release-tag"
 
 

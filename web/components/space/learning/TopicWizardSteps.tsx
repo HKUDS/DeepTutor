@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   AlertCircle,
   Brain,
@@ -26,7 +26,6 @@ import {
 
 import type { SourceChildren, SourceCandidate, SourceLibrary } from '@/hooks/useTopicSourceLibrary'
 
-import { useLibraryFilter, WorkspaceLabel } from '@/components/learning/LibraryWorkspace'
 import type { Translate } from './format'
 import { useTranslation } from 'react-i18next'
 
@@ -48,6 +47,13 @@ const EMBLEMS: { value: string; Icon: typeof Compass }[] = [
   { value: '📐', Icon: Ruler },
   { value: '🌌', Icon: Orbit },
 ]
+
+// library.failures records the dashboard request kind; two tabs are named
+// differently from the kind that feeds them. Everything else is identity.
+const FIELD_REQUEST_KIND: Record<string, string> = {
+  knowledgeBases: 'knowledge',
+  questionSets: 'practice',
+}
 
 export function GoalStep({
   goal,
@@ -152,15 +158,21 @@ export function SourcesStep({
   const [tab, setTab] = useState<string>('knowledgeBases')
   const tabId = useId()
   const [search, setSearch] = useState('')
-  const all = groups.flatMap(group => library[group.key])
-  const { rows, control } = useLibraryFilter(all)
+  const searchQuestions = library.questionPage?.search
+  useEffect(() => {
+    if (tab !== 'questionSets' || !searchQuestions) return
+    const timer = window.setTimeout(() => searchQuestions(search), 250)
+    return () => window.clearTimeout(timer)
+  }, [tab, search, searchQuestions])
   const group = groups.find(group => group.key === tab)!
-  const ids = new Set(library[group.key].map(item => item.key))
-  const visible = rows.filter(
-    item =>
-      ids.has(item.key) &&
-      `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
+  const visible = tab === 'questionSets' && library.questionPage ? library.questionSets : library[group.key].filter(item =>
+    `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
   )
+  // Gate on the active tab's own request, not the whole library: a ready KB
+  // renders while a large question bank is still loading. Falls back to the
+  // aggregate for a library built without per-kind loading info.
+  const groupLoading = (tab === 'questionSets' && library.questionPage?.loading && !library.questionSets.length) || (library.loadingKinds?.includes(tab) ?? loading)
+  const tabFailed = library.failures.includes(FIELD_REQUEST_KIND[tab] ?? tab)
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -169,13 +181,7 @@ export function SourcesStep({
           {t('{{count}} selected', { count: selected.size })}
         </span>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">
-        {t(
-          'Choose from all workspaces. Sources stay where they are; new content is saved to your chosen workspace.'
-        )}
-      </p>
       <div className="flex flex-wrap items-center gap-3">
-        {control}
         <input
           type="search"
           aria-label={t('Search materials')}
@@ -226,23 +232,27 @@ export function SourcesStep({
               <item.icon size={14} />
               {t(item.label)}
               <span className="tabular-nums opacity-60">
-                {library[item.key].filter(candidate => rows.includes(candidate)).length}
+                {library[item.key].length}
               </span>
             </button>
           ))}
       </div>
-      {library.failures.length > 0 && (
+      {tabFailed && (
         <p role="alert" className="text-xs text-destructive">
-          {t('Some workspaces could not be loaded. Available content is shown.')}
+          {t('navigation.loadError')}
         </p>
       )}
+      {/* No nested scroll box: the step body above already scrolls, and a
+          fixed 360px cap with `overscroll-contain` swallowed the wheel once
+          a short list (the knowledge bases, 7 rows here) hit its end, which
+          read as the dialog freezing after a few rows. */}
       <div
         role="tabpanel"
         id={`${tabId}-panel`}
         aria-labelledby={`${tabId}-${tab}`}
-        className="max-h-[360px] min-h-40 overflow-y-auto overscroll-contain pr-1"
+        className="min-h-40 pr-1"
       >
-        {loading ? (
+        {groupLoading ? (
           <div className="flex justify-center py-14">
             <Loader2 className="animate-spin" size={20} />
           </div>
@@ -258,6 +268,9 @@ export function SourcesStep({
             opened={opened}
             onToggleOpen={toggleOpen}
           />
+        )}
+        {tab === 'questionSets' && library.questionPage && (library.questionPage.hasMore || library.questionPage.loading) && (
+          <button type="button" disabled={library.questionPage.loading} onClick={library.questionPage.more} className="mt-3 rounded-lg border px-3 py-2 text-sm">{t(library.questionPage.loading ? 'Loading...' : 'Load more')}</button>
         )}
       </div>
     </div>
@@ -324,12 +337,6 @@ function SourceRow({
         </span>
         <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
           {note || (item.available ? item.detail : t('Currently unavailable'))}
-          {item.content_workspace_id !== undefined && !item.parentKey && (
-            <>
-              {(note || item.detail) && ' · '}
-              <WorkspaceLabel row={item} />
-            </>
-          )}
         </span>
       </span>
     </button>

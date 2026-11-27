@@ -378,7 +378,17 @@ class PartnerActivityFeed:
                 recent[activity_id] = []
                 while len(recent) > self.max_recent:
                     recent.pop(next(iter(recent)))
-            recent[activity_id].append(dict(frame))
+            retained = recent[activity_id]
+            retained.append(dict(frame))
+            if frame.get("type") == "done":
+                # Live subscribers have every frame already. What a late one
+                # replays of a finished turn is the gap before history caught
+                # up — the question and the answer — and history carries the
+                # trace. Holding every streamed delta of 32 turns per person
+                # was most of a busy partner's memory.
+                recent[activity_id] = [
+                    item for item in retained if item.get("type") != "stream_event"
+                ]
         for queue in tuple(self._subscribers.get(key, ())):
             queue.put_nowait(dict(frame))
 
@@ -905,10 +915,14 @@ class PartnerManager:
             self._load_auto_start(partner_id, default=True) if preserve_auto_start else False
         )
 
-        for task in instance.tasks:
+        tasks = [
+            *instance.tasks,
+            *(turn.task for turn in instance.live_turns.values() if turn.task is not None),
+        ]
+        for task in tasks:
             if not task.done():
                 task.cancel()
-        for task in instance.tasks:
+        for task in tasks:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
@@ -1319,6 +1333,15 @@ class PartnerManager:
                 self._drive_web_turn(partner_id, session_key, content, media or [], turn),
                 name=f"partner:{partner_id}:webturn",
             )
+
+            def finish_cancelled(task: asyncio.Task) -> None:
+                # A task cancelled before its first step never enters the
+                # driver's try/except, but subscribers and its lease still need
+                # the terminal notification.
+                if task.cancelled() and not turn.done:
+                    turn.finish([{"type": "stopped"}])
+
+            turn.task.add_done_callback(finish_cancelled)
         except Exception:
             turn.finish([])
             instance.live_turns.pop(session_key, None)
@@ -1397,6 +1420,15 @@ class PartnerManager:
                     {"type": "done"},
                 ]
             )
+        finally:
+            # A finished turn is read back from history, never re-attached
+            # (see ``subscribe_web_turn``), and its subscribers already hold
+            # every frame. Keeping it kept each conversation's last reply —
+            # every streamed delta — for as long as the partner ran.
+            instance = self._partners.get(partner_id)
+            if instance is not None and instance.live_turns.get(session_key) is turn:
+                instance.live_turns.pop(session_key, None)
+            turn.events.clear()
 
     # ── Session lifecycle (web management) ────────────────────────
 
@@ -1509,24 +1541,45 @@ class PartnerManager:
             except OSError:
                 logger.exception("Failed to migrate TutorBot souls library")
 
-        for entry in legacy_root.iterdir():
+        for entry in sorted(legacy_root.iterdir()):
             if not entry.is_dir() or entry.name in _RESERVED_NAMES | {"bots"}:
                 continue
             legacy_config = entry / "config.yaml"
             if not legacy_config.is_file():
                 continue
-            partner_id = entry.name
+            legacy_name = entry.name
+            # Partner ids ride in ``/partners/<id>`` URLs and must be ASCII/URL-
+            # safe, like every other creation path (see ``slugify_partner_id``).
+            # Carrying the raw legacy directory name across left CJK-named bots
+            # unreachable ("Partner not found").
+            partner_id = slugify_partner_id(legacy_name)
+            origin = {"type": "tutorbot", "id": legacy_name}
+            if (
+                partner_id != legacy_name
+                and (self._partner_dir(legacy_name) / "config.yaml").exists()
+            ):
+                existing = self.load_config(legacy_name)
+                if existing and existing.soul_origin == origin:
+                    continue
+            base_id = partner_id
+            suffix = 1
+            while (self._partner_dir(partner_id) / "config.yaml").exists():
+                existing = self.load_config(partner_id)
+                if existing and existing.soul_origin == origin:
+                    break
+                suffix += 1
+                partner_id = f"{base_id}-{suffix}"
             if (self._partner_dir(partner_id) / "config.yaml").exists():
                 continue
             try:
                 data = yaml.safe_load(legacy_config.read_text(encoding="utf-8")) or {}
                 config = PartnerConfig(
-                    name=data.get("name", partner_id),
+                    name=data.get("name", legacy_name),
                     description=data.get("description", ""),
                     channels=data.get("channels", {}) or {},
                     llm_selection=data.get("llm_selection"),
                     model=data.get("model"),
-                    soul_origin={"type": "tutorbot", "id": partner_id},
+                    soul_origin=origin,
                 )
                 self._ensure_partner_dirs(partner_id)
                 persona = str(data.get("persona", "") or "").strip()
@@ -1754,8 +1807,8 @@ the classroom.
 )
 
 # Verbatim texts of retired seeds (including the TutorBot-era variants).
-# A library entry that still matches one of these — or that sits on a seed
-# id and still mentions TutorBot — is an untouched old seed: safe to swap
+# A library entry that still matches one of these on a known seed
+# id is an untouched old seed: safe to swap
 # for the current template without losing any user writing.
 _TUTORBOT_SEED = (
     "# Soul\n\nI am TutorBot, a personal learning companion.\n\n"
@@ -1803,9 +1856,7 @@ _LEGACY_SOUL_ID_ALIASES = {"default-tutorbot": "companion", "default": "companio
 
 def _is_stale_seed(entry: dict[str, str]) -> bool:
     content = str(entry.get("content") or "")
-    return content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS} or (
-        "tutorbot" in content.lower()
-    )
+    return content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS}
 
 
 def _refresh_stale_default_souls(

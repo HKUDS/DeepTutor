@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 import contextlib
 import json
 from pathlib import Path
@@ -103,12 +103,18 @@ class SQLiteCronRepository:
             source.replace(archive)
             return payloads
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Preserve transaction handling and close without relying on garbage collection."""
         connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=30000")
-        connection.execute("PRAGMA synchronous=NORMAL")
-        return connection
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout=30000")
+            connection.execute("PRAGMA synchronous=NORMAL")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self, initial: Iterable[dict[str, Any]]) -> None:
         with self._migration_lock(), self._connect() as connection:

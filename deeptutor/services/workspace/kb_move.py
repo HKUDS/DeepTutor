@@ -326,7 +326,7 @@ def _rebase_llamaindex_paths(
 def move_kb(source_id: str, target_workspace_id: str) -> dict:
     """Publish one verified KB copy and preserve qualified saved references."""
     with data_activity(exclusive=True):
-        assert_no_pending_recovery()
+        assert_no_pending_recovery(reject_unreadable=True)
         plan = preview_kb_move(source_id, target_workspace_id)
         if plan["blockers"]:
             raise WorkspaceError(" ".join(plan["blockers"]))

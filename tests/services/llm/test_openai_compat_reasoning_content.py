@@ -356,3 +356,23 @@ def test_services_moonshot_v1_keeps_temperature() -> None:
     kwargs = _build_services_kwargs("moonshot", None, model="moonshot-v1-8k")
 
     assert kwargs["temperature"] == 0.7
+
+
+@pytest.mark.parametrize(
+    "model, expected", [("gpt-6", False), ("openai/gpt-6.1", False), ("custom-gpt-6-proxy", True)]
+)
+def test_temperature_for_gpt6_on_both_wires(model, expected):
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    provider.default_model = model
+    provider._spec = find_service_provider("openai")
+    for build in (provider._build_kwargs, provider._build_responses_body):
+        body = build(
+            messages=[{"role": "user", "content": "hello"}],
+            tools=None,
+            model=model,
+            max_tokens=64,
+            temperature=0.5,
+            reasoning_effort=None,
+            tool_choice=None,
+        )
+        assert ("temperature" in body) is expected

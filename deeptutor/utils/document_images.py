@@ -34,9 +34,13 @@ import re
 from typing import Any
 import zipfile
 
-from defusedxml import ElementTree as DefusedElementTree
-
 logger = logging.getLogger(__name__)
+
+# Office Open XML math namespace used while walking DOCX paragraphs. Keeping
+# the namespace separate from the local tag name is essential: both ordinary
+# Word runs and Office Math runs use a ``t`` leaf, but only the latter carries
+# structural meaning that must be rendered by its parents.
+MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 # ---------------------------------------------------------------------------
 # Budgets. Defaults serve the chat-attachment path; the reading-area ingest
@@ -47,6 +51,32 @@ MAX_IMAGES_PER_DOC = 12
 MAX_TOTAL_IMAGE_BYTES_PER_DOC = 12 * 1024 * 1024
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 MIN_IMAGE_BYTES = 1_200  # below this it is a bullet point or a divider, not a figure
+
+#: Long-edge bound for an image that will be base64-inlined into one provider
+#: request. Byte budgets alone do not bound what a *page-sized* raster costs:
+#: a scanned A4 page arrives at ~2900x4032 (~600 KB), so seven of them are
+#: ~4.2 MB of body and ~5.6 MB encoded, while a vision model is served a raster
+#: scaled toward ~1.5k on the long edge anyway. Bounding the long edge keeps the
+#: detail a model can actually read and drops the rest. The reading-area ingest
+#: is exempt (``max_inline_edge=0``) because those bytes are written to disk for
+#: the reader pane and never inflated into a request.
+#:
+#: The number is deliberately looser than ``PAGE_RENDER_DPI`` (110 dpi, ~1286 px
+#: on A4, ~132 KB/page), which the reading viewport already uses for its
+#: whole-page fallback raster: a harvested scan is the only channel carrying a
+#: page's content, so it keeps more resolution than a supplementary render.
+MAX_INLINE_IMAGE_EDGE = 1600
+
+#: Matches ``PAGE_RENDER_DPI``'s jpg_quality so a fitted raster is encoded the
+#: same way the reading render already is.
+INLINE_IMAGE_JPEG_QUALITY = 82
+
+#: Fitting decodes pixels, so refuse images past this many pixels before Pillow
+#: allocates for them. Mirrors ``MAX_IMAGE_PIXELS`` in
+#: ``services/rag/visual_assets`` (kept as a literal so this utils module stays
+#: free of a services import). Oversized candidates are left untouched and fall
+#: through to the existing byte budgets.
+MAX_INLINE_FIT_PIXELS = 30_000_000
 
 
 def reading_image_budget() -> ImageBudget:
@@ -59,11 +89,15 @@ def reading_image_budget() -> ImageBudget:
     request can carry. ``max_images_per_page=4`` mirrors
     ``READING_VIEWPORT_MAX_IMAGES`` in ``services/session/_turn_runtime_shared``
     (kept as a literal so this utils module stays free of a services import).
+
+    ``max_inline_edge=0`` keeps source resolution: these bytes are stored for
+    the reader pane to display, not inlined into a request.
     """
     return ImageBudget(
         max_images=120,
         max_total_bytes=60 * 1024 * 1024,
         max_images_per_page=4,
+        max_inline_edge=0,
     )
 
 
@@ -108,6 +142,10 @@ class ImageBudget:
     # page from monopolising the document budget when a single request can only
     # carry a handful of images.
     max_images_per_page: int = 0
+    # 0 = keep the source resolution. Non-zero fits every admitted raster within
+    # this long-edge bound, for budgets whose images are inlined into one
+    # request. See ``MAX_INLINE_IMAGE_EDGE``.
+    max_inline_edge: int = MAX_INLINE_IMAGE_EDGE
     count: int = 0
     total_bytes: int = 0
     skipped_vector: int = 0
@@ -122,7 +160,13 @@ class ImageBudget:
         self.skipped_other += 1
 
     def try_admit(self, ext: str, data: bytes) -> EmbeddedImage | None:
-        """Admit one candidate image, applying every budget. ``None`` = skip."""
+        """Admit one candidate image, applying every budget. ``None`` = skip.
+
+        The candidate is fitted to ``max_inline_edge`` first, so the byte
+        budgets below weigh what will actually ship, and a page-sized raster no
+        provider would read at source size still qualifies.
+        """
+        ext, data = fit_inline_image(ext, data, max_edge=self.max_inline_edge)
         if len(data) < self.min_image_bytes or len(data) > self.max_image_bytes:
             self.skipped_budget += 1
             return None
@@ -217,8 +261,244 @@ def _local_name(tag: Any) -> str:
     return tag if isinstance(tag, str) else ""
 
 
+def _namespace(tag: Any) -> str:
+    """Return the namespace URI from an ElementTree expanded tag."""
+    if isinstance(tag, str) and tag.startswith("{") and "}" in tag:
+        return tag[1:].split("}", 1)[0]
+    return ""
+
+
 def _parse_xml(raw: bytes) -> Any:
+    from defusedxml import ElementTree as DefusedElementTree
+
     return DefusedElementTree.fromstring(raw)
+
+
+def _child_with_local_name(node: Any, name: str) -> Any | None:
+    """Return the first direct child whose expanded tag has *name*."""
+    return next((child for child in node if _local_name(child.tag) == name), None)
+
+
+def _attribute_with_local_name(node: Any, name: str) -> str:
+    """Read an attribute without coupling the parser to an OOXML prefix."""
+    for key, value in node.attrib.items():
+        if _local_name(key) == name:
+            return str(value)
+    return ""
+
+
+def _omml_leaf_text(node: Any) -> str:
+    """Flatten only math leaves, for an explicit unsupported-node warning."""
+    return "".join(
+        child.text or ""
+        for child in node.iter()
+        if _namespace(child.tag) == MATH_NS and _local_name(child.tag) == "t"
+    ).strip()
+
+
+def _omml_children(node: Any) -> str:
+    return "".join(_render_omml(child) for child in node)
+
+
+def _omml_argument(node: Any, name: str) -> str:
+    child = _child_with_local_name(node, name)
+    return _render_omml(child).strip() if child is not None else ""
+
+
+def _omml_property(node: Any, property_name: str, value_name: str, default: str = "") -> str:
+    """Return one ``m:val``-style value from a direct OMML property child."""
+    properties = _child_with_local_name(node, property_name)
+    value_node = _child_with_local_name(properties, value_name) if properties is not None else None
+    return _attribute_with_local_name(value_node, "val") if value_node is not None else default
+
+
+def _math_atom(text: str, *, script_operand: bool = False) -> str:
+    """Parenthesise a compound operand while leaving simple atoms readable."""
+    text = text.strip()
+    if not text:
+        return "?"
+    if script_operand and ("^" in text or "_" in text):
+        return f"({text})"
+    if re.fullmatch(r"[\w.]+(?:_[\w.]+)?(?:\^[\w.]+)?", text, flags=re.UNICODE):
+        return text
+    root = re.fullmatch(r"(?:sqrt|root)(\(.*\))", text)
+    grouped = root.group(1) if root else text
+    if grouped.startswith(("(", "[")):
+        opening, closing = ("(", ")") if grouped[0] == "(" else ("[", "]")
+        depth = 0
+        for index, char in enumerate(grouped):
+            if char == opening:
+                depth += 1
+            elif char == closing:
+                depth -= 1
+                if depth == 0:
+                    if index == len(grouped) - 1:
+                        return text
+                    break
+    return f"({text})"
+
+
+def _render_omml(node: Any) -> str:
+    """Render a supported Office Math subtree as unambiguous plain math.
+
+    This intentionally produces model-readable text rather than presentation
+    markup. Unsupported structural nodes are labelled with their leaf content
+    so a formula can never silently turn into a different, plausible problem.
+    """
+    if node is None:
+        return ""
+    name = _local_name(node.tag)
+    if _namespace(node.tag) != MATH_NS:
+        return "".join(render_docx_text(child) for child in node)
+
+    if name == "t":
+        return node.text or ""
+    if name.endswith("Pr") or name in {"ctrlPr", "degHide"}:
+        return ""
+    if name in {
+        "oMath",
+        "r",
+        "e",
+        "num",
+        "den",
+        "sup",
+        "sub",
+        "deg",
+        "lim",
+        "fName",
+    }:
+        return _omml_children(node)
+
+    if name == "oMathPara":
+        expression = _omml_children(node).strip()
+        return f"\n{expression}\n" if expression else ""
+
+    if name == "f":
+        numerator = _omml_argument(node, "num")
+        denominator = _omml_argument(node, "den")
+        return f"{_math_atom(numerator)}/{_math_atom(denominator)}"
+
+    if name == "sSup":
+        base = _omml_argument(node, "e")
+        exponent = _omml_argument(node, "sup")
+        return (
+            f"{_math_atom(base, script_operand=True)}^{_math_atom(exponent, script_operand=True)}"
+        )
+
+    if name == "sSub":
+        base = _omml_argument(node, "e")
+        subscript = _omml_argument(node, "sub")
+        return (
+            f"{_math_atom(base, script_operand=True)}_{_math_atom(subscript, script_operand=True)}"
+        )
+
+    if name == "sSubSup":
+        base = _omml_argument(node, "e")
+        subscript = _omml_argument(node, "sub")
+        exponent = _omml_argument(node, "sup")
+        return f"{_math_atom(base, script_operand=True)}_{_math_atom(subscript, script_operand=True)}^{_math_atom(exponent, script_operand=True)}"
+
+    if name == "rad":
+        expression = _omml_argument(node, "e")
+        degree = _omml_argument(node, "deg")
+        properties = _child_with_local_name(node, "radPr")
+        degree_hidden = (
+            _child_with_local_name(properties, "degHide") if properties is not None else None
+        )
+        hidden_value = (
+            _attribute_with_local_name(degree_hidden, "val").lower()
+            if degree_hidden is not None
+            else ""
+        )
+        if not degree or hidden_value in {"1", "true", "on"}:
+            return f"sqrt({expression or '?'})"
+        return f"root({degree}, {expression or '?'})"
+
+    if name == "d":
+        begin = _omml_property(node, "dPr", "begChr", "(")
+        end = _omml_property(node, "dPr", "endChr", ")")
+        separator = _omml_property(node, "dPr", "sepChr", "|")
+        expressions = [
+            _render_omml(child).strip() for child in node if _local_name(child.tag) == "e"
+        ]
+        content = separator.join(expression for expression in expressions if expression)
+        return f"{begin}{content}{end}"
+
+    flattened = _omml_leaf_text(node) or name
+    return f"[unsupported equation: {flattened}]"
+
+
+def render_docx_text(node: Any) -> str:
+    """Render text below one DOCX node without flattening OMML structure."""
+    name = _local_name(node.tag)
+    namespace = _namespace(node.tag)
+    if namespace == MATH_NS:
+        return _render_omml(node)
+    if name == "t":
+        return node.text or ""
+    if name == "tab":
+        return "\t"
+    if name in {"br", "cr"}:
+        return "\n"
+    return "".join(render_docx_text(child) for child in node)
+
+
+def fit_inline_image(ext: str, data: bytes, *, max_edge: int) -> tuple[str, bytes]:
+    """Fit a raster within ``max_edge`` so one inline request stays affordable.
+
+    Returns the (possibly re-encoded) image and its extension. An image already
+    within the bound is returned untouched, byte for byte, so small figures and
+    screenshots keep their original format and quality — re-encoding is reserved
+    for images that would otherwise carry detail no vision model reads.
+
+    ``max_edge=0`` disables fitting. Every failure — an undecodable candidate, a
+    pixel count past :data:`MAX_INLINE_FIT_PIXELS`, a re-encode that would not
+    even shrink the payload — returns the original bytes: a transport-size
+    optimisation must never be the reason an attachment becomes unreadable.
+    """
+    if max_edge <= 0 or not data:
+        return ext, data
+    try:
+        from PIL import Image
+    except ImportError:  # pragma: no cover - Pillow ships with the image extras
+        return ext, data
+    try:
+        with Image.open(io.BytesIO(data)) as probe:
+            width, height = probe.size
+            if max(width, height) <= max_edge or width * height > MAX_INLINE_FIT_PIXELS:
+                return ext, data
+            probe.load()
+            has_alpha = probe.mode in {"RGBA", "LA"} or (
+                probe.mode == "P" and "transparency" in probe.info
+            )
+            if has_alpha:
+                # JPEG has no alpha channel. Composite onto white — a page or a
+                # slide — rather than letting a transparent figure turn black.
+                rgba = probe.convert("RGBA")
+                fitted = Image.new("RGB", rgba.size, (255, 255, 255))
+                fitted.paste(rgba, mask=rgba.split()[-1])
+                rgba.close()
+            else:
+                fitted = probe.convert("RGB")
+    except Exception:
+        logger.debug("inline image fit probe failed", exc_info=True)
+        return ext, data
+    try:
+        scale = max_edge / max(width, height)
+        target = (max(1, round(width * scale)), max(1, round(height * scale)))
+        buffer = io.BytesIO()
+        fitted.resize(target, Image.LANCZOS).save(
+            buffer, format="JPEG", quality=INLINE_IMAGE_JPEG_QUALITY, optimize=True
+        )
+        shrunk = buffer.getvalue()
+    except Exception:
+        logger.debug("inline image fit failed", exc_info=True)
+        return ext, data
+    finally:
+        fitted.close()
+    if not shrunk or len(shrunk) >= len(data):
+        return ext, data
+    return ".jpg", shrunk
 
 
 def _normalise_ext(ext: str) -> str:
@@ -255,18 +535,11 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         for node in root.iter():
             if _local_name(node.tag) != "p":
                 continue
-            text_parts: list[str] = []
             markers: list[str] = []
             seen_rids: set[str] = set()
             for child in node.iter():
                 name = _local_name(child.tag)
-                if name == "t" and child.text:
-                    text_parts.append(child.text)
-                elif name == "tab":
-                    text_parts.append("\t")
-                elif name in {"br", "cr"}:
-                    text_parts.append("\n")
-                elif name == "blip":
+                if name == "blip":
                     rid = _blip_embed_rid(child)
                     if not rid or rid in seen_rids:
                         continue
@@ -280,7 +553,7 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
                             by_target[target] = image
                     if image is not None:
                         markers.append(build_marker(image))
-            paragraph = "".join(text_parts).strip()
+            paragraph = render_docx_text(node).strip()
             if markers:
                 paragraph = (paragraph + "\n" if paragraph else "") + "\n".join(markers)
             if paragraph:
@@ -442,10 +715,7 @@ def _extract_pptx_rich_ooxml(data: bytes, *, budget: ImageBudget | None = None) 
     slides: list[str] = []
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         names = set(zf.namelist())
-        slide_members = sorted(
-            (name for name in names if _SLIDE_MEMBER_PATTERN.fullmatch(name)),
-            key=_natural_slide_key,
-        )
+        slide_members = ordered_pptx_slide_members(zf)
         for member in slide_members:
             rel_targets = _office_rels(zf, _rels_for(member))
             lines: list[str] = []
@@ -454,7 +724,16 @@ def _extract_pptx_rich_ooxml(data: bytes, *, budget: ImageBudget | None = None) 
             except Exception:
                 slides.append("")
                 continue
+            handled_blips: set[Any] = set()
             for node in root.iter():
+                if _local_name(node.tag) == "blip":
+                    if node not in handled_blips:
+                        image = _load_office_image(
+                            zf, names, rel_targets.get(_blip_embed_rid(node), ""), budget, images
+                        )
+                        if image is not None:
+                            lines.append(build_marker(image))
+                    continue
                 if _local_name(node.tag) != "p":
                     continue
                 text_parts: list[str] = []
@@ -469,6 +748,7 @@ def _extract_pptx_rich_ooxml(data: bytes, *, budget: ImageBudget | None = None) 
                     elif name in {"br", "cr"}:
                         text_parts.append("\n")
                     elif name == "blip":
+                        handled_blips.add(child)
                         rid = _blip_embed_rid(child)
                         if not rid or rid in seen_rids:
                             continue
@@ -489,6 +769,43 @@ def _extract_pptx_rich_ooxml(data: bytes, *, budget: ImageBudget | None = None) 
 
 
 _SLIDE_MEMBER_PATTERN = re.compile(r"ppt/slides/slide\d+\.xml")
+
+
+def ordered_pptx_slide_members(zf: zipfile.ZipFile) -> list[str]:
+    """Resolve slide parts in presentation order, with a metadata-free fallback."""
+    names = set(zf.namelist())
+    try:
+        root = _parse_xml(zf.read("ppt/presentation.xml"))
+    except Exception:
+        root = None
+    if root is not None and _local_name(root.tag) == "presentation":
+        slide_ids = [node for node in root.iter() if _local_name(node.tag) == "sldId"]
+        if not slide_ids:
+            return []
+        rels_member = "ppt/_rels/presentation.xml.rels"
+        try:
+            # An empty mapping can mean valid-but-unresolved relationships or
+            # unreadable metadata. Only unreadable metadata permits fallback.
+            _parse_xml(zf.read(rels_member))
+        except Exception:
+            pass
+        else:
+            targets = _office_rels(zf, rels_member)
+            ordered: list[str] = []
+            for node in slide_ids:
+                rid = node.get(
+                    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+                )
+                target = targets.get(rid or "", "").lstrip("/")
+                if target in names:
+                    ordered.append(target)
+            return ordered
+    # Keep best-effort extraction for older/minimal archives without usable
+    # presentation metadata, rather than requiring python-pptx to read them.
+    return sorted(
+        (name for name in names if _SLIDE_MEMBER_PATTERN.fullmatch(name)),
+        key=_natural_slide_key,
+    )
 
 
 def _natural_slide_key(name: str) -> list[int]:
@@ -592,12 +909,15 @@ __all__ = [
     "PptxRich",
     "PdfImages",
     "MAX_IMAGES_PER_DOC",
+    "MAX_INLINE_IMAGE_EDGE",
     "SUPPORTED_IMAGE_EXTENSIONS",
     "build_marker",
     "find_markers",
+    "fit_inline_image",
     "image_index_from_name",
     "reading_image_budget",
     "extract_docx_rich",
     "extract_pptx_rich",
+    "ordered_pptx_slide_members",
     "extract_pdf_images",
 ]

@@ -105,12 +105,20 @@ def _load_book_materials(source_id: str, label: str, budget: int) -> list[TopicM
     the reason — because "this chapter exists but has not been written" is
     something the tutor must be able to say instead of inventing its contents.
     """
-    from deeptutor.book.context import build_book_context
-    from deeptutor.book.storage import get_book_storage
+    from deeptutor.modules.catalog import require_module
 
-    storage = get_book_storage()
-    book = storage.load_book(source_id)
-    spine = storage.load_spine(source_id)
+    require_module("books")
+    from deeptutor.book.context import build_book_context
+    from deeptutor.multi_user.book_access import resolve_book
+
+    resolved = resolve_book(source_id)
+    if resolved is None:
+        book = None
+        storage = None
+    else:
+        storage = resolved.engine.storage
+        book = resolved.engine.load_book(source_id)
+    spine = storage.load_spine(source_id) if storage is not None else None
     if book is None or spine is None or not spine.chapters:
         return [
             TopicMaterial(
@@ -199,6 +207,9 @@ def _load_book_materials(source_id: str, label: str, budget: int) -> list[TopicM
 
 def _load_notebook_material(source_id: str, label: str, budget: int) -> TopicMaterial:
     """A notebook stays one material: its records are already record-sized."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("notebook")
     from deeptutor.services.notebook import get_notebook_manager
 
     records = get_notebook_manager().get_records_by_references(
@@ -345,6 +356,9 @@ def _load_question_bank_material(source_id: str, label: str, budget: int) -> Top
 
 def _load_cowriter_material(source_id: str, label: str, budget: int) -> TopicMaterial:
     """One Co-Writer draft, read as the learner's own writing on the subject."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("co-writer")
     from deeptutor.co_writer.storage import get_co_writer_storage
 
     document = get_co_writer_storage().load_document(source_id)

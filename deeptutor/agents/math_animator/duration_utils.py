@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 
+# An English unit must end at a word boundary, so the first letter of an
+# ordinary word after a number ("3 main ideas", "5 sides") is not read as "m" or
+# "s". The same check keeps "ms" (milliseconds) from matching "m".
 _SECOND_PATTERN = re.compile(
-    r"(?P<value>\d+(?:\.\d+)?)\s*(?:s|sec|secs|second|seconds|秒(?:钟)?)",
+    r"(?P<value>\d+(?:\.\d+)?)\s*(?:(?:s|sec|secs|second|seconds)(?![a-z])|秒(?:钟)?)",
     re.IGNORECASE,
 )
 _MINUTE_PATTERN = re.compile(
-    r"(?P<value>\d+(?:\.\d+)?)\s*(?:min(?:ute)?s?|分钟|m(?![sS]))",
+    r"(?P<value>\d+(?:\.\d+)?)\s*(?:(?:min(?:ute)?s?|m)(?![a-z])|分钟)",
     re.IGNORECASE,
 )
 

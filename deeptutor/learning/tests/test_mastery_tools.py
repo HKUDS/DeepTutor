@@ -45,6 +45,35 @@ def posed_card(result):
 def path_id(tmp_path, monkeypatch):
     """Point the LearningStore at a temp workspace and yield a stable path id."""
     monkeypatch.setattr(LearningStore, "__init__", _store_init_factory(tmp_path))
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        verdicts = {}
+        for item in items:
+            if (item.get("expected_answer"), item["answer"]) in {
+                ("4", "5"),
+                ("0", "1"),
+            }:
+                result = "incorrect"
+            elif item["answer"] == "photosynthesis":
+                result = "correct"
+            elif "explain the task" in item["answer"] or item["answer"].strip() == "":
+                # A learner asking for help is not an answer: the judge
+                # declines to rule, which is what makes the attempt non-final.
+                verdicts[item["question_id"]] = semantic_assessment.Verdict(
+                    result="ungraded", confidence=0.1, feedback="The learner asked for help."
+                )
+                continue
+            elif item["answer"] == "XOR is exclusive or.":
+                result = "correct"
+            else:
+                raise AssertionError(f"Add an explicit offline assessment case: {item!r}")
+            verdicts[item["question_id"]] = semantic_assessment.Verdict(
+                result=result, confidence=0.99, feedback="Checked the supplied explanation."
+            )
+        return verdicts
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
     return "test_path"
 
 
@@ -1174,6 +1203,7 @@ async def test_status_recovers_answered_interaction_without_exposing_answer_key(
         "question_id": quiz["question_id"],
         "status": "answered",
         "learner_answer": "4",
+        "session_id": "",
     }
     assert "expected_answer" not in json.dumps(recovered)
 
@@ -1247,6 +1277,170 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
     assert graded.user_answer == expected_label
 
 
+@pytest.mark.asyncio
+async def test_grade_recovers_a_free_text_clarification_answer(path_id):
+    """A help request that was ruled ungraded must not shadow the real answer.
+
+    The free-text half of #1004 (#2595): the learner asks for help, the judge
+    answers "ungraded", the tutor explains, and the learner then answers — in
+    the composer. The stored ``user_answer`` is authoritative so a paraphrased
+    tool argument cannot override it, but a reply already ruled non-final is a
+    question rather than an answer, so it has to yield to the new reply.
+    """
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="How does a plant make its food?",
+                expected_answer="photosynthesis",
+                question_type="short",
+            )
+        )
+    )
+    from deeptutor.learning.service import LearningService
+
+    LearningService().record_question_answer(
+        path_id,
+        "I don't understand, please explain the task with the solution",
+        interaction_id=quiz["question_id"],
+    )
+    ungraded = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        question_id=quiz["question_id"],
+        _learner_message="I don't understand, please explain the task with the solution",
+    )
+    assert ungraded.success is True
+    assert json.loads(ungraded.content)["is_correct"] is None
+    stuck = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert stuck is not None
+    assert stuck.status == InteractionStatus.ANSWERED
+    assert stuck.result["final"] is False
+
+    # The explanation happened in the chat; this is the answer that followed.
+    graded = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id=quiz["question_id"],
+                _learner_message="photosynthesis",
+            )
+        ).content
+    )
+    assert graded["is_correct"] is True
+    assert graded["mastered"] is False  # 0.5 is still below the 0.9 gate
+    row = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert row is not None
+    assert row.status == InteractionStatus.GRADED
+    assert row.user_answer == "photosynthesis"
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_clarification_is_not_treated_as_a_revision(path_id):
+    """Re-sending the same help request must not rewrite the committed reply.
+
+    Only a *different* reply supersedes an ungraded one. A tutor that retries
+    ``mastery_grade`` with the same words — or with nothing at all — has to
+    land on the stored answer, or an ungraded attempt would silently discard
+    what the learner actually typed.
+    """
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="How does a plant make its food?",
+                expected_answer="photosynthesis",
+                question_type="short",
+            )
+        )
+    )
+    from deeptutor.learning.service import LearningService
+
+    help_request = "I don't understand, please explain the task with the solution"
+    LearningService().record_question_answer(
+        path_id, help_request, interaction_id=quiz["question_id"]
+    )
+    for _ in range(2):
+        again = await MasteryGradeTool().execute(
+            _mastery_path_id=path_id,
+            question_id=quiz["question_id"],
+            _learner_message=help_request,
+        )
+        assert json.loads(again.content)["is_correct"] is None
+        row = LearningStore().get_interaction(path_id, quiz["question_id"])
+        assert row is not None
+        assert row.status == InteractionStatus.ANSWERED
+        assert row.user_answer == help_request
+
+
+@pytest.mark.asyncio
+async def test_a_model_supplied_answer_cannot_revise_a_committed_one(path_id):
+    """Revision needs the runtime's key, not the model-controlled ``answer``.
+
+    The public ``answer`` parameter is model-authored; ``_learner_message`` is
+    injected from the turn's real user message. Preferring ``_learner_message``
+    but falling back to ``answer`` left the escalation open one parameter over:
+    a tool call with no trusted key could replace a committed learner reply and
+    credit mastery for text the learner never typed.
+    """
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="How does a plant make its food?",
+                expected_answer="photosynthesis",
+                question_type="short",
+            )
+        )
+    )
+    from deeptutor.learning.service import LearningService
+
+    help_request = "I don't understand, please explain the task with the solution"
+    LearningService().record_question_answer(
+        path_id, help_request, interaction_id=quiz["question_id"]
+    )
+    ungraded = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        question_id=quiz["question_id"],
+        _learner_message=help_request,
+    )
+    assert json.loads(ungraded.content)["is_correct"] is None
+    stuck = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert stuck is not None
+    assert stuck.result["final"] is False
+
+    # A model-only answer, with no trusted key, must not revise anything.
+    forged = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id=quiz["question_id"],
+                answer="photosynthesis",
+            )
+        ).content
+    )
+    assert forged["is_correct"] is None
+    assert forged["mastery"] == 0.0
+    row = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert row is not None
+    assert row.status == InteractionStatus.ANSWERED
+    assert row.user_answer == help_request
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    assert progress.quiz_attempts == []
+
+
 # ── assess: the qualitative gate ─────────────────────────────────────────────
 
 
@@ -1270,16 +1464,113 @@ async def test_assess_passes_concept(path_id):
     result = json.loads(
         (
             await MasteryAssessTool().execute(
-                _mastery_path_id=path_id, knowledge_point_id=concept_kp, passed=True, feedback="ok"
+                _mastery_path_id=path_id,
+                knowledge_point_id=concept_kp,
+                passed=True,
+                feedback="ok",
+                _learner_message="XOR is exclusive or.",
             )
         ).content
     )
     assert result["mastered"] is True
     assert result["next"]["action"] == "complete"
+    assert "path is complete" in result["instruction"]
     progress = LearningStore().load(path_id)
     assert progress is not None
     assert progress.repetition_states[concept_kp].review_count == 1
     assert [task.knowledge_point_id for task in progress.review_queue] == [mem_kp, concept_kp]
+
+
+async def _build_two_concepts(path_id):
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="replace",
+        modules=[
+            {
+                "name": "Module 1",
+                "knowledge_points": [
+                    {"name": "Why XOR matters", "type": "concept"},
+                    {"name": "Where XOR is used", "type": "concept"},
+                ],
+            }
+        ],
+    )
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    return status["next"]["knowledge_point_id"]
+
+
+@pytest.mark.asyncio
+async def test_assess_pass_tells_the_tutor_to_continue_with_next(path_id):
+    """A cleared concept gate says to go on, as mastery_grade does for cards (#2323)."""
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="XOR is exclusive or.",
+            )
+        ).content
+    )
+    assert result["mastered"] is True
+    assert result["next"]["knowledge_point_id"] != first
+    assert result["next"]["action"] != "complete"
+    assert "continue with `next` in this same reply" in result["instruction"]
+
+
+@pytest.mark.asyncio
+async def test_assess_partial_tells_the_tutor_to_teach_the_gap_and_ask_again(path_id, monkeypatch):
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        return {
+            item["question_id"]: semantic_assessment.Verdict(
+                result="partial", confidence=0.95, feedback="The use case is missing."
+            )
+            for item in items
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="XOR is true when exactly one input is true.",
+            )
+        ).content
+    )
+    assert result["final"] is True and result["mastered"] is False
+    assert "not cleared" in result["instruction"]
+    assert "mastery_assess" in result["instruction"]
+
+
+@pytest.mark.asyncio
+async def test_assess_clarification_request_keeps_its_own_contract(path_id, monkeypatch):
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        return {
+            item["question_id"]: semantic_assessment.Verdict(
+                result="ungraded", confidence=0.4, feedback="Which inputs do you mean?"
+            )
+            for item in items
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="It depends on the inputs.",
+            )
+        ).content
+    )
+    assert result["needs_clarification"] is True
+    assert "instruction" not in result
 
 
 @pytest.mark.asyncio
@@ -1316,6 +1607,7 @@ async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session
         _mastery_path_id=path_id,
         _session_id=session["id"],
         _turn_id="turn_qual",
+        _learner_message="XOR is exclusive or.",
         knowledge_point_id=concept_kp,
         passed=True,
         feedback="XOR is exclusive or.",
@@ -1324,6 +1616,7 @@ async def test_assess_syncs_qualitative_record_to_question_bank(path_id, session
         _mastery_path_id=path_id,
         _session_id=session["id"],
         _turn_id="turn_qual",
+        _learner_message="XOR is exclusive or.",
         knowledge_point_id=concept_kp,
         passed=True,
         feedback="XOR is exclusive or.",
@@ -1853,6 +2146,7 @@ async def test_revise_refuses_to_erase_a_mastered_waypoint(path_id):
     assessed = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         knowledge_point_id=concept["id"],
+        _learner_message="XOR is exclusive or.",
         passed=True,
         explanation="学习者说清楚了 XOR 与等价的关系。",
     )
@@ -1943,7 +2237,7 @@ async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
         (await profile.execute(_mastery_path_id=path_id, time_budget="改成两周")).content
     )
     assert corrected["updated_fields"] == ["time_budget"]
-    assert corrected["learner_profile"] == {
+    expected_answers = {
         "prior_knowledge": "学过一学期线性代数",
         "target_level": "能看懂论文里的推导",
         "time_budget": "改成两周",
@@ -1951,6 +2245,8 @@ async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
         "teaching_strategy": "probe_first",
         "notes": "",
     }
+    # Advisory teaching projections accompany these durable intake answers.
+    assert {key: corrected["learner_profile"][key] for key in expected_answers} == expected_answers
 
 
 @pytest.mark.asyncio
@@ -1994,3 +2290,56 @@ async def test_an_empty_profile_call_is_refused_with_the_fields_it_wanted(path_i
     result = await MasteryProfileTool().execute(_mastery_path_id=path_id)
     assert result.success is False
     assert "time_budget" in result.content
+
+
+@pytest.mark.asyncio
+async def test_quiz_refuses_a_restatement_of_a_correctly_answered_question(path_id, monkeypatch):
+    """The tutor falls back on the one source-verifiable item; that fallback
+    must not re-pose a question the learner already answered correctly (issue
+    #2073). The refusal reaches the tutor as a failed, explanatory tool result.
+    """
+    from deeptutor.learning import lesson_evidence, semantic_assessment
+
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    store = LearningStore()
+    progress = store.load(path_id)
+    progress.lesson_evidence[kp_id] = {
+        "sources": [{"ref": {}, "text": "alpha is the first letter"}]
+    }
+    store.save(progress)
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+
+    async def support(*args, **kwargs):
+        return {
+            "supported": True,
+            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
+        }
+
+    monkeypatch.setattr(semantic_assessment, "_request", support)
+    first = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="Name this.",
+                expected_answer="alpha",
+            )
+        )
+    )
+    await MasteryGradeTool().execute(
+        _mastery_path_id=path_id, question_id=first["question_id"], answer="alpha"
+    )
+    assert store.load(path_id).quiz_attempts[0].is_correct is True
+
+    refused = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Name this.",
+        expected_answer="alpha",
+    )
+    assert refused.success is False
+    assert "already answered correctly" in refused.content
+    assert store.load(path_id).pending_question is None

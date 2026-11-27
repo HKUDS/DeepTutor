@@ -6,6 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
+from typing import TextIO
 
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
@@ -15,6 +16,54 @@ from .loguru_bridge import install_loguru_bridge
 
 _CONFIGURED = False
 _MANAGED_ATTR = "_deeptutor_managed"
+
+
+class TolerantRotatingFileHandler(RotatingFileHandler):
+    """A ``RotatingFileHandler`` that keeps working when rollover fails.
+
+    Two DeepTutor processes (the CLI launcher and the uvicorn server) can
+    install a handler for the same log file. On Windows, renaming a file that
+    another process still holds open fails with ``WinError 32``, and the stock
+    handler then raises on every subsequent emit: records are dropped and
+    stderr floods with ``--- Logging error ---`` tracebacks. When a rollover
+    fails, this handler reopens the current file, writes a single warning to
+    stderr, and lets the next emit retry the rotation.
+    """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self._rollover_failure_warned = False
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except OSError:
+            self._recover_from_failed_rollover()
+
+    def _recover_from_failed_rollover(self) -> None:
+        """Keep the handler usable after a failed rotation.
+
+        ``doRollover`` closes the stream before renaming, so the current file
+        must be reopened for subsequent records. The rotation is not marked as
+        done: the next emit retries it and succeeds once the other process is
+        gone.
+        """
+        if self.stream is not None:
+            try:
+                self.stream.close()
+            except OSError:
+                pass
+            self.stream = None
+        try:
+            self.stream = self._open()
+        except OSError:
+            pass
+        if not self._rollover_failure_warned:
+            self._rollover_failure_warned = True
+            sys.stderr.write(
+                "--- Logging warning: log rotation failed; continuing with the "
+                "current log file until it can be rotated ---\n"
+            )
 
 
 def _level(value: str | int) -> int:
@@ -36,7 +85,9 @@ def _remove_managed_handlers(root: logging.Logger) -> None:
             handler.close()
 
 
-def configure_logging(force: bool = False) -> LoggingConfig:
+def configure_logging(
+    force: bool = False, *, console_stream: TextIO | None = None
+) -> LoggingConfig:
     """Configure stdlib logging once for the whole process."""
     global _CONFIGURED
 
@@ -52,7 +103,9 @@ def configure_logging(force: bool = False) -> LoggingConfig:
     root.setLevel(logging.DEBUG)
 
     if config.console_output:
-        console = _managed(logging.StreamHandler(sys.stdout))
+        console = _managed(
+            logging.StreamHandler(console_stream if console_stream is not None else sys.stdout)
+        )
         console.setLevel(level)
         console.setFormatter(ConsoleFormatter())
         root.addHandler(console)
@@ -62,7 +115,7 @@ def configure_logging(force: bool = False) -> LoggingConfig:
         ensure_private_directory(log_dir)
         log_path = log_dir / "deeptutor.jsonl"
         file_handler = _managed(
-            RotatingFileHandler(
+            TolerantRotatingFileHandler(
                 log_path,
                 maxBytes=config.max_bytes,
                 backupCount=config.backup_count,

@@ -194,13 +194,13 @@ def test_model_specific_defaults_and_shared_legacy_credentials():
     assert config.provider_name == "volcengine_speech"
     assert config.app_id == "legacy" and config.api_key == "secret"
     assert config.base_url == "https://openspeech.bytedance.com/api/v3"
-    assert config.voice == "zh_female_vv_uranus_bigtts"
-    assert resolve_tts_runtime_config(catalog(model="seed-tts-1.0")).voice.endswith("moon_bigtts")
+    assert config.voice == ""
+    assert resolve_tts_runtime_config(catalog(model="seed-tts-1.0")).voice == ""
     assert (
         resolve_tts_runtime_config(
             catalog("openrouter", "google/gemini-3.1-flash-tts-preview")
         ).voice
-        == "Kore"
+        == ""
     )
     assert (
         resolve_tts_runtime_config(catalog("groq", "canopylabs/orpheus-v1-english")).response_format
@@ -216,31 +216,26 @@ def test_voice_choices_are_per_model_and_unknown_models_have_no_false_voice_defa
     assert "marin" not in [
         v["id"] for v in voice_model_options("openai", "tts", "tts-1-hd")["voices"]
     ]
-    assert "marin" in [
+    assert "marin" not in [
         v["id"]
         for v in voice_model_options("openai", "tts", "gpt-4o-mini-tts-2025-12-15")["voices"]
     ]
     assert voice_model_options("openrouter", "tts", "private/voice-model")["voices"] == []
     assert voice_model_options("dashscope", "tts", "qwen3-tts-instruct-flash")["instructions"]
-    assert voice_model_options("siliconflow", "tts", "FunAudioLLM/CosyVoice2-0.5B")["voices"][0][
-        "id"
-    ].endswith(":alex")
+    assert voice_model_options("siliconflow", "tts", "FunAudioLLM/CosyVoice2-0.5B")["voices"] == []
 
 
 def test_qwen_audio_defaults_and_hints_match_the_selected_model():
     plus = catalog("dashscope", "qwen-audio-3.0-tts-plus")
     before = deepcopy(plus)
     config = resolve_tts_runtime_config(plus)
-    assert config.voice == "longanlingxin" and config.response_format == "mp3"
+    assert config.voice == "" and config.response_format == "mp3"
     assert plus == before
     options = voice_model_options("dashscope", "tts", "qwen-audio-3.0-tts-plus")
-    assert [v["id"] for v in options["voices"]] == ["longanlingxin", "longanlufeng"]
+    assert options["voices"] == []
     assert options["docs_url"].endswith("qwen-audio-tts-voice-list")
     assert "Beijing" in options["configuration_note"]
-    assert (
-        resolve_tts_runtime_config(catalog("dashscope", "qwen-audio-3.0-tts-flash")).voice
-        == "longanfengyue"
-    )
+    assert resolve_tts_runtime_config(catalog("dashscope", "qwen-audio-3.0-tts-flash")).voice == ""
     # Future Qwen-Audio models must not silently acquire Qwen3's Cherry voice.
     assert resolve_tts_runtime_config(catalog("dashscope", "qwen-audio-9.0-tts-plus")).voice == ""
 

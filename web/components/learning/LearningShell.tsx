@@ -1,70 +1,63 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { ArrowLeft, AlertCircle, BookOpen, RefreshCw, type LucideIcon } from 'lucide-react'
 import type { ReactNode, Ref, UIEventHandler } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LEARNING_HUB } from '@/lib/learning-routes'
+import { FeaturePage, PageHeader } from '@/components/layout/FeaturePage'
+import { useUiLayoutLabel } from '@/features/ui-layout/tokens'
+import { LEARNING_SURFACES } from './surfaces'
 
 /** The same page rhythm for the hub and each library; readers keep their full-screen layouts. */
 export function LearningShell({
   title,
   subtitle,
   action,
-  scopeChip,
   tabs,
   children,
   back = true,
   className = '',
   scrollRef,
   onScroll,
+  icon,
 }: {
   title: ReactNode
   subtitle: ReactNode
   action?: ReactNode
-  scopeChip?: ReactNode
   tabs?: ReactNode
   children: ReactNode
   back?: boolean
   className?: string
   scrollRef?: Ref<HTMLElement>
   onScroll?: UIEventHandler<HTMLElement>
+  /** Defaults to the icon of the learning surface this page belongs to. */
+  icon?: LucideIcon
 }) {
-  const { t } = useTranslation()
+  const pathname = usePathname()
+  const learningLabel = useUiLayoutLabel('learning')
+  // usePathname is null outside the App Router (tests, embeds): no icon then.
+  const surfaceIcon = LEARNING_SURFACES.find(surface => pathname?.startsWith(surface.href))?.icon
   return (
-    <section
-      ref={scrollRef}
+    <FeaturePage
+      scrollRef={scrollRef}
       onScroll={onScroll}
-      className={`h-full min-h-0 w-full overflow-y-auto bg-[var(--background)] text-[var(--foreground)] ${className}`}
+      className={className}
     >
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-7 md:px-9 lg:py-9">
-        {back && (
-          <Link
-            href={LEARNING_HUB}
-            className="mb-5 inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          >
-            <ArrowLeft size={14} />
-            {t('Personalized Learning')}
-          </Link>
-        )}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="font-serif text-[27px] font-semibold tracking-[-0.02em] md:text-[30px]">
-                {title}
-              </h1>
-              {scopeChip}
-            </div>
-            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
-              {subtitle}
-            </p>
-          </div>
-          {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
-        </header>
-        {tabs}
-        <div className="mt-6">{children}</div>
-      </div>
-    </section>
+      {back && (
+        <Link
+          href={LEARNING_HUB}
+          className="dt-section-back mb-5 inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+        >
+          <ArrowLeft size={14} />
+          {learningLabel}
+        </Link>
+      )}
+      <PageHeader title={title} description={subtitle} action={action} icon={icon ?? surfaceIcon ?? BookOpen} />
+      {tabs}
+      <div className={tabs ? 'mt-6' : ''}>{children}</div>
+    </FeaturePage>
   )
 }
 

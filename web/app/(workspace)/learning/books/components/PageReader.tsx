@@ -461,7 +461,7 @@ export default function PageReader({
     <div className="relative flex h-full flex-col">
       <header
         className={[
-          "border-b border-[var(--border)] bg-[var(--card)]/60 backdrop-blur transition-all duration-200 ease-out",
+          "bg-[var(--background)] transition-all duration-200 ease-out",
           headerCollapsed ? "px-8 py-2" : "px-8 py-5",
         ].join(" ")}
       >
@@ -517,7 +517,7 @@ export default function PageReader({
               <button
                 onClick={onRecompile}
                 disabled={loading}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="dt-quiet-button h-7 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -579,7 +579,7 @@ export default function PageReader({
               <button
                 type="button"
                 onClick={onRecompile}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+                className="dt-quiet-button h-8 text-xs font-medium"
               >
                 <RefreshCcw className="h-3.5 w-3.5" />
                 {t("Generate this chapter")}
@@ -685,7 +685,7 @@ export default function PageReader({
                 <button
                   onClick={() => setShowInsertMenu((v) => !v)}
                   disabled={inserting}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/50 hover:text-[var(--primary)] disabled:opacity-60"
+                  className="dt-quiet-button h-8 rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.04)] px-3.5 text-xs font-medium disabled:opacity-60"
                 >
                   {inserting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -719,7 +719,7 @@ export default function PageReader({
                   <button
                     type="button"
                     onClick={captureSelection}
-                    className="inline-flex items-center justify-center rounded-full border border-dashed border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/50 hover:text-[var(--primary)]"
+                    className="dt-quiet-button h-8 rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.04)] px-3.5 text-xs font-medium"
                   >
                     <Pencil className="mr-1.5 h-3.5 w-3.5" />
                     {t("Save selection")}
@@ -732,7 +732,7 @@ export default function PageReader({
       </div>
 
       {(previousPage || nextPage) && onNavigate && (
-        <footer className="border-t border-[var(--border)] bg-[var(--card)]/60 px-8 py-2.5">
+        <footer className="bg-[var(--background)] px-8 pb-3 pt-1">
           <div className="mx-auto flex w-full max-w-[78ch] items-center justify-between gap-3">
             <NavButton
               page={previousPage}

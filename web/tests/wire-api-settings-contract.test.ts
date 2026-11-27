@@ -60,11 +60,16 @@ test("wire API settings remain usable on narrow viewports", () => {
   const editor = readFileSync(EDITOR, "utf8");
   const main = readFileSync(MAIN, "utf8");
   const toolbar = readFileSync(TOOLBAR, "utf8");
+  const pageLayout = readFileSync(
+    path.resolve(process.cwd(), "components/layout/FeaturePage.tsx"),
+    "utf8",
+  );
 
   // The 1.6 settings UI uses provider cards and an inline editor instead of the old
   // sticky profile list. Profile fields stay one-column until the `sm`
   // breakpoint, and the shell keeps compact horizontal padding on phones.
   assert.match(editor, /grid gap-4 sm:grid-cols-2/);
-  assert.match(main, /px-5[^\"]*sm:px-10/);
+  assert.match(main, /<PageContainer/);
+  assert.match(pageLayout, /min-w-0[^\"]*px-6 md:px-9/);
   assert.match(toolbar, /flex flex-wrap/);
 });

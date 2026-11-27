@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "id": "knowledge",
+  "distribution": "deeptutor-knowledge",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [
+    "memory"
+  ],
+  "paths": [
+    "deeptutor/services/rag",
+    "deeptutor/services/embedding",
+    "deeptutor/capabilities/obsidian",
+    "deeptutor/capabilities/marginnote4",
+    "deeptutor/capabilities/ima",
+    "deeptutor_cli/kb.py",
+    "deeptutor/api/routers/knowledge.py",
+    "deeptutor/api/routers/marginnote4.py",
+    "deeptutor/knowledge",
+    "deeptutor/services/github_source",
+    "deeptutor/services/web_source",
+    "deeptutor/services/config/knowledge_base_config.py",
+    "deeptutor/services/workspace/kb_move.py",
+    "deeptutor/tools/rag_tool.py"
+  ],
+  "capabilities": {},
+  "loops": {
+    "obsidian": {
+      "class_path": "deeptutor.capabilities.obsidian.capability:ObsidianCapability"
+    },
+    "marginnote4": {
+      "class_path": "deeptutor.capabilities.marginnote4.capability:MarginNoteCapability"
+    },
+    "ima": {
+      "class_path": "deeptutor.capabilities.ima.capability:ImaCapability"
+    }
+  },
+  "tools": {
+    "rag": {
+      "class_path": "deeptutor.tools.builtin:RAGTool",
+      "order": 5
+    },
+    "kb_files": {
+      "class_path": "deeptutor.tools.builtin:KbFilesTool",
+      "order": 6
+    },
+    "obsidian_search": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianSearchTool",
+      "order": 63
+    },
+    "obsidian_read": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianReadTool",
+      "order": 64
+    },
+    "obsidian_list": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianListTool",
+      "order": 65
+    },
+    "obsidian_backlinks": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianBacklinksTool",
+      "order": 66
+    },
+    "obsidian_links": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianLinksTool",
+      "order": 67
+    },
+    "obsidian_tags": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianTagsTool",
+      "order": 68
+    },
+    "obsidian_create_note": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianCreateNoteTool",
+      "order": 69
+    },
+    "obsidian_append": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianAppendTool",
+      "order": 70
+    },
+    "obsidian_set_property": {
+      "class_path": "deeptutor.capabilities.obsidian.tools:ObsidianSetPropertyTool",
+      "order": 71
+    },
+    "marginnote_search": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteSearchTool",
+      "order": 72
+    },
+    "marginnote_read": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteReadTool",
+      "order": 73
+    },
+    "marginnote_list": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteListTool",
+      "order": 74
+    },
+    "marginnote_documents": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteDocumentsTool",
+      "order": 75
+    },
+    "marginnote_links": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteLinksTool",
+      "order": 76
+    },
+    "marginnote_tags": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteTagsTool",
+      "order": 77
+    },
+    "marginnote_cards": {
+      "class_path": "deeptutor.capabilities.marginnote4.tools:MarginNoteCardsTool",
+      "order": 78
+    },
+    "ima_list": {
+      "class_path": "deeptutor.capabilities.ima.tools:ImaListTool",
+      "order": 80
+    },
+    "ima_read": {
+      "class_path": "deeptutor.capabilities.ima.tools:ImaReadTool",
+      "order": 81
+    },
+    "ima_note_search": {
+      "class_path": "deeptutor.capabilities.ima.tools:ImaNoteSearchTool",
+      "order": 82
+    },
+    "ima_add_url": {
+      "class_path": "deeptutor.capabilities.ima.tools:ImaAddUrlTool",
+      "order": 83
+    },
+    "ima_write_note": {
+      "class_path": "deeptutor.capabilities.ima.tools:ImaWriteNoteTool",
+      "order": 84
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.knowledge:router",
+      "options": {
+        "prefix": "/api",
+        "tags": [
+          "knowledge-bases"
+        ]
+      },
+      "auth": "learning",
+      "order": 578
+    },
+    {
+      "reference": "deeptutor.api.routers.knowledge:ws_router",
+      "options": {
+        "prefix": "/ws",
+        "tags": [
+          "knowledge-bases"
+        ]
+      },
+      "auth": "public",
+      "order": 620
+    },
+    {
+      "reference": "deeptutor.api.routers.marginnote4:router",
+      "options": {
+        "prefix": "/api/marginnote4",
+        "tags": [
+          "marginnote4"
+        ]
+      },
+      "auth": "public",
+      "order": 830
+    }
+  ],
+  "commands": [
+    {
+      "name": "kb",
+      "register": "deeptutor_cli.kb:register",
+      "help": "Manage kb."
+    }
+  ],
+  "navigation": [
+    "/knowledge-bases"
+  ],
+  "services": [
+    {
+      "id": "github_sync",
+      "start": "deeptutor.knowledge.module_service:start_github_sync",
+      "stop": "deeptutor.knowledge.module_service:stop_github_sync"
+    },
+    {
+      "id": "web_source_sync",
+      "start": "deeptutor.knowledge.module_service:start_web_source_sync",
+      "stop": "deeptutor.knowledge.module_service:stop_web_source_sync"
+    }
+  ],
+  "requirements": [
+    "pageindex>=0.2.10,<0.3.0",
+    "llama-index>=0.14.12",
+    "bm25s>=0.3.14,<0.4.0",
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
+    "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
+    "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
+    "numpy>=1.24.0,<3.0.0"
+  ],
+  "executables": [],
+  "http_paths": [
+    "/api/subagents/connections",
+    "/api/settings/workspace/knowledge-bases"
+  ]
+}

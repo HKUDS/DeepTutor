@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import zipfile
 
 import httpx as real_httpx
@@ -258,19 +260,16 @@ def test_pdf_parser_streams_output_lines(tmp_path: Path, monkeypatch: pytest.Mon
     pdf.write_bytes(b"%PDF-1.4")
     out = tmp_path / "out"
 
-    class FakeProcess:
-        def __init__(self, cmd, **kwargs):  # noqa: ANN002, ANN003
-            # Simulate the CLI writing its artifacts under the -o directory.
-            target = Path(cmd[cmd.index("-o") + 1]) / "exam"
-            (target / "auto").mkdir(parents=True, exist_ok=True)
-            (target / "auto" / "exam.md").write_text("# parsed", encoding="utf-8")
-            self.stdout = iter(["downloading model...\n", "\n", "parsing page 1/3\n"])
-
-        def wait(self):
-            return 0
+    @contextmanager
+    def fake_cli_process(cmd, log_path, env):
+        target = Path(cmd[cmd.index("-o") + 1]) / "exam"
+        (target / "auto").mkdir(parents=True, exist_ok=True)
+        (target / "auto" / "exam.md").write_text("# parsed", encoding="utf-8")
+        log_path.write_text("downloading model...\n\nparsing page 1/3\n", encoding="utf-8")
+        yield SimpleNamespace(poll=lambda: 0)
 
     monkeypatch.setattr(pdf_parser, "check_mineru_installed", lambda: "mineru")
-    monkeypatch.setattr(pdf_parser.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(pdf_parser, "cli_process", fake_cli_process)
 
     seen: list[str] = []
     ok = pdf_parser.parse_pdf_with_mineru(str(pdf), str(out), on_output=seen.append)
@@ -291,18 +290,16 @@ def test_document_parser_passes_docx_to_current_mineru_cli(
     out = tmp_path / "out"
     captured: dict[str, list[str]] = {}
 
-    class FakeProcess:
-        def __init__(self, cmd, **_kwargs):  # noqa: ANN001
-            captured["cmd"] = cmd
-            target = Path(cmd[cmd.index("-o") + 1]) / "lesson"
-            target.mkdir(parents=True, exist_ok=True)
-            (target / "lesson.md").write_text("# parsed", encoding="utf-8")
-            self.stdout = iter([])
+    @contextmanager
+    def fake_cli_process(cmd, log_path, env):
+        captured["cmd"] = cmd
+        target = Path(cmd[cmd.index("-o") + 1]) / "lesson"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "lesson.md").write_text("# parsed", encoding="utf-8")
+        log_path.write_text("", encoding="utf-8")
+        yield SimpleNamespace(poll=lambda: 0)
 
-        def wait(self):
-            return 0
-
-    monkeypatch.setattr(local_parser.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(local_parser, "cli_process", fake_cli_process)
 
     assert local_parser.parse_document_with_mineru(str(source), str(out), cli_command="mineru")
     assert captured["cmd"][:3] == ["mineru", "-p", str(source.resolve())]

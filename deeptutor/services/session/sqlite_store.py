@@ -14,13 +14,8 @@ from pathlib import Path
 import re
 import sqlite3
 import time
-from typing import Any
+from typing import Any, Literal
 import uuid
-
-try:  # POSIX is the supported production target; fallback keeps Windows dev usable.
-    import fcntl
-except ImportError:  # pragma: no cover - exercised only on Windows
-    fcntl = None  # type: ignore[assignment]
 
 from deeptutor.core.assessment import (
     ASSESSMENT_RESULTS,
@@ -29,13 +24,22 @@ from deeptutor.core.assessment import (
     QUESTION_ORIGIN_TYPES,
 )
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.session.protocol import ActiveTurnConflict
+from deeptutor.services.session.protocol import (
+    SUBMISSION_ASSISTANT_FIELD,
+    SUBMISSION_PREVIOUS_TURN_FIELD,
+    SUBMISSION_REPLAY_FIELD,
+    SUBMISSION_USER_FIELD,
+    ActiveTurnConflict,
+)
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
 from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
+from .migration_lock import exclusive_lock
 from .provider_response_state import redact_private_message_metadata
+from .reading_quiz_help import update_help
 from .search import bounded_search_excerpt, normalize_search_query
+from .thread_attribution import BACKFILL_ATTEMPTED_KEY, TUTOR_SOURCE_KEY
 from .workspace_preferences import upgrade_workspace_preferences
 
 
@@ -55,14 +59,8 @@ def _escape_like(value: str) -> str:
 def _migration_lock(db_path: Path) -> Iterator[None]:
     """Serialize idempotent schema upgrades across worker processes."""
     lock_path = db_path.with_name(f"{db_path.name}.migrate.lock")
-    with lock_path.open("a+b") as lock_file:
-        if fcntl is not None:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    with exclusive_lock(lock_path):
+        yield
 
 
 # Sentinel so ``add_message`` can distinguish "caller wants the legacy
@@ -341,6 +339,14 @@ class SQLiteSessionStore:
                 CREATE INDEX IF NOT EXISTS idx_turns_session_status
                     ON turns(session_id, status, updated_at DESC);
 
+                CREATE TABLE IF NOT EXISTS turn_submissions (
+                    client_submission_id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL DEFAULT '',
+                    request_digest TEXT NOT NULL,
+                    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS turn_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
@@ -437,6 +443,19 @@ class SQLiteSessionStore:
                     PRIMARY KEY (material_id, locator, question_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS reading_quiz_help_events (
+                    material_id TEXT NOT NULL,
+                    locator INTEGER NOT NULL,
+                    question_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    help_kind TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (material_id, locator, question_id, request_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_reading_quiz_help_events_recent
+                    ON reading_quiz_help_events(created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS reading_quiz_rewards (
                     material_id TEXT NOT NULL,
                     locator INTEGER NOT NULL,
@@ -458,6 +477,11 @@ class SQLiteSessionStore:
                 );
                 """
             )
+            submission_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(turn_submissions)")
+            }
+            if "superseded_by" not in submission_columns:
+                conn.execute("ALTER TABLE turn_submissions ADD COLUMN superseded_by TEXT")
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
             if "preferences_json" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN preferences_json TEXT DEFAULT '{}'")
@@ -1124,6 +1148,12 @@ class SQLiteSessionStore:
         title: str | None = None,
         session_id: str | None = None,
     ) -> dict[str, Any]:
+        with self._connect() as conn:
+            return self._insert_session(conn, title, session_id)
+
+    def _insert_session(
+        self, conn: sqlite3.Connection, title: str | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
         now = time.time()
         resolved_id = session_id or f"unified_{int(now * 1000)}_{uuid.uuid4().hex[:8]}"
         resolved_title = (title or "New conversation").strip() or "New conversation"
@@ -1131,18 +1161,13 @@ class SQLiteSessionStore:
 
         scope = get_workspace_scope()
         preferences = {"workspace_id": scope.workspace_id} if scope is not None else {}
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO sessions (
-                    id, title, created_at, updated_at,
-                    compressed_summary, summary_up_to_msg_id, preferences_json
-                )
-                VALUES (?, ?, ?, ?, '', 0, ?)
-                """,
-                (resolved_id, resolved_title[:100], now, now, _json_dumps(preferences)),
-            )
-            conn.commit()
+        conn.execute(
+            """INSERT INTO sessions (
+                id, title, created_at, updated_at,
+                compressed_summary, summary_up_to_msg_id, preferences_json
+            ) VALUES (?, ?, ?, ?, '', 0, ?)""",
+            (resolved_id, resolved_title[:100], now, now, _json_dumps(preferences)),
+        )
         return {
             "id": resolved_id,
             "session_id": resolved_id,
@@ -1160,6 +1185,163 @@ class SQLiteSessionStore:
         session_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._run(self._create_session_sync, title, session_id)
+
+    def _reserve_submission_sync(
+        self, submission_id: str, digest: str, session_id: str | None
+    ) -> str:
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        scope = get_workspace_scope()
+        workspace_id = scope.workspace_id if scope is not None else ""
+        with self._connect() as conn:
+            # #1793: bind a first submission and its conversation atomically,
+            # before the transport can lose the SESSION acknowledgement.
+            conn.execute("BEGIN IMMEDIATE")
+            prior = conn.execute(
+                "SELECT * FROM turn_submissions WHERE client_submission_id = ?", (submission_id,)
+            ).fetchone()
+            if prior is not None:
+                if prior["superseded_by"]:
+                    raise RuntimeError("This submission was superseded by an edited message.")
+                if prior["request_digest"] != digest or prior["workspace_id"] != workspace_id:
+                    raise RuntimeError(
+                        "This submission ID belongs to a different request or workspace."
+                    )
+                if session_id and session_id != prior["session_id"]:
+                    raise RuntimeError("This submission ID belongs to another conversation.")
+                row = conn.execute(
+                    "SELECT deleted_at FROM sessions WHERE id = ?", (prior["session_id"],)
+                ).fetchone()
+                if row is None or row["deleted_at"] is not None:
+                    raise RuntimeError(
+                        "Restore the original conversation before resending this message."
+                    )
+                return str(prior["session_id"])
+            if session_id:
+                row = conn.execute(
+                    "SELECT * FROM sessions WHERE id = ? AND deleted_at IS NULL", (session_id,)
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Conversation not found in this workspace.")
+                preferences = _json_loads(row["preferences_json"], {})
+                if str(preferences.get("workspace_id") or "") != workspace_id:
+                    raise RuntimeError("The conversation belongs to another workspace.")
+            else:
+                session_id = str(self._insert_session(conn)["id"])
+            conn.execute(
+                "INSERT INTO turn_submissions (client_submission_id, workspace_id, request_digest, session_id) VALUES (?, ?, ?, ?)",
+                (submission_id, workspace_id, digest, session_id),
+            )
+            return session_id
+
+    async def reserve_submission(
+        self, submission_id: str, digest: str, session_id: str | None = None
+    ) -> str:
+        return await self._run(self._reserve_submission_sync, submission_id, digest, session_id)
+
+    def _replace_submission_sync(
+        self, original_id: str, replacement_id: str, digest: str, session_id: str | None
+    ) -> dict[str, Any]:
+        """Fence an unadmitted request and reserve its edit in one transaction.
+
+        A transcript is deliberately not consulted to decide admission: a turn
+        can already own execution before its user row is written.
+        """
+        from deeptutor.services.workspace.context import get_workspace_scope
+
+        if original_id == replacement_id:
+            raise RuntimeError("An edit requires a new submission ID.")
+        scope = get_workspace_scope()
+        workspace_id = scope.workspace_id if scope is not None else ""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            old = conn.execute(
+                "SELECT * FROM turn_submissions WHERE client_submission_id=?", (original_id,)
+            ).fetchone()
+            if old is not None:
+                if old["workspace_id"] != workspace_id or (
+                    session_id and old["session_id"] != session_id
+                ):
+                    raise RuntimeError(
+                        "The submission belongs to another conversation or workspace."
+                    )
+                session_id = old["session_id"]
+            if session_id:
+                session = conn.execute(
+                    "SELECT * FROM sessions WHERE id=?", (session_id,)
+                ).fetchone()
+                if session is None or session["deleted_at"] is not None:
+                    raise RuntimeError(
+                        "Restore the original conversation before editing this message."
+                    )
+                if (
+                    str(_json_loads(session["preferences_json"], {}).get("workspace_id") or "")
+                    != workspace_id
+                ):
+                    raise RuntimeError("The conversation belongs to another workspace.")
+            else:
+                session_id = str(self._insert_session(conn)["id"])
+            if old is not None and old["turn_id"]:
+                turn = conn.execute("SELECT * FROM turns WHERE id=?", (old["turn_id"],)).fetchone()
+                user = conn.execute(
+                    "SELECT id FROM messages WHERE session_id=? AND role='user' AND json_valid(metadata_json) AND json_extract(metadata_json, '$.client_submission_id')=? ORDER BY id LIMIT 1",
+                    (session_id, original_id),
+                ).fetchone()
+                return {
+                    "status": "admitted",
+                    "session_id": session_id,
+                    "turn": self._serialize_turn(turn),
+                    "user_message_id": user["id"] if user else None,
+                }
+            replacement = conn.execute(
+                "SELECT * FROM turn_submissions WHERE client_submission_id=?", (replacement_id,)
+            ).fetchone()
+            if old is not None and old["superseded_by"]:
+                if old["superseded_by"] != replacement_id:
+                    raise RuntimeError("This submission was already superseded by another edit.")
+                if (
+                    replacement is None
+                    or replacement["request_digest"] != digest
+                    or replacement["superseded_by"]
+                ):
+                    raise RuntimeError("This replacement ID belongs to a different request.")
+            else:
+                if replacement is not None:
+                    raise RuntimeError("This replacement ID is already in use.")
+                conn.execute(
+                    "INSERT INTO turn_submissions (client_submission_id, workspace_id, request_digest, session_id) VALUES (?, ?, ?, ?)",
+                    (replacement_id, workspace_id, digest, session_id),
+                )
+                if old is None:
+                    # The original may still be in a delayed transport queue.
+                    conn.execute(
+                        "INSERT INTO turn_submissions (client_submission_id, workspace_id, request_digest, session_id, superseded_by) VALUES (?, ?, '', ?, ?)",
+                        (original_id, workspace_id, session_id, replacement_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE turn_submissions SET superseded_by=? WHERE client_submission_id=?",
+                        (replacement_id, original_id),
+                    )
+            return {"status": "reserved", "session_id": session_id, "submission_id": replacement_id}
+
+    async def replace_submission(
+        self, original_id: str, replacement_id: str, digest: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._run(
+            self._replace_submission_sync, original_id, replacement_id, digest, session_id
+        )
+
+    def _submission_turn_sync(self, submission_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT t.* FROM turns t JOIN turn_submissions s ON s.turn_id=t.id WHERE s.client_submission_id=?",
+                (submission_id,),
+            ).fetchone()
+        return self._serialize_turn(row) if row is not None else None
+
+    async def submission_turn(self, submission_id: str) -> dict[str, Any] | None:
+        return await self._run(self._submission_turn_sync, submission_id)
 
     async def ensure_notebook_session(self, session_id: str, title: str) -> bool:
         """Insert a placeholder session row so notebook-only sources can file
@@ -1286,9 +1468,11 @@ class SQLiteSessionStore:
         turn_id: str | None = None,
         owner_id: str = "",
         fencing_token: int = 0,
+        submission_id: str | None = None,
     ) -> dict[str, Any]:
         now = time.time()
         resolved_turn_id = turn_id or f"turn_{int(now * 1000)}_{uuid.uuid4().hex[:10]}"
+        replay_fields: dict[str, Any] = {}
         try:
             with self._connect() as conn:
                 # Serialize the active-turn check and insert across processes.
@@ -1298,6 +1482,32 @@ class SQLiteSessionStore:
                 ).fetchone()
                 if session is None:
                     raise ValueError(f"Session not found: {session_id}")
+                if submission_id:
+                    reservation = conn.execute(
+                        "SELECT * FROM turn_submissions WHERE client_submission_id=?",
+                        (submission_id,),
+                    ).fetchone()
+                    if reservation is not None and reservation["superseded_by"]:
+                        raise RuntimeError("This submission was superseded by an edited message.")
+                    if reservation is not None and reservation["session_id"] != session_id:
+                        raise RuntimeError("This submission belongs to another conversation.")
+                    old = conn.execute(
+                        "SELECT t.* FROM turns t JOIN turn_submissions s ON s.turn_id=t.id WHERE s.client_submission_id=? AND s.session_id=?",
+                        (submission_id, session_id),
+                    ).fetchone()
+                    if old is not None:
+                        if old["status"] not in {"failed", "cancelled"}:
+                            return {**self._serialize_turn(old), SUBMISSION_REPLAY_FIELD: True}
+                        user = conn.execute(
+                            "SELECT id FROM messages WHERE session_id=? AND role='user' AND json_valid(metadata_json) AND json_extract(metadata_json, '$.client_submission_id')=? ORDER BY id LIMIT 1",
+                            (session_id, submission_id),
+                        ).fetchone()
+                        if user is not None:
+                            replay_fields = {
+                                SUBMISSION_USER_FIELD: user["id"],
+                                SUBMISSION_ASSISTANT_FIELD: old["assistant_message_id"],
+                                SUBMISSION_PREVIOUS_TURN_FIELD: old["id"],
+                            }
                 active = conn.execute(
                     """
                     SELECT id
@@ -1332,11 +1542,17 @@ class SQLiteSessionStore:
                         max(0, int(fencing_token)),
                     ),
                 )
+                if submission_id:
+                    conn.execute(
+                        "UPDATE turn_submissions SET turn_id=? WHERE client_submission_id=? AND session_id=?",
+                        (resolved_turn_id, submission_id, session_id),
+                    )
         except sqlite3.IntegrityError as exc:
             # The partial unique index wins races where another process inserts
             # after our read but before our insert.
             raise ActiveTurnConflict(f"Session already has an active turn: {session_id}") from exc
         return {
+            **replay_fields,
             "id": resolved_turn_id,
             "turn_id": resolved_turn_id,
             "session_id": session_id,
@@ -1362,6 +1578,7 @@ class SQLiteSessionStore:
         turn_id: str | None = None,
         owner_id: str = "",
         fencing_token: int = 0,
+        submission_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._run(
             self._begin_turn_sync,
@@ -1370,10 +1587,13 @@ class SQLiteSessionStore:
             turn_id,
             owner_id,
             fencing_token,
+            submission_id,
         )
 
-    async def create_turn(self, session_id: str, capability: str = "") -> dict[str, Any]:
-        return await self.begin_turn(session_id, capability)
+    async def create_turn(
+        self, session_id: str, capability: str = "", *, submission_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self.begin_turn(session_id, capability, submission_id=submission_id)
 
     def _get_turn_sync(self, turn_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -2126,9 +2346,53 @@ class SQLiteSessionStore:
             messages,
         )
 
+    def _detach_threads_for_messages_sync(
+        self,
+        conn: sqlite3.Connection,
+        session_id: str,
+        message_ids: list[int],
+    ) -> list[str]:
+        """Detach tutor threads anchored to messages this delete removed.
+
+        The thread itself survives (it is a conversation), but a dangling
+        anchor would hide it from every message. Clearing the anchor keeps it
+        reachable from the viewer and the attempted flag keeps the backfill
+        from attaching it to some other message later.
+        """
+        deleted = {str(message_id) for message_id in message_ids}
+        if not deleted:
+            return []
+        rows = conn.execute(
+            """
+            SELECT id, preferences_json FROM sessions
+            WHERE id != ? AND json_extract(preferences_json, '$.parent_session_id') = ?
+            """,
+            (session_id, session_id),
+        ).fetchall()
+        detached: list[str] = []
+        for row in rows:
+            preferences = _json_loads(row["preferences_json"], {})
+            if str(preferences.get(TUTOR_SOURCE_KEY) or "") not in deleted:
+                continue
+            preferences[TUTOR_SOURCE_KEY] = ""
+            preferences[BACKFILL_ATTEMPTED_KEY] = True
+            conn.execute(
+                "UPDATE sessions SET preferences_json = ? WHERE id = ?",
+                (_json_dumps(preferences), row["id"]),
+            )
+            detached.append(row["id"])
+        return detached
+
     def _delete_message_sync(self, message_id: int | str) -> bool:
         with self._connect() as conn:
+            row = conn.execute(
+                "SELECT session_id FROM messages WHERE id = ?", (int(message_id),)
+            ).fetchone()
             cur = conn.execute("DELETE FROM messages WHERE id = ?", (int(message_id),))
+            if cur.rowcount > 0 and row is not None:
+                self._detach_threads_for_messages_sync(
+                    conn, str(row["session_id"]), [int(message_id)]
+                )
             conn.commit()
         return cur.rowcount > 0
 
@@ -2139,7 +2403,7 @@ class SQLiteSessionStore:
         with self._connect() as conn:
             msg = conn.execute(
                 """
-                SELECT id, session_id, role, attachments_json, created_at
+                SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                 FROM messages
                 WHERE id = ?
                 """,
@@ -2150,7 +2414,7 @@ class SQLiteSessionStore:
                     "deleted": False,
                     "attachment_ids": [],
                     "turn_id": None,
-                    "was_running": False,
+                    "was_active": False,
                 }
 
             role = msg["role"]
@@ -2158,9 +2422,9 @@ class SQLiteSessionStore:
             if role == "user":
                 paired_msg = conn.execute(
                     """
-                    SELECT id, session_id, role, attachments_json, created_at
+                    SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                     FROM messages
-                    WHERE session_id = ? AND role = 'assistant' AND id > ?
+                    WHERE session_id = ? AND role = 'assistant' AND parent_message_id = ?
                     ORDER BY id ASC
                     LIMIT 1
                     """,
@@ -2169,41 +2433,93 @@ class SQLiteSessionStore:
             elif role == "assistant":
                 paired_msg = conn.execute(
                     """
-                    SELECT id, session_id, role, attachments_json, created_at
+                    SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
                     FROM messages
-                    WHERE session_id = ? AND role = 'user' AND id < ?
+                    WHERE session_id = ? AND role = 'user' AND id = ?
                     ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (session_id, msg["parent_message_id"]),
+                ).fetchone()
+
+            user_msg = msg if role == "user" else paired_msg
+            turn_row = None
+            if role == "assistant":
+                # An assistant row is linked to the turn that produced it,
+                # which stays authoritative when ordering alone cannot tell
+                # (a regenerated answer shares its user row with the old turn).
+                turn_row = conn.execute(
+                    """
+                    SELECT id, status
+                    FROM turns
+                    WHERE session_id = ? AND assistant_message_id = ?
                     LIMIT 1
                     """,
                     (session_id, int(message_id)),
                 ).fetchone()
 
-            user_msg = msg if role == "user" else paired_msg
-            turn_id = None
-            was_running = False
-            if user_msg is not None:
-                user_created_at = user_msg["created_at"]
+            if turn_row is None and user_msg is not None:
+                # Production stamps the owning turn id on the user row
+                # (executor writes metadata.turn_id), including the recovered
+                # worker_lost case that never gets an assistant row.
+                stamped_turn_id = ""
+                metadata = _json_loads(user_msg["metadata_json"], {})
+                if isinstance(metadata, dict):
+                    stamped_turn_id = str(metadata.get("turn_id") or "").strip()
+                if stamped_turn_id:
+                    turn_row = conn.execute(
+                        """
+                        SELECT id, status
+                        FROM turns
+                        WHERE session_id = ? AND id = ?
+                        LIMIT 1
+                        """,
+                        (session_id, stamped_turn_id),
+                    ).fetchone()
+
+            if turn_row is None and user_msg is not None:
+                # Legacy rows predate the stamp: the owning turn is the last
+                # one created at or before the user row. A turn row is always
+                # written before its user row, so a later turn must never match.
                 turn_row = conn.execute(
                     """
                     SELECT id, status
                     FROM turns
-                    WHERE session_id = ? AND created_at >= ?
-                    ORDER BY created_at ASC
+                    WHERE session_id = ? AND created_at <= ?
+                    ORDER BY created_at DESC
                     LIMIT 1
                     """,
-                    (session_id, user_created_at),
+                    (session_id, user_msg["created_at"]),
                 ).fetchone()
-                if turn_row is not None:
-                    turn_id = turn_row["id"]
-                    was_running = turn_row["status"] == "running"
 
-            if was_running:
+            turn_id = None
+            was_active = False
+            if turn_row is not None:
+                turn_id = turn_row["id"]
+                was_active = turn_row["status"] in ACTIVE_TURN_STATUSES
+
+            if was_active:
                 return {
                     "deleted": False,
                     "attachment_ids": [],
                     "turn_id": turn_id,
-                    "was_running": True,
+                    "was_active": True,
                 }
+
+            if role == "assistant" and paired_msg is not None:
+                # Regenerated answers share their question with sibling answers.
+                # Deleting one branch must keep the question those siblings use.
+                sibling = conn.execute(
+                    """
+                    SELECT 1 FROM messages
+                    WHERE session_id = ? AND role = 'assistant'
+                      AND parent_message_id = ? AND id != ?
+                    LIMIT 1
+                    """,
+                    (session_id, paired_msg["id"], int(message_id)),
+                ).fetchone()
+                if sibling is not None:
+                    paired_msg = None
 
             attachment_ids: list[str] = []
             for m in [msg, paired_msg]:
@@ -2241,6 +2557,9 @@ class SQLiteSessionStore:
                 f"DELETE FROM messages WHERE id IN ({','.join('?' * len(ids_to_delete))})",  # nosec B608
                 tuple(ids_to_delete),
             )
+            detached_thread_ids = self._detach_threads_for_messages_sync(
+                conn, session_id, ids_to_delete
+            )
 
             session_row = conn.execute(
                 "SELECT summary_up_to_msg_id FROM sessions WHERE id = ?",
@@ -2264,7 +2583,9 @@ class SQLiteSessionStore:
             "deleted": True,
             "attachment_ids": attachment_ids,
             "turn_id": turn_id,
-            "was_running": was_running,
+            "was_active": was_active,
+            "deleted_message_ids": ids_to_delete,
+            "detached_thread_ids": detached_thread_ids,
         }
 
     async def delete_turn_by_message(self, session_id: str, message_id: int) -> dict[str, Any]:
@@ -2355,6 +2676,7 @@ class SQLiteSessionStore:
             OR json_extract(metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
             OR json_extract(metadata_json, '$.mastery_question') IS NOT NULL
             OR json_extract(metadata_json, '$.tool_metadata.mastery_question') IS NOT NULL
+            OR json_extract(metadata_json, '$.trace_kind') = 'user_input'
         """
         conditions = (
             f"type IN ('done', 'error', 'cancelled', 'result') OR {cards}",
@@ -2556,6 +2878,21 @@ class SQLiteSessionStore:
 
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         return await self._run(self._get_messages_sync, session_id)
+
+    def _get_message_role_sync(self, session_id: str, message_id: int | str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT role FROM messages WHERE id = ? AND session_id = ?",
+                (int(message_id), session_id),
+            ).fetchone()
+        return str(row["role"]) if row is not None else None
+
+    async def get_message_role(self, session_id: str, message_id: int | str) -> str | None:
+        try:
+            numeric_id = int(message_id)
+        except (TypeError, ValueError):
+            return None
+        return await self._run(self._get_message_role_sync, session_id, numeric_id)
 
     def _get_messages_for_context_sync(
         self, session_id: str, leaf_message_id: int | None = None
@@ -2918,13 +3255,17 @@ class SQLiteSessionStore:
             conn.commit()
         return cur.rowcount > 0
 
-    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
-        return await self._run(self._update_summary_sync, session_id, summary, up_to_msg_id)
+    async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int | str) -> bool:
+        return await self._run(self._update_summary_sync, session_id, summary, int(up_to_msg_id))
 
     def _update_session_preferences_sync(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], touch: bool = True
     ) -> bool:
         with self._connect() as conn:
+            # The merge below is read-modify-write. IMMEDIATE makes concurrent
+            # preference writers (a turn, a detach, the backfill) serialize
+            # instead of the last writer restoring a stale JSON document.
+            conn.execute("BEGIN IMMEDIATE")
             current = conn.execute(
                 "SELECT preferences_json FROM sessions WHERE id = ?",
                 (session_id,),
@@ -2936,21 +3277,71 @@ class SQLiteSessionStore:
                 **(preferences or {}),
             }
             merged = upgrade_workspace_preferences(merged)
+            # ``touch=False`` records metadata (a link, a migration) without
+            # making the conversation look recently used.
             cur = conn.execute(
                 """
                 UPDATE sessions
-                SET preferences_json = ?, updated_at = ?
+                SET preferences_json = ?, updated_at = COALESCE(?, updated_at)
                 WHERE id = ?
                 """,
-                (_json_dumps(merged), time.time(), session_id),
+                (_json_dumps(merged), time.time() if touch else None, session_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    def _update_session_preferences_if_unset_sync(
+        self,
+        session_id: str,
+        preferences: dict[str, Any],
+        unset: tuple[str, ...],
+        touch: bool,
+    ) -> bool:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute(
+                "SELECT preferences_json FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            if current is None:
+                return False
+            current_preferences = _json_loads(current["preferences_json"], {})
+            if any(current_preferences.get(key) for key in unset):
+                return False
+            merged = upgrade_workspace_preferences({**current_preferences, **(preferences or {})})
+            cur = conn.execute(
+                """
+                UPDATE sessions
+                SET preferences_json = ?, updated_at = COALESCE(?, updated_at)
+                WHERE id = ?
+                """,
+                (_json_dumps(merged), time.time() if touch else None, session_id),
             )
             conn.commit()
         return cur.rowcount > 0
 
     async def update_session_preferences(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool:
-        return await self._run(self._update_session_preferences_sync, session_id, preferences)
+        return await self._run(
+            self._update_session_preferences_sync, session_id, preferences, touch
+        )
+
+    async def update_session_preferences_if_unset(
+        self,
+        session_id: str,
+        preferences: dict[str, Any],
+        *,
+        unset: Sequence[str],
+        touch: bool = True,
+    ) -> bool:
+        return await self._run(
+            self._update_session_preferences_if_unset_sync,
+            session_id,
+            preferences,
+            tuple(unset),
+            touch,
+        )
 
     async def get_session_with_messages(self, session_id: str) -> dict[str, Any] | None:
         session = await self.get_session(session_id)
@@ -3461,6 +3852,9 @@ class SQLiteSessionStore:
             for index, question in enumerate(questions or [], start=1):
                 if not isinstance(question, dict):
                     continue
+                question = {
+                    k: v for k, v in question.items() if k not in {"_help_requests", "_help_count"}
+                }
                 question_id = str(question.get("id") or f"q_{index}").strip()
                 if not question_id:
                     continue
@@ -3524,6 +3918,52 @@ class SQLiteSessionStore:
             material_id,
             locator,
             None if question_ids is None else tuple(question_ids),
+        )
+
+    def _list_reading_quiz_help_events_sync(self, material_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT material_id, locator, question_id, request_id, help_kind, question, created_at "
+                "FROM reading_quiz_help_events WHERE material_id = ? "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 50",
+                (material_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def list_reading_quiz_help_events(self, material_id: str) -> list[dict[str, Any]]:
+        """Recent durable successful help, including questions not yet answered."""
+        return await self._run(self._list_reading_quiz_help_events_sync, material_id)
+
+    def _reading_quiz_help_sync(self, *args):
+        with self._connect() as conn:
+            return update_help(conn, *args)
+
+    async def reading_quiz_help(
+        self,
+        material_id: str,
+        locator: int,
+        question_id: str,
+        request_id: str,
+        fingerprint: str,
+        token: str,
+        operation: Literal["claim", "complete", "abort"],
+        result: dict[str, Any] | None = None,
+        lease_seconds: float = 150,
+        help_kind: str = "",
+    ) -> dict[str, Any] | None:
+        """Claim, persist or release help for this account's current quiz question."""
+        return await self._run(
+            self._reading_quiz_help_sync,
+            material_id,
+            locator,
+            question_id,
+            request_id,
+            fingerprint,
+            token,
+            operation,
+            result,
+            lease_seconds,
+            help_kind,
         )
 
     def _best_reading_quiz_results_sync(
@@ -3904,6 +4344,34 @@ class SQLiteSessionStore:
             item["categories"] = grouped.get(int(item["id"]), [])
             item["practice"] = practice.get(int(item["id"]))
         return {"items": items, "total": total}
+
+    async def list_notebook_navigation(self) -> list[dict[str, Any]]:
+        """Read small question identities for navigation, without hydrating answers.
+
+        Uses the same recycle predicate as the Question Bank. No new schema or
+        migration: old entry IDs remain the IDs used by practice and review.
+        Every row also names its session, so navigation can collapse the
+        questions recorded in one practice session into a single group;
+        entries without a session keep their own row.
+        """
+
+        def read() -> list[dict[str, Any]]:
+            with self._connect() as conn:
+                return [
+                    dict(row)
+                    for row in conn.execute(
+                        # Only a fixed table alias is substituted into the local predicate.
+                        "SELECT n.id, substr(n.question, 1, 160) AS question, "
+                        "n.session_id, COALESCE(s.title, '') AS session_title, "
+                        "n.created_at, n.updated_at "  # nosec B608
+                        "FROM notebook_entries n "
+                        "LEFT JOIN sessions s ON s.id = n.session_id WHERE "
+                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="n")
+                        + " ORDER BY n.updated_at DESC, n.id DESC"
+                    ).fetchall()
+                ]
+
+        return await self._run(read)
 
     async def list_notebook_entries(
         self,

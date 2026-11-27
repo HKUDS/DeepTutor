@@ -7,7 +7,7 @@ export default function SttSettingsPage() {
   return (
     <div>
       <SettingsPageHeader
-        title={t("Voice")}
+        title={t("settings.serviceConfig.voiceServices")}
         description={t(
           "Manage speech synthesis and transcription models using saved providers.",
         )}

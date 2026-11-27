@@ -28,6 +28,7 @@ def test_defaults_without_a_file() -> None:
     assert starter_settings.get_starter_settings() == {
         "version": 1,
         "trace_count": starter_settings.DEFAULT_TRACE_COUNT,
+        "ask_hint_enabled": True,
     }
 
 
@@ -64,6 +65,33 @@ def test_a_corrupt_file_falls_back_to_defaults(scoped: Path) -> None:
         starter_settings.get_starter_settings()["trace_count"]
         == starter_settings.DEFAULT_TRACE_COUNT
     )
+
+
+def test_ask_hint_switch_round_trip(scoped: Path) -> None:
+    saved = starter_settings.save_starter_settings({"trace_count": 20, "ask_hint_enabled": False})
+
+    assert saved["ask_hint_enabled"] is False
+    assert starter_settings.ask_hint_enabled() is False
+    stored = json.loads((scoped / "starters.json").read_text(encoding="utf-8"))
+    assert stored["ask_hint_enabled"] is False
+
+
+def test_saving_without_the_switch_keeps_it() -> None:
+    """A draft or client from before the switch must not turn the hint back on."""
+    starter_settings.save_starter_settings({"trace_count": 20, "ask_hint_enabled": False})
+
+    saved = starter_settings.save_starter_settings({"trace_count": 30})
+
+    assert saved == {"version": 1, "trace_count": 30, "ask_hint_enabled": False}
+
+
+@pytest.mark.parametrize("given", ["false", 0, None, "off"])
+def test_only_a_real_boolean_turns_the_hint_off(scoped: Path, given) -> None:
+    (scoped / "starters.json").write_text(
+        json.dumps({"trace_count": 20, "ask_hint_enabled": given}), encoding="utf-8"
+    )
+
+    assert starter_settings.ask_hint_enabled() is True
 
 
 def test_the_service_reads_the_setting(monkeypatch: pytest.MonkeyPatch, scoped: Path) -> None:

@@ -24,16 +24,17 @@ def fingerprint_request(
     tools: Any,
     route: dict[str, Any],
 ) -> dict[str, Any]:
-    from deeptutor.services.session.context_builder import count_tokens
+    from deeptutor.services.session.context_builder import _count_model_context_tokens
 
-    # Hash an entire message, never individual tokens (which disclose vocabulary).
+    # Hash the complete replay payload, including image bytes. Only the token
+    # estimate uses the image-aware view; Base64 and URLs are not language tokens.
     return {
         "route": _digest(route),
         "tools": _digest(tools or []),
         "messages": [
             {
                 "hash": _digest(message),
-                "tokens": count_tokens(_encoded(message)),
+                "tokens": _count_model_context_tokens(message),
                 "role": message.get("role"),
             }
             for message in messages

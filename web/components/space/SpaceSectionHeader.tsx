@@ -1,47 +1,33 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { type LucideIcon } from "lucide-react";
+import { usePathname } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
+import { PageHeader } from "@/components/layout/FeaturePage";
+import { ALL_ITEMS } from "@/components/space/dashboard-groups";
 
 interface SpaceSectionHeaderProps {
-  icon: LucideIcon;
   title: string;
   description: string;
   action?: ReactNode;
   meta?: ReactNode;
+  level?: 1 | 2;
+  /** Defaults to the icon this section wears on the /space hub. */
+  icon?: LucideIcon;
 }
 
 export default function SpaceSectionHeader({
-  icon: Icon,
   title,
   description,
   action,
   meta,
+  level,
+  icon,
 }: SpaceSectionHeaderProps) {
+  // usePathname is null outside the App Router (tests, embeds).
+  const pathname = usePathname() ?? "";
+  const hubIcon = ALL_ITEMS.find((item) => item.href === pathname)?.icon;
   return (
-    <header className="mb-6 flex flex-col gap-4 border-b border-[var(--border)]/60 pb-5 md:flex-row md:items-end md:justify-between">
-      <div className="flex items-start gap-3.5">
-        <span
-          aria-hidden
-          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)]/60 bg-[var(--card)] text-[var(--foreground)] shadow-sm"
-        >
-          <Icon size={16} strokeWidth={1.6} />
-        </span>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-serif text-[19px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
-              {title}
-            </h1>
-            {meta}
-          </div>
-          <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-            {description}
-          </p>
-        </div>
-      </div>
-      {action && (
-        <div className="shrink-0 self-start md:self-end">{action}</div>
-      )}
-    </header>
+    <PageHeader title={title} description={description} action={action} meta={meta} level={level} icon={icon ?? hubIcon} />
   );
 }

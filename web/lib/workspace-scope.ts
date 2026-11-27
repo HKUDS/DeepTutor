@@ -1,8 +1,46 @@
-/** Content scope belongs to the current task URL, never to a global tab preference. */
+import { browserStorage } from '@/shared/storage'
+
+/**
+ * The content workspace this tab is in.
+ *
+ * A URL that names a workspace (`dt_workspace`, including the empty value for
+ * General) selects it; a URL that names none stays where the tab already is.
+ * Links therefore never need to carry the scope to stay put, and leaving a
+ * workspace is always an explicit act. A fresh tab resumes the last workspace
+ * used in this browser.
+ */
+const STORAGE_KEY = 'deeptutor:workspace'
+
+let remembered: string | null = null
+
+function storedWorkspaceId(): string {
+  remembered ??=
+    browserStorage.readRaw('session', STORAGE_KEY) ?? browserStorage.readRaw('local', STORAGE_KEY) ?? ''
+  return remembered
+}
+
+/** Record the scope a URL selected, for this tab and for the next fresh one. */
+export function rememberWorkspaceId(workspaceId: string): void {
+  if (remembered === workspaceId) return
+  remembered = workspaceId
+  // Unavailable storage (private mode) only costs the next fresh tab its resume.
+  browserStorage.writeRaw('session', STORAGE_KEY, workspaceId)
+  browserStorage.writeRaw('local', STORAGE_KEY, workspaceId)
+}
+
+/** The workspace a URL names explicitly, or null when it names none. */
+export function workspaceIdOf(search: URLSearchParams): string | null {
+  return search.get('dt_workspace') ?? search.get('workspace')
+}
+
 export function activeWorkspaceId(): string {
   if (typeof window === 'undefined') return ''
-  const query = new URLSearchParams(window.location.search)
-  return query.get('dt_workspace') ?? query.get('workspace') ?? ''
+  const named = workspaceIdOf(new URLSearchParams(window.location.search))
+  if (named !== null) {
+    rememberWorkspaceId(named)
+    return named
+  }
+  return storedWorkspaceId()
 }
 
 export function scopedUrl(path: string, workspaceId = activeWorkspaceId()): string {
@@ -56,7 +94,7 @@ export async function selectWorkspace(
 /** Keep live runtimes when staying in one store; reset them before crossing stores. */
 export function navigateTask(path: string, push: (path: string) => void): void {
   const url = new URL(path, window.location.origin)
-  const target = url.searchParams.get('dt_workspace') ?? url.searchParams.get('workspace') ?? ''
-  if (target === activeWorkspaceId()) push(path)
+  const target = workspaceIdOf(url.searchParams)
+  if (target === null || target === activeWorkspaceId()) push(scopedUrl(path))
   else void selectWorkspace(target, path)
 }

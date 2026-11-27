@@ -1,12 +1,8 @@
 /**
  * Hand a starting message from one surface to another's composer.
  *
- * Two callers today. The Settings hub's "let DeepTutor configure this" button
- * navigates to chat with the request already typed, so the user reads and sends
- * it rather than arriving at an empty box wondering what to say. Course Study's
- * hand-off cards do the same across the learning surfaces: the assistant
- * decides what is worth doing next, and the destination opens with that opening
- * line ready.
+ * Settings opens chat with a configuration request ready to read and send.
+ * Mastery hand-off cards prefill the opening line in a study conversation.
  *
  * sessionStorage rather than a query parameter on purpose — the chat route is
  * a catch-all segment, and reading search params there would pull the whole

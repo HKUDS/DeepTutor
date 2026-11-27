@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "parsing",
+  "distribution": "deeptutor-parsing",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/services/parsing",
+    "deeptutor/textbook_struct"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "PyMuPDF>=1.26.0",
+    "Pillow>=10.0.0",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+    "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0",
+    "reportlab>=4.0.0",
+    "defusedxml>=0.7.1",
+    "pywin32; sys_platform == 'win32'"
+  ],
+  "executables": [],
+  "http_paths": [
+    "/api/settings/document-parsing",
+    "/api/settings/mineru"
+  ]
+}

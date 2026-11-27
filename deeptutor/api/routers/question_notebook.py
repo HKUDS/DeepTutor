@@ -321,33 +321,6 @@ async def upsert_single_entry(payload: UpsertEntryRequest):
     return entry
 
 
-async def _course_session_ids(store: Any, course_id: str) -> list[str] | None:
-    """Resolve a course to the sessions whose questions belong to it.
-
-    Course membership remains conversation-derived until Question Bank entries
-    gain an explicit course association. Independent origins are intentionally
-    excluded. Returns ``None`` for no course (do not scope) and ``[]`` for a
-    course with no conversations yet — which must scope to nothing rather than
-    quietly fall back to the whole library.
-    """
-    if not course_id:
-        return None
-    from deeptutor.services.courses import CourseNotFoundError, get_course_service
-    from deeptutor.services.session.organization import list_all_sessions_snapshot
-
-    try:
-        get_course_service().get(course_id)
-    except CourseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Course not found") from exc
-
-    sessions = await list_all_sessions_snapshot(store)
-    return [
-        session["session_id"]
-        for session in sessions
-        if str((session.get("preferences") or {}).get("course_id") or "") == course_id
-    ]
-
-
 @router.get("/entries", response_model=NotebookEntryListResponse)
 async def list_entries(
     category_id: int | None = Query(default=None),
@@ -359,7 +332,6 @@ async def list_entries(
     ),
     bookmarked: bool | None = Query(default=None),
     is_correct: bool | None = Query(default=None),
-    course_id: str = Query(default=""),
     source: AssessmentSource | Literal[""] = Query(default=""),
     material_id: str = Query(default="", max_length=500),
     section_id: str = Query(default="", max_length=500),
@@ -375,14 +347,12 @@ async def list_entries(
     offset: int = Query(default=0, ge=0),
 ) -> NotebookEntryListResponse:
     store = get_sqlite_session_store()
-    session_ids = await _course_session_ids(store, course_id)
     listing = await store.list_notebook_entries(
         category_id=category_id,
         mistakes_only=mistakes_only,
         uncategorized=uncategorized,
         bookmarked=bookmarked,
         is_correct=is_correct,
-        session_ids=session_ids,
         source=source,
         material_id=material_id,
         section_id=section_id,
@@ -524,45 +494,27 @@ async def remove_entry_from_category(entry_id: int, category_id: int):
 
 
 @router.get("/stats", response_model=QuestionBankStats)
-async def question_bank_stats(
-    course_id: str = Query(default=""),
-) -> QuestionBankStats:
-    """Counts behind the filter chips; also the agent's one-call overview.
-
-    Takes the same course scope as the listing: showing one course's questions
-    next to whole-library counts would make the rail lie about how much is there.
-    """
+async def question_bank_stats() -> QuestionBankStats:
+    """Counts behind the filter chips; also the agent's one-call overview."""
     store = get_sqlite_session_store()
-    session_ids = await _course_session_ids(store, course_id)
-    return QuestionBankStats(**await store.question_bank_stats(session_ids))
+    return QuestionBankStats(**await store.question_bank_stats())
 
 
 @router.get("/materials", response_model=list[QuestionBankMaterial])
-async def list_question_bank_materials(
-    course_id: str = Query(default=""),
-) -> list[QuestionBankMaterial]:
+async def list_question_bank_materials() -> list[QuestionBankMaterial]:
     """Materials represented in the unified review history."""
     store = get_sqlite_session_store()
-    session_ids = await _course_session_ids(store, course_id)
-    return [
-        QuestionBankMaterial(**item)
-        for item in await store.list_question_bank_materials(session_ids)
-    ]
+    return [QuestionBankMaterial(**item) for item in await store.list_question_bank_materials()]
 
 
 # ── Category CRUD ────────────────────────────────────────────────
 
 
 @router.get("/categories", response_model=list[CategoryItem])
-async def list_categories(course_id: str = Query(default="")):
-    """Categories, with their counts scoped the same way the listing is.
-
-    Without the scope the rail would offer "Address translation 3" inside a
-    course holding none of those three.
-    """
+async def list_categories():
+    """Categories and their question counts."""
     store = get_sqlite_session_store()
-    session_ids = await _course_session_ids(store, course_id)
-    return await store.list_categories(session_ids)
+    return await store.list_categories()
 
 
 @router.post("/categories", response_model=CategoryItem, status_code=201)

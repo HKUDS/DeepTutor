@@ -45,7 +45,6 @@ import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
-import { downloadChatMarkdown } from "@/lib/chat-export";
 import { copyText } from "@/lib/clipboard";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { setReadingViewport } from "@/lib/reading-turn-state";
@@ -54,7 +53,7 @@ import {
   type ReadingConversation,
   type ReadingLibraryMaterial,
 } from "@/lib/reading-workspace-api";
-import { READER_ASK_EVENT } from "@/components/reading/ReaderPane";
+import { READER_ASK_EVENT } from "@/components/reading/reading-actions-context";
 import {
   focusReadingComposer,
   useReadingActions,
@@ -86,6 +85,7 @@ export function ReadingCompanion({
   onClearSelection,
   onOpenLinker,
   prefillInputRef,
+  head,
 }: {
   workspaceId: string;
   /** The material currently open in the reader, if any. */
@@ -99,14 +99,19 @@ export function ReadingCompanion({
   onClearSelection: () => void;
   onOpenLinker: () => void;
   prefillInputRef: React.MutableRefObject<((text: string) => void) | null>;
+  /** The sheet's own header, with the companion's controls. */
+  head?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const {
     state,
     submitUserReply,
     regenerateLastMessage,
+    resendLastMessage,
     deleteTurn,
     editMessage,
+    discardFailedSubmission,
+    retryFailedSubmission,
     switchBranch,
     loadMessageTrace,
     releaseMessageTrace,
@@ -281,8 +286,9 @@ export function ReadingCompanion({
     [state.messages],
   );
 
-  const downloadMarkdown = useCallback(() => {
+  const downloadMarkdown = useCallback(async () => {
     if (!state.messages.length) return;
+    const { downloadChatMarkdown } = await import("@/lib/chat-export");
     downloadChatMarkdown(state.messages, {
       title:
         activeConversation?.title ||
@@ -359,11 +365,12 @@ export function ReadingCompanion({
   );
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(420px,100%)] min-h-0 min-w-0 flex-col bg-[var(--card)] shadow-[-18px_0_42px_rgba(0,0,0,.12)] dark:bg-[var(--background)] xl:static xl:w-auto xl:shadow-none">
-      {/* No header of its own: the workspace bar above already names this
-          column, and its actions live there (new conversation, quiz) or in
-          the workspace ⋯ (save, export, link). The question list is the one
-          thing that still opens here, over the conversation it jumps through. */}
+    <aside className="dt-reading-companion absolute inset-y-0 right-0 z-30 flex w-[min(420px,100%)] min-h-0 min-w-0 flex-col bg-[var(--card)] shadow-[-18px_0_42px_rgba(0,0,0,.12)] dark:bg-[var(--background)] xl:static xl:row-span-2 xl:row-start-1 xl:w-auto xl:shadow-none xl:[grid-column:-2/-1]">
+      {head}
+      {/* Its own header on its own sheet: what the companion is doing and
+          its three controls sit with it, not across the page in the bar.
+          The question list opens here, over the conversation it jumps
+          through; saving, exporting and linking stay in the workspace ⋯. */}
       {turnsOpen && (
         <div className="relative z-50 h-0">
           <div className="fixed inset-0" onClick={closeTurns} />
@@ -443,9 +450,13 @@ export function ReadingCompanion({
             language={state.language}
             onCopyAssistantMessage={copyAssistantMessage}
             onRegenerateMessage={regenerateLastMessage}
+            canResendLastTurn={state.lastTurnFailed}
+            onResendLastTurn={resendLastMessage}
             onDeleteTurn={deleteTurn}
             selectedBranches={state.selectedBranches}
             onEditMessage={editMessage}
+            onDiscardFailedSubmission={discardFailedSubmission}
+            onRetryFailedSubmission={retryFailedSubmission}
             onSwitchBranch={switchBranch}
             onSubmitUserReply={submitUserReply}
             onConfirmOutline={confirmResearchOutline}
@@ -466,6 +477,7 @@ export function ReadingCompanion({
           <CompanionWelcome hasMaterial={Boolean(material)} />
         )}
         <ReadingActionCards
+          selection={selection}
           sessionId={state.sessionId}
           onFollowUp={followUpCard}
         />

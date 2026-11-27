@@ -66,6 +66,9 @@ _MD_FENCE = re.compile(r"^\s{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 # render it, not changing this engine.
 RAW_VIEW_EXTENSIONS = frozenset({".pdf"})
 
+# Uploads cut on Markdown headings and rendered as Markdown by the reader.
+MARKDOWN_SUFFIXES = frozenset({".md", ".markdown"})
+
 
 @dataclass(frozen=True, slots=True)
 class MediaItem:
@@ -153,7 +156,7 @@ def extract_material(path: str | Path, *, data: bytes | None = None) -> Extracti
         extraction = _extract_epub(data, source.name)
     elif suffix == ".pptx":
         extraction = _extract_slides(source)
-    elif suffix in {".md", ".markdown"}:
+    elif suffix in MARKDOWN_SUFFIXES:
         units, outline = split_markdown_by_headings(_shared_extract(source))
         extraction = Extraction(units=units, unit="section", extractor="text", outline=outline)
     else:
@@ -338,10 +341,11 @@ def _slides_text_and_images(source: Path) -> tuple[str, tuple[EmbeddedImage, ...
     """Slide text with image markers, preferring the rich extraction.
 
     Falls back to the shared extractor (text only) when the rich path cannot
-    read the deck, so ingest never fails on a picture quirk.
+    read the deck, so ingest never fails on a picture quirk. The reading budget
+    keeps slide pictures at source resolution, like the PDF ingest above.
     """
     try:
-        rich = extract_pptx_rich(source.read_bytes())
+        rich = extract_pptx_rich(source.read_bytes(), budget=reading_image_budget())
     except Exception:
         rich = None
     if rich is not None and any(slide.strip() for slide in rich.slides):
@@ -368,12 +372,13 @@ def _extract_sections(source: Path) -> Extraction:
 
     DOCX goes through the rich extraction first so embedded images survive
     with their section mapping; every other format (and a failed rich parse)
-    uses the shared text-only extractor.
+    uses the shared text-only extractor. The reading budget keeps those images
+    at source resolution for the reader pane, like the PDF ingest above.
     """
     images: tuple[EmbeddedImage, ...] = ()
     if source.suffix.lower() == ".docx":
         try:
-            rich = extract_docx_rich(source.read_bytes())
+            rich = extract_docx_rich(source.read_bytes(), budget=reading_image_budget())
         except Exception:
             rich = None
         if rich is not None and any(paragraph.strip() for paragraph in rich.paragraphs):

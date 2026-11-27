@@ -42,7 +42,7 @@ const labels: Record<string, [string, string]> = {
   timed_media: ['Immersive Watching', '沉浸式观看'],
   notebook: ['Notebooks', '笔记本'],
   'co-writer': ['Writing', '协作写作'],
-  courses: ['Courses', '课程'],
+  learning_journal: ['Learning journal', '学习日志'],
   files: ['File library', '文件库'],
   knowledge_bases: ['Knowledge bases', '知识库'],
   parse_cache: ['Document cache', '文档解析缓存'],
@@ -72,9 +72,11 @@ async function request<T>(path: string, body?: object): Promise<T> {
 }
 
 export default function DataMigrationSettingsSection() {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
   const zh = i18n.language.startsWith('zh')
-  const text = (en: string, cn: string) => (zh ? cn : en)
+  const text = (en: string, cn: string) => (zh ? cn : t(en))
+  const counted = (count: number, en: string, cn: string) =>
+    zh ? `${count} ${cn}` : t(en, { count })
   const { workspaces } = useChatWorkspaces()
   const [source, setSource] = useState(activeWorkspaceId)
   const [target, setTarget] = useState('')
@@ -85,7 +87,8 @@ export default function DataMigrationSettingsSection() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [historical, setHistorical] = useState(false)
-  const label = (key: string) => labels[key]?.[zh ? 1 : 0] ?? key
+  const [conversationIds, setConversationIds] = useState('')
+  const label = (key: string) => (labels[key] ? text(...labels[key]) : key)
   const statusLabel = (key: string) => ({
     preparing: text('Preparing', '准备中'), copying: text('Copying', '复制中'),
     transferring: text('Transferring', '迁移中'), committed: text('Finishing', '收尾中'),
@@ -99,10 +102,11 @@ export default function DataMigrationSettingsSection() {
     target_workspace_id: target,
     features: selected,
     include_historical: historical,
+    ...(selected.includes('chat') && conversationIds.trim() ? { session_ids: conversationIds.trim().split(/[\s,]+/) } : {}),
   }
   useEffect(() => {
     setPreview(null)
-  }, [source, target, selected])
+  }, [source, target, selected, conversationIds])
   useEffect(() => {
     let alive = true
     const timer = window.setInterval(() => {
@@ -121,6 +125,7 @@ export default function DataMigrationSettingsSection() {
     let alive = true
     setDiscovery(null)
     setSelected([])
+    setConversationIds('')
     setError('')
     request<Discovery>(`/discover?source_workspace_id=${encodeURIComponent(source)}`)
       .then(value => {
@@ -230,6 +235,12 @@ export default function DataMigrationSettingsSection() {
             </select>
           </label>
         </div>
+        {selected.includes('chat') && <label className="block space-y-2 text-sm">
+          <span>{text('Conversation IDs (optional)', '指定对话 ID（可选）')}</span>
+          <input value={conversationIds} onChange={event => setConversationIds(event.target.value)}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-2" />
+          <p className="text-[var(--muted-foreground)]">{text('Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.', '留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。')}</p>
+        </label>}
         <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
           {!discovery ? (
             <p className="p-4 text-sm" aria-busy="true">
@@ -255,9 +266,9 @@ export default function DataMigrationSettingsSection() {
                   <span className="block text-sm font-medium">{label(row.feature)}</span>
                   <span className="block text-xs text-[var(--muted-foreground)]">
                     {row.sessions !== undefined
-                      ? `${row.sessions} ${text('conversations', '个对话')} · `
+                      ? `${counted(row.sessions, '{{count}} conversations', '个对话')} · `
                       : ''}
-                    {row.files} {text('files', '个文件')} · {(row.bytes / 1024 / 1024).toFixed(1)}{' '}
+                    {counted(row.files, '{{count}} files', '个文件')} · {(row.bytes / 1024 / 1024).toFixed(1)}{' '}
                     MB
                   </span>
                   <span className="mt-1 block break-all text-[11px] text-[var(--muted-foreground)]">
@@ -315,11 +326,11 @@ export default function DataMigrationSettingsSection() {
         {preview ? (
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <p className="text-sm">
-              {preview.sessions} {text('conversations', '个对话')} · {preview.files}{' '}
-              {text('files', '个文件')} · {(preview.bytes / 1024 / 1024).toFixed(1)} MB
+              {counted(preview.sessions, '{{count}} conversations', '个对话')} ·{' '}
+              {counted(preview.files, '{{count}} files', '个文件')} · {(preview.bytes / 1024 / 1024).toFixed(1)} MB
             </p>
             <p className="text-sm">
-              {text('Included features', '包含功能')}: {preview.features.map(label).join('、')}
+              {text('Included features', '包含功能')}: {preview.features.map(label).join(zh ? '、' : ', ')}
             </p>
             {preview.dependencies.length ? (
               <p className="text-xs text-[var(--muted-foreground)]">

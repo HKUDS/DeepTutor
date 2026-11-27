@@ -3,7 +3,7 @@
 import { Check, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type SessionSummary } from "@/lib/session-api";
+import { sessionWorkspaceId, type SessionSummary } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
 import {
   deriveSessionMark,
@@ -57,8 +57,7 @@ export default function SessionList({
   const groupLabels = useMemo<Record<DayGroupKey, string>>(
     () => ({
       today: t("Today"),
-      yesterday: t("Yesterday"),
-      last_7_days: t("Last 7 days"),
+      this_week: t("Within a week"),
       earlier: t("Earlier"),
     }),
     [t],
@@ -160,6 +159,7 @@ export default function SessionList({
             >
               <SessionAvatar
                 sessionId={session.session_id}
+                workspaceId={sessionWorkspaceId(session)}
                 mark={deriveSessionMark(session, undefined, unread)}
                 kind={sessionKindOf(session)}
                 className={

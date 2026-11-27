@@ -2,6 +2,7 @@
 
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -14,6 +15,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { normalizeLanguage } from "@/i18n/languages";
+import { formatDate } from "@/lib/datetime";
 
 import { Toggle } from "@/components/settings/Toggle";
 import {
@@ -34,7 +37,11 @@ import {
   type UpdateJob,
   type UpdateJobStatus,
 } from "@/lib/app-update";
-import { normalizeVersionTag } from "@/lib/version";
+import {
+  clientEdition,
+  normalizeVersionTag,
+  type ClientEdition,
+} from "@/lib/version";
 
 const POLL_INTERVAL_MS = 800;
 const POLL_TIMEOUT_MS = 120_000;
@@ -168,14 +175,19 @@ export default function AboutSettingsPage() {
     normalizeVersionTag(process.env.NEXT_PUBLIC_APP_VERSION) ??
     "—";
   const latestVersion = normalizeVersionTag(status?.release?.version);
+  // The user agent only exists in the browser; start from the server's view.
+  const [edition, setEdition] = useState<ClientEdition>(() =>
+    clientEdition(""),
+  );
+  useEffect(() => setEdition(clientEdition()), []);
   const checkedAt = useMemo(() => {
     if (!status?.checked_at) return "";
     const parsed = new Date(status.checked_at);
     if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toLocaleString(
-      i18n.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US",
-      { dateStyle: "medium", timeStyle: "short" },
-    );
+    return formatDate(parsed, normalizeLanguage(i18n.language), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }, [i18n.language, status?.checked_at]);
 
   const installMode = status?.installation.mode ?? "unknown";
@@ -210,7 +222,10 @@ export default function AboutSettingsPage() {
               {t("Running version")}
             </div>
             <div className="font-serif text-[38px] font-semibold leading-none tracking-[-0.035em] text-[var(--foreground)]">
-              {currentVersion}
+              {edition.short} {currentVersion}
+            </div>
+            <div className="mt-2 text-[13px] text-[var(--muted-foreground)]">
+              {edition.full} {currentVersion}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -404,6 +419,33 @@ export default function AboutSettingsPage() {
           href="https://docs.deeptutor.info"
           icon={<ArrowUpRight className="h-4 w-4" />}
         />
+      </SettingSection>
+
+      <SettingSection title={t("Technology partner")}>
+        <p className="mb-3 pt-3.5 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+          {t("Thanks to SiliconFlow for supporting DeepTutor with model inference services.")}
+        </p>
+        <a
+          href="https://www.siliconflow.cn/"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-block max-w-full rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <Image
+            src="/partners/powered-by-siliconflow.svg"
+            alt={t("Powered by SiliconFlow")}
+            width={199}
+            height={53}
+            className="h-auto max-w-full dark:hidden"
+          />
+          <Image
+            src="/partners/powered-by-siliconflow-dark.svg"
+            alt={t("Powered by SiliconFlow")}
+            width={199}
+            height={53}
+            className="hidden h-auto max-w-full dark:block"
+          />
+        </a>
       </SettingSection>
 
       <ConfirmDialog

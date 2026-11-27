@@ -19,9 +19,9 @@ async def test_delete_removes_conversation_descendants_and_messages(tmp_path, mo
     attachments = SimpleNamespace(delete_session=AsyncMock())
     learning = SimpleNamespace(detach_session=Mock())
     monkeypatch.setattr(router, "get_attachment_store", lambda: attachments)
-    monkeypatch.setattr(router, "LearningStore", lambda: learning)
+    monkeypatch.setattr("deeptutor.learning.storage.LearningStore", lambda: learning)
     reading = SimpleNamespace(forget_session=Mock())
-    monkeypatch.setattr(router, "ReadingCatalogStore", lambda: reading)
+    monkeypatch.setattr("deeptutor.reading.catalog_store.ReadingCatalogStore", lambda: reading)
     turns = SimpleNamespace(cancel_turn_and_wait=AsyncMock(return_value=True))
     monkeypatch.setattr(router, "_turn_application_service", lambda: turns)
     monkeypatch.setattr(

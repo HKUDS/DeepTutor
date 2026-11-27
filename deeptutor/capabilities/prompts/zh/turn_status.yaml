@@ -1,0 +1,2 @@
+notices:
+  capability_incomplete: "请求的操作未完成，请重试。之前保存的内容已保留。"

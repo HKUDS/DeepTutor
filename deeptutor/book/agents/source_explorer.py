@@ -33,7 +33,7 @@ import asyncio
 import logging
 from typing import Any
 
-from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.book.generation_context import BookAgent, with_workspace_instructions
 from deeptutor.core.context import UnifiedContext
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
@@ -145,7 +145,7 @@ _FALLBACK_SUMMARY_USER = (
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class SourceExplorer(BaseAgent):
+class SourceExplorer(BookAgent):
     """Two-LLM-call agent that produces an ``ExplorationReport``."""
 
     def __init__(
@@ -540,7 +540,7 @@ class SourceExplorer(BaseAgent):
             try:
                 result = await read_pageindex_with_agent(
                     kb_name=kb,
-                    system_prompt=(
+                    system_prompt=with_workspace_instructions(
                         "You are the SourceExplorer for a book workflow. Build a dense evidence "
                         "brief that later planning and block-generation stages can reuse. Cover "
                         "the supplied research questions, preserve concrete facts and page "

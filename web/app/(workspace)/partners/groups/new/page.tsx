@@ -1,5 +1,6 @@
 "use client";
 
+import { FeaturePage, PageHeader } from '@/components/layout/FeaturePage'
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -73,20 +74,15 @@ export default function NewPartnerGroupPage() {
   };
 
   return (
-    <div className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-7">
+    <FeaturePage>
       <Link
         href="/partners"
-        className="inline-flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
         <ArrowLeft size={14} /> {t("Partners")}
       </Link>
 
-      <h1 className="mt-6 text-[20px] font-semibold tracking-tight text-[var(--foreground)]">
-        {t("Create a Partner Group")}
-      </h1>
-      <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
-        {t("Choose at least two Partners, then how they should discuss.")}
-      </p>
+      <PageHeader title={t("Create a Partner Group")} description={t("Choose at least two Partners, then how they should discuss.")} />
 
       {/* A live card of the thing being made: emoji, colour and name only mean
           something once you can see them together the way the list will. */}
@@ -291,6 +287,6 @@ export default function NewPartnerGroupPage() {
           </button>
         </div>
       </div>
-    </div>
+    </FeaturePage>
   );
 }

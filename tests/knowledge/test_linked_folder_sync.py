@@ -10,9 +10,11 @@ The atomicity contract of the shared writer lives in
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from deeptutor.api.routers.knowledge import LinkedFolderInfo
+from deeptutor.knowledge import manager as manager_module
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
@@ -86,6 +88,54 @@ def test_empty_successful_sync_records_last_sync_without_changing_file_state(
     assert after["last_sync"]
     assert after["last_sync"] >= before["last_sync"]
     assert after["synced_files"] == before["synced_files"]
+
+
+def test_update_folder_sync_state_mtime_failure_is_visible_not_fake_synced(
+    tmp_path: Path,
+    caplog,
+    monkeypatch,
+) -> None:
+    """A per-file mtime recording failure must surface, not vanish.
+
+    ``update_folder_sync_state()`` used to swallow stat/fromtimestamp errors
+    with ``except Exception: pass``. The sync then reported success while the
+    file's state was never recorded, hiding the degradation. The failure must
+    be logged and the file must stay un-recorded so the next scan re-syncs it.
+    """
+    manager, metadata_file, folder_id, doc = _manager_with_linked_folder(tmp_path)
+
+    flavour = type(Path())  # PosixPath on POSIX, WindowsPath on Windows
+
+    class _VanishedMidStatPath(flavour):
+        """exists() wins the race, stat() loses it (source vanished mid-sync)."""
+
+        def exists(self, **kwargs):
+            return True
+
+        def stat(self, **kwargs):
+            raise OSError("source vanished before stat")
+
+    monkeypatch.setattr(manager_module, "Path", _VanishedMidStatPath)
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.knowledge.manager"):
+        manager.update_folder_sync_state("kb", folder_id, [str(doc)])
+
+    # Visibility: the swallowed failure is now a logged warning naming the file.
+    warnings_for_doc = [
+        record
+        for record in caplog.records
+        if record.levelno >= logging.WARNING and str(doc) in record.getMessage()
+    ]
+    assert warnings_for_doc, f"expected a logged warning mentioning {doc}, got none"
+
+    # Fallback semantics: the file is not marked synced, so the next scan
+    # re-detects it instead of trusting a fabricated "already synced" state.
+    on_disk = json.loads(metadata_file.read_text(encoding="utf-8"))
+    folder = on_disk["linked_folders"][0]
+    assert folder["last_sync"]
+    assert str(doc) not in folder["synced_files"]
+    assert folder["file_count"] == 0
+    assert manager.detect_folder_changes("kb", folder_id)["new_files"] == [str(doc)]
 
 
 def test_unlink_removes_only_the_source_registration(tmp_path: Path) -> None:

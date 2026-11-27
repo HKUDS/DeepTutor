@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import shlex
+import sys
 
 import pytest
 
@@ -40,6 +41,13 @@ HOSTILE_ARGS = [
     "$HOME",
     "&& touch /tmp/pwned",
     "|tee /tmp/pwned",
+]
+
+#: Portable argv prefix that echoes one argument back as exact UTF-8 bytes.
+ECHO_ARGV = [
+    sys.executable,
+    "-c",
+    "import sys; sys.stdout.buffer.write(sys.argv[1].encode('utf-8'))",
 ]
 
 
@@ -128,9 +136,7 @@ def test_the_sidecar_sends_both_spellings() -> None:
 def test_the_local_backend_passes_a_hostile_argument_through_untouched(argument: str) -> None:
     """The argument arrives as data. Nothing expands, splits, or executes."""
     backend = RestrictedSubprocessBackend()
-    request = ExecRequest.of_argv(
-        ["/usr/bin/env", "python3", "-c", "import sys; print(sys.argv[1], end='')", argument]
-    )
+    request = ExecRequest.of_argv([*ECHO_ARGV, argument])
     result = asyncio.run(backend.exec(request))
 
     assert result.error == ""
@@ -159,8 +165,8 @@ def test_the_runner_prefers_argv_over_the_shell_string() -> None:
     """Sent both, it must run the vector — that is what makes the arguments data."""
     result = runner_server.execute(
         {
-            "command": "/bin/echo shell-form",
-            "argv": ["/bin/echo", "argv-form"],
+            "command": shlex.join([*ECHO_ARGV, "shell-form"]),
+            "argv": [*ECHO_ARGV, "argv-form"],
             "limits": {"timeout_s": 10},
         }
     )
@@ -177,7 +183,7 @@ def test_the_runner_does_not_expand_a_hostile_argv_element() -> None:
     result = runner_server.execute(
         {
             "command": "unused",
-            "argv": ["/bin/echo", "$HOME; rm -rf /"],
+            "argv": [*ECHO_ARGV, "$HOME; rm -rf /"],
             "limits": {"timeout_s": 10},
         }
     )

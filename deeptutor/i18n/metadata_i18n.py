@@ -23,6 +23,10 @@ _CAPABILITY_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Generate math animations or storyboard images with Manim.",
         "zh": "使用 Manim 生成数学动画或分镜图。",
     },
+    "video_lesson": {
+        "en": "Generate an animated video lesson (Remotion) that plays in the browser.",
+        "zh": "生成可在浏览器中播放的讲解动画视频（Remotion）。",
+    },
     "mastery_path": {
         "en": "Structured mastery-based learning with spaced repetition.",
         "zh": "结构化掌握式学习，结合间隔复习。",

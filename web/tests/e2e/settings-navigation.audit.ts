@@ -1,3 +1,4 @@
+import { sourceModuleInventory } from "./fixtures/modules";
 import { expect, test, type Page } from "@playwright/test";
 
 // All writes are intercepted. Regression coverage must never change a developer's settings.
@@ -86,6 +87,7 @@ async function mockSettings(
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
     const method = request.method();
     const body = request.postDataJSON();
     const write =
@@ -149,7 +151,7 @@ async function mockSettings(
       json = { chat_response_timeout: timeout };
     } else if (path === "/api/settings/chat-starters")
       json = {
-        settings: { trace_count: 5 },
+        settings: { trace_count: 5, ask_hint_enabled: true },
         bounds: { trace_count: { min: 1, max: 50 } },
       };
     else if (path === "/api/system/status")
@@ -202,7 +204,7 @@ test.describe("Independent settings", () => {
     await nav(page)
       .getByRole("link", { name: "Appearance", exact: true })
       .click();
-    await expect(page).toHaveURL(/\/settings\/appearance$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/settings/appearance");
     await expect(page.getByLabel("Model ID", { exact: true })).toHaveCount(0);
     await nav(page)
       .getByRole("link", { name: "Language models", exact: true })
@@ -348,12 +350,12 @@ test.describe("Independent settings", () => {
     await nav(page)
       .getByRole("link", { name: "Embedding models", exact: true })
       .click();
-    await expect(page).toHaveURL(/\/settings\/embedding$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/settings/embedding");
     await expect(page.locator("[data-settings-page]")).toHaveCount(1);
     await page.goBack();
-    await expect(page).toHaveURL(/\/settings\/general$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/settings/general");
     await page.goto("/settings#about", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/settings\/about$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/settings/about");
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 
@@ -493,7 +495,7 @@ test("setup links lead to providers, language models, and runtime status", async
   ]) {
     await page.goto("/settings/general", { waitUntil: "domcontentloaded" });
     await page.getByRole("link", { name: new RegExp(label.replaceAll(".", "\\.")) }).click();
-    await expect(page).toHaveURL(new RegExp(destination + "$"));
+    await expect(page).toHaveURL((url) => url.pathname === destination);
     await expect(page.locator("[data-settings-page]")).toHaveCount(1);
   }
 });
@@ -508,7 +510,7 @@ test("provider discovery stays staged and model choices preserve existing models
   await page.goto("/settings/connections?provider=llm:legacy", { waitUntil: "domcontentloaded" });
   await page.getByLabel("API key", { exact: true }).fill("new-unsaved-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "2 models available" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-unsaved-key", profile_id: "legacy", service: "llm", extra_headers: { "X-Custom-Header": "preserve-me" } });
   expect(probes[0]).not.toHaveProperty("model");
   expect(state.writes).toEqual([]);
@@ -602,20 +604,27 @@ test("a new provider can be tested with only a key and supplies discovered model
   });
   await page.goto("/settings/connections", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Add provider", exact: true }).click();
-  await page.getByLabel("Provider type", { exact: true }).selectOption("openai");
+  const providerType = page.getByRole("radiogroup", { name: "Provider type", exact: true })
+    .getByRole("radio", { name: "OpenAI", exact: true });
+  await providerType.focus();
+  await page.keyboard.press("Space");
+  await expect(providerType).toBeChecked();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByLabel("Provider URL", { exact: true })).toHaveValue("");
   await page.getByLabel("API key", { exact: true }).fill("new-key");
   await page.getByRole("button", { name: "Test provider", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Provider connected" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "1 models available" })).toBeVisible();
   expect(probes[0]).toMatchObject({ api_key: "new-key", base_url: "https://api.openai.com/v1" });
   await page.getByRole("region", { name: "Provider settings" }).getByRole("link", { name: "Language models", exact: true }).click();
   await page.getByRole("button", { name: "Add model", exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
   const model = page.getByLabel("Model ID", { exact: true });
+  const continueButton = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(continueButton).toBeDisabled();
   await model.fill("chosen");
   await page.getByRole("option", { name: "chosen-model", exact: true }).click();
   await expect(model).toHaveValue("chosen-model");
+  await continueButton.click();
+  await expect(page.getByRole("region", { name: "Model settings" })).toBeVisible();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByText("Draft not applied yet", { exact: true })).toBeVisible();
   const llm = state.draft().catalog.services.llm;

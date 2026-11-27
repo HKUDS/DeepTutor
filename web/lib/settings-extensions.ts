@@ -28,6 +28,7 @@ export const EXTENSION_ENDPOINTS = {
   capabilities: "/api/capabilities/settings",
   memory: "/api/memory/settings",
   network: "/api/settings/network",
+  "web-fetch": "/api/settings/web-fetch",
 } as const;
 
 export type ExtensionKey = keyof typeof EXTENSION_ENDPOINTS;
@@ -47,6 +48,13 @@ export async function applyExtensionPayload(
     for (const [model, effort] of Object.entries(payload as Record<string, string | null>)) {
       await setCodexReasoningEffort(model, effort);
     }
+    return;
+  }
+  if (key === "ui-layout") {
+    // Browser-local: there is no endpoint, the browser is the store.
+    const { isUiLayout, writeStoredUiLayout } = await import("@/lib/ui-layout");
+    if (!isUiLayout(payload)) throw new Error(`Invalid UI layout: ${String(payload)}`);
+    writeStoredUiLayout(payload);
     return;
   }
   if (key.startsWith("subagent:")) {

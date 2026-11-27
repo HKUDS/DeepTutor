@@ -7,6 +7,8 @@ import type {
   ReadingExtensionResult,
 } from "@/lib/reading-api";
 
+export const READER_ASK_EVENT = "dt:reader-ask";
+
 /** One runnable extension action, with its label already resolved. */
 export interface ReadingActionEntry {
   key: string;
@@ -40,6 +42,8 @@ export interface ReadingActionCard {
 export interface ReadingActionsValue {
   ageMode: ReadingAgeMode;
   actions: ReadingActionEntry[];
+  /** Permission-filtered helpers for quiz cards, separate from chat-routed menus. */
+  helpActions: ReadingActionEntry[];
   cards: ReadingActionCard[];
   speaking: boolean;
   /** Key of the action currently running, or "". */

@@ -14,12 +14,10 @@ export function PracticeImport({
   onClose,
   onImported,
   initialTarget,
-  courseId = "",
 }: {
   onClose: () => void;
   onImported: (message: string) => void;
   initialTarget: "bank" | "mistakes";
-  courseId?: string;
 }) {
   const { t } = useTranslation();
   const [target, setTarget] = useState(initialTarget);
@@ -36,7 +34,7 @@ export function PracticeImport({
     setPreview(null);
     setFilename(file.name);
     try {
-      setPreview(await previewPracticeImport(file, target, courseId));
+      setPreview(await previewPracticeImport(file, target));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

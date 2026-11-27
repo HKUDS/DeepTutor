@@ -310,6 +310,133 @@ def test_web_search_explicit_provider_uses_its_own_key(monkeypatch) -> None:
     assert captured["kwargs"]["api_key"] == "tavily-key"
 
 
+# --------------------------------------------------------------------------
+# The search profile's `search_engine` field (issue #2617) rides the resolved
+# config into the provider kwargs, the same way max_results/proxy do.
+# --------------------------------------------------------------------------
+
+
+def test_web_search_passes_resolved_engine_to_provider(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_get_provider(name: str, **kwargs):
+        captured["provider"] = name
+        captured["kwargs"] = kwargs
+        return _FakeProvider(name)
+
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="zhipu",
+            requested_provider="zhipu",
+            api_key="zhipu-key",
+            max_results=5,
+            search_engine="search_pro",
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.search.get_provider", _fake_get_provider)
+    web_search("hello")
+    assert captured["kwargs"]["search_engine"] == "search_pro"
+
+
+def test_web_search_request_engine_overrides_resolved_engine(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_get_provider(name: str, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProvider(name)
+
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="zhipu",
+            requested_provider="zhipu",
+            api_key="zhipu-key",
+            max_results=5,
+            search_engine="search_pro",
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.search.get_provider", _fake_get_provider)
+    web_search("hello", search_engine="search_std")
+    assert captured["kwargs"]["search_engine"] == "search_std"
+
+
+def test_web_search_omits_engine_when_unresolved(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_get_provider(name: str, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProvider(name)
+
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="zhipu",
+            requested_provider="zhipu",
+            api_key="zhipu-key",
+            max_results=5,
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.search.get_provider", _fake_get_provider)
+    web_search("hello")
+    assert "search_engine" not in captured["kwargs"]
+
+
+def test_web_search_profile_engine_reaches_zhipu_payload(monkeypatch) -> None:
+    """End to end: resolved engine -> real ZhipuProvider -> request payload."""
+    from deeptutor.services.search.providers.zhipu import DEFAULT_SEARCH_ENGINE
+
+    captured: list[dict[str, object]] = []
+
+    class _FakeZhipuResponse:
+        status_code = 200
+        text = ""
+
+        @staticmethod
+        def json() -> dict:
+            return {"search_result": [], "request_id": "req-1"}
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs):
+            captured.append(kwargs)
+            return _FakeZhipuResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.zhipu.requests", _FakeRequests)
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="zhipu",
+            requested_provider="zhipu",
+            api_key="zhipu-key",
+            max_results=5,
+            search_engine="search_pro",
+        ),
+    )
+
+    result = web_search("hello")
+
+    # `get_provider` is NOT patched here, so the real provider turns the
+    # resolved config into the `search_engine` field the API receives.
+    assert captured[-1]["json"]["search_engine"] == "search_pro"
+    assert result["provider"] == "zhipu"
+
+    # Same run without a configured engine: the payload stays backward
+    # compatible on `search_std`.
+    captured.clear()
+    _patch_runtime(
+        monkeypatch,
+        ResolvedSearchConfig(
+            provider="zhipu",
+            requested_provider="zhipu",
+            api_key="zhipu-key",
+            max_results=5,
+        ),
+    )
+    web_search("hello")
+    assert captured[-1]["json"]["search_engine"] == DEFAULT_SEARCH_ENGINE
+
+
 def test_source_filter_removes_unsafe_references_and_renumbers_ids() -> None:
     response = WebSearchResponse(
         query="safe references",
@@ -686,6 +813,49 @@ def test_source_filter_moderation_fails_open_on_errors() -> None:
 
     assert len(filtered.citations) == 1
     assert filtered.metadata["source_filter"]["removed_citations"] == 0
+
+
+def test_source_filter_moderation_flags_long_reference_truncated_on_whitespace() -> None:
+    # A reference whose text exceeds the 4000-char moderation cap and whose cut
+    # lands on whitespace must still be dropped when Moderation flags it. The
+    # decision dict was keyed by text.strip()[:4000] while the lookup used the
+    # unstripped row text, so the flag silently missed (fail-open).
+    flagged_texts: list[str] = []
+
+    def _flag_all(texts: list[str], *, api_key: str) -> list[bool]:
+        flagged_texts.extend(texts)
+        return [True for _ in texts]
+
+    long_content = "a " * 3000  # 6000 chars; the [:4000] cut lands on a space
+
+    response = WebSearchResponse(
+        query="news",
+        answer="",
+        provider="test",
+        citations=[
+            Citation(
+                id=1,
+                reference="[1]",
+                url="https://news.example/a",
+                title="flag",
+                snippet="this",
+                content=long_content,
+            ),
+        ],
+        search_results=[],
+    )
+
+    filtered = filter_web_search_response(
+        response,
+        content_filtering=False,
+        use_moderation=True,
+        moderation_api_key="sk-test",
+        request_moderation=_flag_all,
+    )
+
+    assert flagged_texts, "moderation requester was never called"
+    assert [c.id for c in filtered.citations] == []
+    assert "moderation_flagged" in filtered.metadata["source_filter"]["rejected_reasons"]
 
 
 def test_settings_from_config_defaults_and_educational_flag(monkeypatch) -> None:

@@ -122,3 +122,23 @@ def test_an_explicitly_requested_off_is_narrowed_like_an_inferred_one() -> None:
     assert effort("gemini-2.5-flash") == "none"
     assert thinking_off_effort_for("openai", "gpt-4o") == "none"
     assert thinking_off_effort_for(None, None) == "none"
+
+
+@pytest.mark.parametrize("binding", ["custom", "openai", "dashscope"])
+@pytest.mark.parametrize("effort", [None, "high", "none", "minimal"])
+@pytest.mark.parametrize("model", ["Qwen/Qwen3-VL-30B-A3B-Instruct", "qwen3_235b_instruct_2507"])
+def test_qwen_instruct_omits_unsupported_reasoning_controls(binding, effort, model) -> None:
+    assert (
+        build_openai_compatible_reasoning_kwargs(
+            spec=None, binding=binding, model=model, reasoning_effort=effort
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize("binding", ["custom", "dashscope"])
+@pytest.mark.parametrize("effort,enabled", [(None, True), ("high", True), ("none", False)])
+def test_qwen_thinking_models_keep_native_controls(binding, effort, enabled) -> None:
+    assert build_openai_compatible_reasoning_kwargs(
+        spec=None, binding=binding, model="qwen3-235b-a22b", reasoning_effort=effort
+    ) == {"extra_body": {"enable_thinking": enabled}}

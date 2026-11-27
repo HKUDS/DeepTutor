@@ -80,6 +80,23 @@ def test_registry_lifecycle_for_bundled_and_imported_types(tmp_path: Path) -> No
     assert registry.get("number_line", require_enabled=False) is None
 
 
+def test_lifecycle_mutators_accept_mixed_case_ids(tmp_path: Path) -> None:
+    # ``get`` normalizes the id (strip + lower) but the lifecycle mutators keyed
+    # the catalog with the raw id, so a valid id in a different case was rejected
+    # as "not installed"/"not found" even though ``get`` accepts it.
+    registry = _registry(tmp_path)
+
+    registry.install_bundled("GeoGebra")
+    assert registry.get("geogebra") is not None
+
+    registry.set_enabled("GeoGebra", False)
+    assert registry.get("geogebra") is None
+    assert registry.get("geogebra", require_enabled=False) is not None
+
+    registry.uninstall("GeoGebra")
+    assert registry.get("geogebra", require_enabled=False) is None
+
+
 def test_import_rejects_reserved_id_and_path_traversal(tmp_path: Path) -> None:
     registry = _registry(tmp_path)
     with pytest.raises(VisualizerStoreError, match="reserved"):
@@ -115,6 +132,20 @@ def test_core_visualizer_quality_gates(tmp_path: Path) -> None:
     assert ok is True, error
     assert data["data"]["datasets"][0]["label"] == "Recall"
 
+    mindmap = registry.get("mindmap")
+    assert mindmap is not None
+    assert mindmap.manifest.core is True
+    assert mindmap.manifest.native_renderer == "mermaid"
+    assert mindmap.manifest.payload_format == "text/vnd.mermaid"
+    ok, _, error = mindmap.validate_payload("mindmap\n  Root")
+    assert ok is False
+    assert "child branch" in error
+    ok, data, error = mindmap.validate_payload(
+        "mindmap\n  Root((Learning))\n    Memory\n      Recall"
+    )
+    assert ok is True, error
+    assert data.startswith("mindmap\n  Root((Learning))")
+
     html = registry.get("html")
     assert html is not None
     ok, _, error = html.validate_payload("<div>Not a complete lab</div>")
@@ -126,6 +157,14 @@ def test_core_visualizer_quality_gates(tmp_path: Path) -> None:
         "<script>document.querySelector('#reset').onclick=()=>{};</script></body></html>"
     )
     assert ok is True, error
+
+
+def test_visualize_request_contract_accepts_mindmap() -> None:
+    from deeptutor.runtime.request_contracts import validate_visualize_request_config
+
+    config = validate_visualize_request_config({"render_mode": "mindmap"})
+
+    assert config.render_mode == "mindmap"
 
 
 @pytest.mark.asyncio

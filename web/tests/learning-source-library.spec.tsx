@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import { hydrateTopicSource, useTopicSourceLibrary } from '@/hooks/useTopicSourceLibrary'
+import { catalogTranslate, hydrateTopicSource, useTopicSourceLibrary } from '@/hooks/useTopicSourceLibrary'
+import { ensureLanguage, initI18n } from '@/i18n/init'
 import { apiFetch } from '@/lib/api'
 
 vi.mock('@/lib/api', () => ({ apiUrl: (path: string) => path, apiFetch: vi.fn() }))
@@ -11,7 +12,7 @@ vi.mock('@/lib/partner-groups-api', () => ({
 }))
 const translate = (key: string) => key
 
-it('uses global indexes and pins file expansion and book hydration to their source', async () => {
+it('reads the current workspace indexes and pins file expansion and book hydration to their source', async () => {
   window.history.replaceState({}, '', '/learning/books?dt_workspace=destination')
   const origin = { content_workspace_id: 'original', content_workspace_name: 'Original' }
   vi.mocked(apiFetch).mockImplementation(async url => {
@@ -52,7 +53,7 @@ it('uses global indexes and pins file expansion and book hydration to their sour
   expect(
     urls
       .filter(url => url.pathname.includes('source-library'))
-      .every(url => url.searchParams.get('dt_workspace') === '')
+      .every(url => url.searchParams.get('dt_workspace') === 'destination')
   ).toBe(true)
   expect(
     urls
@@ -60,4 +61,21 @@ it('uses global indexes and pins file expansion and book hydration to their sour
       .every(url => url.searchParams.get('dt_workspace') === 'original')
   ).toBe(true)
   expect(window.location.search).toBe('?dt_workspace=destination')
+})
+
+it('keeps fallback labels Chinese in Chinese and reads the catalog elsewhere', async () => {
+  const i18n = initI18n('en')
+  await ensureLanguage('tr')
+  await ensureLanguage('zh')
+  const t = i18n.getFixedT('tr')
+  const zh = catalogTranslate(t, true)
+  const tr = catalogTranslate(t, false)
+
+  // Callers used to pass i18next's t, which read the Chinese text as the key and fell back to English.
+  expect(zh('未命名题目', 'Untitled question')).toBe('未命名题目')
+  expect(zh('未命名', 'Untitled')).toBe(i18n.getFixedT('zh')('Untitled'))
+  expect(zh('{{count}} 条消息', '{{count}} messages', { count: 3 })).toBe('3 条消息')
+  expect(tr('未命名题目', 'Untitled question')).toBe(t('Untitled question'))
+  expect(tr('未命名题目', 'Untitled question')).not.toBe('Untitled question')
+  expect(tr('{{name}} 中的文件', 'File in {{name}}', { name: 'notes' })).toContain('notes')
 })

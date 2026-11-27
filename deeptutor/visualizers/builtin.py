@@ -205,6 +205,30 @@ top-to-bottom layout for explanations and left-to-right for short processes.
         ),
         VisualizerPlugin(
             manifest=VisualizerManifest(
+                id="mindmap",
+                display_name="Mind map",
+                description="Hierarchical topics and relationships rendered by Mermaid.",
+                subjects=["general"],
+                intents=["structure", "outline", "explain"],
+                native_renderer="mermaid",
+                payload_format="text/vnd.mermaid",
+                language_tag="mermaid",
+                core=True,
+                priority=25,
+                prompt=_GENERAL
+                + """
+
+Return valid Mermaid mindmap DSL only. The first non-empty line must be
+`mindmap`, followed by exactly one root node and at least one child branch.
+Indent each hierarchy level consistently, keep labels short, and do not use
+Markdown fences, arrows, or flowchart node syntax.
+""",
+            ),
+            origin="core",
+            validator=_text_validator("mindmap"),
+        ),
+        VisualizerPlugin(
+            manifest=VisualizerManifest(
                 id="chartjs",
                 display_name="Chart.js",
                 description="Standard quantitative charts rendered from strict JSON.",

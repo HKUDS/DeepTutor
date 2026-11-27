@@ -570,3 +570,39 @@ def test_doctor_online_rich_output_succeeds(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert "PASS" in result.output
     assert "Provider response" in result.output
+
+
+@pytest.mark.asyncio
+async def test_online_probe_converts_default_resolved_config(monkeypatch, tmp_path) -> None:
+    """The default resolver yields ResolvedLLMConfig; the probe needs an LLMConfig."""
+    from deeptutor.services.config.provider_runtime import ResolvedLLMConfig
+    from deeptutor.services.llm.config import LLMConfig
+
+    resolved = ResolvedLLMConfig(
+        model="gpt-4o-mini",
+        provider_name="openai",
+        provider_mode="standard",
+        api_key="sk-test-secret",
+        base_url="https://api.openai.com/v1",
+        effective_url="https://api.openai.com/v1",
+    )
+    captured = {}
+
+    async def fake_complete(config, **kwargs):
+        captured["config"] = config
+        captured["api_key"] = config.get_api_key()
+        return "OK"
+
+    monkeypatch.setattr("deeptutor.services.config.resolve_llm_runtime_config", lambda: resolved)
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", fake_complete)
+
+    report = await run_diagnostics(
+        online=True,
+        data_root=tmp_path,
+        load_rag_config=lambda: {"defaults": {}, "knowledge_bases": {}},
+    )
+
+    assert report.ok is True
+    assert isinstance(captured["config"], LLMConfig)
+    assert captured["config"].model == "gpt-4o-mini"
+    assert captured["api_key"] == "sk-test-secret"

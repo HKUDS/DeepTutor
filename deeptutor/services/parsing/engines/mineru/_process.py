@@ -1,0 +1,164 @@
+"""Own a MinerU CLI tree; settle it before publishing parser output."""
+
+from contextlib import contextmanager
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+from typing import Any
+
+#: How long the tree gets to disappear after the kill signals. Shared by the
+#: Windows job-object loop and the POSIX group poll so both give up at the same
+#: point; a test can shorten it instead of waiting out the real deadline.
+_PROCESS_SETTLE_SECONDS = 5.0
+
+
+class ProcessTreeNotSettled(RuntimeError):
+    """The CLI tree outlived the settle deadline.
+
+    A subclass of :class:`RuntimeError`, so callers that already catch broadly
+    keep working unchanged. It exists so the parse can report "cleanup failed"
+    rather than "the parser crashed": the two call for different handling, and
+    only this one means the artifacts may still be in motion (#2426).
+    """
+
+
+@contextmanager
+def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
+    """Run a CLI with attempt-owned descendants and settle them on every exit."""
+    process = None
+    job = None
+    assigned = False
+    with log_path.open("wb") as output:
+        try:
+            kwargs: dict[str, Any] = {
+                "stdout": output,
+                "stderr": subprocess.STDOUT,
+                "shell": False,
+                "env": env,
+            }
+            if sys.platform == "win32":
+                import psutil
+                import win32api
+                import win32con
+                import win32job
+                import win32process
+
+                job = win32job.CreateJobObject(None, "")
+                limits = win32job.QueryInformationJobObject(
+                    job, win32job.JobObjectExtendedLimitInformation
+                )
+                limits["BasicLimitInformation"]["LimitFlags"] |= (
+                    win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                )
+                win32job.SetInformationJobObject(
+                    job, win32job.JobObjectExtendedLimitInformation, limits
+                )
+                # Attach before execution: no child can escape an assignment race.
+                kwargs["creationflags"] = win32con.CREATE_SUSPENDED | subprocess.CREATE_NO_WINDOW
+                process = subprocess.Popen(cmd, **kwargs)  # nosec B603: fixed argv, shell=False
+                win32job.AssignProcessToJobObject(job, int(process._handle))  # type: ignore[attr-defined]  # CPython Windows process handle
+                assigned = True
+                threads = psutil.Process(process.pid).threads()
+                if len(threads) != 1:
+                    raise RuntimeError("Cannot identify the suspended MinerU main thread")
+                thread = win32api.OpenThread(win32con.THREAD_SUSPEND_RESUME, False, threads[0].id)
+                try:
+                    win32process.ResumeThread(thread)
+                finally:
+                    thread.Close()
+            else:
+                process = subprocess.Popen(cmd, start_new_session=True, **kwargs)  # nosec B603
+            yield process
+        finally:
+            if sys.platform == "win32" and job is not None:
+                try:
+                    if process is not None and not assigned:
+                        process.kill()  # Still suspended; cannot have spawned a child.
+                    win32job.TerminateJobObject(job, 1)
+                    deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
+                    while win32job.QueryInformationJobObject(
+                        job, win32job.JobObjectBasicAccountingInformation
+                    )["ActiveProcesses"]:
+                        if time.monotonic() >= deadline:
+                            raise ProcessTreeNotSettled(
+                                "MinerU process-tree cleanup did not settle"
+                            )
+                        time.sleep(0.05)
+                finally:
+                    job.Close()
+            elif sys.platform != "win32" and process is not None:
+                for sig in (signal.SIGTERM, signal.SIGKILL):
+                    try:
+                        os.killpg(process.pid, sig)
+                    except ProcessLookupError:
+                        break
+                    except PermissionError:
+                        if _process_group_alive(process.pid):
+                            raise
+                        break
+            if process is not None:
+                process.wait(timeout=5)
+            if sys.platform != "win32" and process is not None:
+                deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
+                while _process_group_alive(process.pid):
+                    if time.monotonic() >= deadline:
+                        raise ProcessTreeNotSettled("MinerU process-tree cleanup did not settle")
+                    time.sleep(0.05)
+
+
+def _process_group_exists(pgid: int) -> bool:
+    """Only ESRCH confirms absence; EPERM may hide members or just zombies."""
+    if sys.platform == "win32":
+        raise NotImplementedError("POSIX process groups are unavailable on Windows")
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def _process_group_alive(pgid: int) -> bool:
+    """A killed group may remain visible while init reaps its zombies."""
+    if not _process_group_exists(pgid):
+        return False
+
+    if sys.platform != "darwin" and hasattr(os, "getpgid"):
+        import psutil
+
+        saw_member = False
+        for proc in psutil.process_iter():
+            try:
+                if os.getpgid(proc.pid) != pgid:
+                    continue
+                saw_member = True
+                if proc.status() not in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+                    return True
+            except (ProcessLookupError, psutil.NoSuchProcess):
+                continue
+            except psutil.AccessDenied:
+                return True
+        # A group can be reaped between signal 0 and member enumeration.
+        return not saw_member and _process_group_exists(pgid)
+
+    # On Darwin getpgid(pid) can no longer resolve an unreaped zombie;
+    # ps exposes the kernel group and state together on both POSIX targets.
+    rows = subprocess.check_output(  # nosec B603 B607 -- fixed POSIX utility, no shell
+        ["/bin/ps", "-Ao", "pgid=,stat="], text=True, timeout=2
+    )
+    states = [
+        state
+        for group, state in (line.split() for line in rows.splitlines() if line.strip())
+        if group == str(pgid)
+    ]
+    # Recheck an empty snapshot: the group may have disappeared since signal 0.
+    # An existing group hidden from inspection must still not be declared settled.
+    return (
+        any(not state.startswith("Z") for state in states)
+        if states
+        else _process_group_exists(pgid)
+    )

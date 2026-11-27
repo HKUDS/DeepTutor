@@ -1,6 +1,7 @@
 "use client";
 
 import Tooltip from "@/shared/ui/Tooltip";
+import { PageContainer } from "@/components/layout/FeaturePage";
 import { Loader2, Save, Undo2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/features/settings/store/SettingsStore";
@@ -30,9 +31,9 @@ export function SettingsToolbar() {
   return (
     <div
       data-tour="tour-actions"
-      className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] px-5 py-3 sm:px-8"
+      className="shrink-0 border-t border-[var(--border)] bg-[var(--background)]"
     >
-      <div className="mx-auto flex max-w-[calc(var(--settings-content,960px)_-_7rem)] flex-wrap items-center justify-between gap-3">
+      <PageContainer spacing="toolbar" className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0" role="status">
           <p className="text-[13px] font-medium">
             {draftState === "saved"
@@ -82,7 +83,7 @@ export function SettingsToolbar() {
             {t("Apply changes")}
           </button>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }

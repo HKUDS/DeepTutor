@@ -82,19 +82,28 @@ def _legacy_storage_dir_for_signature(kb_dir: Path, sig_hash: str) -> Path:
 
 
 def _is_storage_ready(storage_dir: Path) -> bool:
-    return storage_dir.is_dir() and any(
-        child.name != META_FILENAME for child in storage_dir.iterdir()
-    )
+    try:
+        return storage_dir.is_dir() and any(
+            child.name != META_FILENAME for child in storage_dir.iterdir()
+        )
+    except OSError:
+        # An unreadable store is not ready. Probing readiness must never be
+        # what takes a KB out of the catalogue.
+        return False
 
 
 def _read_json(path: Path) -> Optional[dict[str, Any]]:
-    if not path.exists():
-        return None
     try:
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
         return payload if isinstance(payload, dict) else None
-    except Exception as exc:
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        # PermissionError (wrong ownership), a stale network handle, or invalid
+        # JSON all mean the same thing to a caller: this version has no usable
+        # metadata. ``Path.exists()`` would surface EACCES here, so open()
+        # directly instead of probing first.
         logger.warning(f"Failed to read version meta {path}: {exc}")
         return None
 
@@ -105,12 +114,21 @@ def _flat_version_number(path: Path) -> int:
 
 
 def _flat_version_dirs(kb_dir: Path) -> list[Path]:
-    if not kb_dir.is_dir():
+    try:
+        if not kb_dir.is_dir():
+            return []
+        children = list(kb_dir.iterdir())
+    except OSError as exc:
+        logger.warning(f"Failed to list index versions in {kb_dir}: {exc}")
         return []
-    return sorted(
-        (child for child in kb_dir.iterdir() if child.is_dir() and _VERSION_RE.match(child.name)),
-        key=_flat_version_number,
-    )
+    version_dirs: list[Path] = []
+    for child in children:
+        try:
+            if child.is_dir() and _VERSION_RE.match(child.name):
+                version_dirs.append(child)
+        except OSError:
+            continue
+    return sorted(version_dirs, key=_flat_version_number)
 
 
 def _next_flat_version_dir(kb_dir: Path) -> Path:
@@ -153,6 +171,8 @@ def _entry_from_flat_version(version_dir: Path) -> dict[str, Any]:
         or (version_dir / "deeptutor_ingress").exists()
     )
     ready = has_provider_output and not is_unpublished_lightrag_candidate
+    if (version_dir / ".building.json").exists():
+        ready = ready and bool(stored_meta and stored_meta.get("state") == "published")
     if stored_meta is not None and stored_meta.get("provider") == "lightrag":
         adapter_schema = stored_meta.get("lightrag_adapter_schema")
         if adapter_schema is not None:
@@ -215,20 +235,43 @@ def list_kb_versions(kb_dir: Path) -> list[dict[str, Any]]:
     New flat ``version-N`` directories are returned alongside legacy nested and
     root stores so older KBs stay queryable while new re-indexes use the simpler
     flat layout.
+
+    A version this process cannot read (wrong ownership, a stale NFS handle) is
+    skipped with a warning. One inaccessible store must not remove the whole KB
+    — or every KB sharing the parent directory — from the catalogue.
     """
     versions: list[dict[str, Any]] = []
 
     for version_dir in _flat_version_dirs(kb_dir):
-        versions.append(_entry_from_flat_version(version_dir))
+        try:
+            versions.append(_entry_from_flat_version(version_dir))
+        except OSError as exc:
+            logger.warning(f"Skipping unreadable index version {version_dir}: {exc}")
 
     legacy_versions_root = kb_versions_dir(kb_dir)
-    if legacy_versions_root.is_dir():
-        for child in sorted(legacy_versions_root.iterdir(), key=lambda path: path.name):
+    try:
+        legacy_children = (
+            sorted(legacy_versions_root.iterdir(), key=lambda path: path.name)
+            if legacy_versions_root.is_dir()
+            else []
+        )
+    except OSError as exc:
+        logger.warning(f"Failed to list legacy index versions in {legacy_versions_root}: {exc}")
+        legacy_children = []
+    for child in legacy_children:
+        try:
             if child.is_dir():
                 versions.append(_entry_from_legacy_nested(kb_dir, child))
+        except OSError as exc:
+            logger.warning(f"Skipping unreadable legacy index version {child}: {exc}")
 
     root_legacy = legacy_storage_dir(kb_dir)
-    if root_legacy.is_dir() and any(root_legacy.iterdir()):
+    try:
+        has_root_legacy = root_legacy.is_dir() and any(root_legacy.iterdir())
+    except OSError as exc:
+        logger.warning(f"Failed to inspect legacy index store {root_legacy}: {exc}")
+        has_root_legacy = False
+    if has_root_legacy:
         versions.append(_entry_from_root_legacy(kb_dir))
 
     return _sort_versions(versions)
@@ -317,8 +360,11 @@ def write_version_meta(
         "layout": "flat" if target.parent == kb_dir else "nested_legacy",
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
-    with open(target / META_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
+    from deeptutor.services.file_io import atomic_write_json
+
+    if (target / ".building.json").exists():
+        payload.update(provider="llamaindex", state="published", readiness_verified=True)
+    atomic_write_json(target / META_FILENAME, payload)
 
 
 def resolve_storage_dir_for_read(
@@ -356,7 +402,9 @@ def resolve_storage_dir_for_write(kb_dir: Path, signature: Optional[EmbeddingSig
     return target
 
 
-def resolve_storage_dir_for_rebuild(kb_dir: Path, signature: Optional[EmbeddingSignature]) -> Path:
+def resolve_storage_dir_for_rebuild(
+    kb_dir: Path, signature: Optional[EmbeddingSignature], *, publication_guard: bool = False
+) -> Path:
     """Return a fresh flat storage dir for a full index rebuild.
 
     Incremental writes reuse a matching flat version, but a full rebuild should
@@ -365,6 +413,16 @@ def resolve_storage_dir_for_rebuild(kb_dir: Path, signature: Optional[EmbeddingS
     rebuild remain diagnosable and avoids stale vector-store files.
     """
     _ = signature
-    target = _next_flat_version_dir(kb_dir)
-    target.mkdir(parents=True, exist_ok=True)
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    while True:
+        target = _next_flat_version_dir(kb_dir)
+        try:
+            target.mkdir()
+            break
+        except FileExistsError:
+            continue
+    from deeptutor.services.file_io import atomic_write_json
+
+    if publication_guard:
+        atomic_write_json(target / ".building.json", {"state": "building"})
     return target

@@ -24,6 +24,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useCapabilityLabel } from "@/features/ui-layout/tokens";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
@@ -45,8 +46,10 @@ import {
 import {
   fileToPendingAttachment,
   selectAttachmentFiles,
+  toOutgoingAttachment,
   type PendingAttachment,
 } from "@/features/chat/controllers/pending-attachments";
+import { isQuoteAttachment } from "@/lib/quote-attachments";
 import {
   listKnowledgeBases,
   type KnowledgeBaseSummary,
@@ -207,12 +210,24 @@ interface StandaloneComposerProps {
   agentsAvailable?: boolean;
   /** Receives a function that drops text into the textarea (ask_user chips). */
   prefillInputRef?: React.MutableRefObject<((text: string) => void) | null>;
+  /** Attachments handed in from outside (a quoted selection), added once per
+   *  ``id`` — the composer then owns them like any it picked itself. */
+  seedAttachments?: { id: number; attachments: PendingAttachment[] } | null;
   /**
    * How full the model's context window was at the end of the last measured
    * turn. Omitted, the chip does not render — which is also what happens on a
    * transcript no backend has measured.
    */
   contextBudget?: ContextBudget | null;
+  /** At the foot of a narrow pane — see ``ChatComposer``'s ``docked``. */
+  docked?: boolean;
+  /** A surface's own control at the far end of the tray (who answers). */
+  trayEnd?: React.ReactNode;
+  /**
+   * Offer the partner controls (ask a partner, convene a group, consult an
+   * agent). Off where who answers is already the surface's own choice.
+   */
+  partnerControls?: boolean;
 }
 
 function StandaloneComposerImpl({
@@ -239,7 +254,11 @@ function StandaloneComposerImpl({
   onResourceSelectionChange,
   agentsAvailable = false,
   prefillInputRef,
+  seedAttachments = null,
   contextBudget = null,
+  docked = false,
+  trayEnd,
+  partnerControls = true,
 }: StandaloneComposerProps) {
   const { t } = useTranslation();
 
@@ -253,6 +272,15 @@ function StandaloneComposerImpl({
 
   // ── Composer local state ──────────────────────────────────────
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const focusInputRef = useRef<(() => void) | null>(null);
+  const [seededId, setSeededId] = useState<number | null>(null);
+  if (seedAttachments && seedAttachments.id !== seededId) {
+    setSeededId(seedAttachments.id);
+    setAttachments((prev) => [...prev, ...seedAttachments.attachments]);
+  }
+  useEffect(() => {
+    if (seededId !== null) focusInputRef.current?.();
+  }, [seededId]);
   const attachmentLimits = useAttachmentLimits();
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const attachmentErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(
@@ -672,14 +700,15 @@ function StandaloneComposerImpl({
     [notebookReferencesPayload, selectedNotebookRecords],
   );
 
+  const capabilityLabel = useCapabilityLabel();
   const resolvedCapabilities = useMemo(() => {
     const list = capabilities?.length ? capabilities : [CHAT_ONLY_CAPABILITY];
     return list.map((capability) => ({
       ...capability,
-      label: t(capability.label),
+      label: capabilityLabel(capability),
       description: t(capability.description),
     }));
-  }, [capabilities, t]);
+  }, [capabilities, capabilityLabel, t]);
   const activeCap =
     resolvedCapabilities.find(
       (capability) => capability.value === activeCapValue,
@@ -722,12 +751,7 @@ function StandaloneComposerImpl({
       if (!content.trim() && !hasReferences) return;
 
       let config: Record<string, unknown> | undefined;
-      let outgoingAttachments = attachments.map((attachment) => ({
-        type: attachment.type,
-        filename: attachment.filename,
-        base64: attachment.base64,
-        mime_type: attachment.mimeType,
-      }));
+      let outgoingAttachments = attachments.map(toOutgoingAttachment);
       if (isQuizMode) {
         config = buildQuizWSConfig(quizConfig);
         if (quizConfig.mode === "mimic" && quizPdf) {
@@ -772,7 +796,10 @@ function StandaloneComposerImpl({
       // scope is sticky and deliberately survives it.
       if (!resourceReuse.policy.partner) setSelectedPartner(null);
       if (!resourceReuse.policy.partner_group) setSelectedPartnerGroup(null);
-      if (!resourceReuse.policy.attachments) setAttachments([]);
+      // A quote belongs to the message it was sent with, whatever the policy.
+      setAttachments((prev) =>
+        resourceReuse.policy.attachments ? prev.filter((a) => !isQuoteAttachment(a)) : [],
+      );
       if (!resourceReuse.policy.books) setSelectedBookReferences([]);
       if (!resourceReuse.policy.notebooks) setSelectedNotebookRecords([]);
       if (!resourceReuse.policy.chat_history) setSelectedHistorySessions([]);
@@ -898,11 +925,11 @@ function StandaloneComposerImpl({
         knowledgeBases={kbOptions}
         connectedAgents={agentOptions}
         selectedAgent={selectedPartnerGroup || selectedPartner ? null : selectedAgent}
-        onSelectAgent={(name) => { if (name) { setSelectedPartnerGroup(null); setSelectedPartner(null); } handleSelectAgent(name); }}
+        onSelectAgent={partnerControls ? (name) => { if (name) { setSelectedPartnerGroup(null); setSelectedPartner(null); } handleSelectAgent(name); } : undefined}
         selectedPartnerGroup={selectedPartnerGroup}
-        onSelectPartnerGroup={handleSelectPartnerGroup}
+        onSelectPartnerGroup={partnerControls ? handleSelectPartnerGroup : undefined}
         selectedPartner={selectedPartner}
-        onSelectPartner={handleSelectPartner}
+        onSelectPartner={partnerControls ? handleSelectPartner : undefined}
         subagentBudget={subagentBudget}
         onSubagentBudgetChange={setSubagentBudget}
         personaSelection={personaSelection}
@@ -962,8 +989,11 @@ function StandaloneComposerImpl({
         onAddFiles={handleAddFiles}
         onSelectCapability={selectCapability}
         showCapabilityChip={showCapabilityChip}
+        docked={docked}
+        trayEnd={trayEnd}
         onCancelStreaming={onCancelStreaming}
         prefillInputRef={prefillInputRef}
+        focusInputRef={focusInputRef}
         inputPlaceholder={inputPlaceholder}
         inputPlaceholderCompletion={inputPlaceholderCompletion}
         inputHeader={inputHeader}

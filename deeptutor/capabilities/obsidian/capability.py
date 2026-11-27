@@ -27,6 +27,7 @@ class ObsidianCapability(KnowledgeCapability):
 
     name = "obsidian"
     owned_tools = OBSIDIAN_TOOL_NAMES
+    coexisting_tools = ("web_search", "web_fetch")
 
     def is_active(self, context: UnifiedContext) -> bool:
         return vault_for_turn(context) is not None

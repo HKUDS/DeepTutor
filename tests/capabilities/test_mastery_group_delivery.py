@@ -1,0 +1,563 @@
+"""Numbered assessments use durable cards, including resuming partial groups."""
+
+from concurrent.futures import ThreadPoolExecutor
+import json
+from threading import Barrier
+
+import pytest
+
+from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+from deeptutor.core.context import UnifiedContext
+from deeptutor.learning.models import (
+    KnowledgePoint,
+    KnowledgeType,
+    LearningModule,
+    LearningProgress,
+    PendingQuestion,
+)
+from deeptutor.learning.service import LearningService, MasteryInteractionError
+from deeptutor.learning.storage import LearningStore
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "### 1. Topic\nWhat is alpha?\n\n### 2. Other topic\nWhat is beta?\nAnswer these numbered questions.",
+        "**1. First**\nWhat is alpha?\n\n**2. Second**\nWhat is beta?\nVálaszolj számozva.",
+        "1. What is alpha?\n2. What is beta?\nAnswer these.",
+    ],
+)
+def test_numbered_prose_is_not_a_reason_to_redirect(text):
+    assert (
+        MasteryLoopCapability().finish_instruction(
+            UnifiedContext(metadata={"mastery_mode": True}), text
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "### 1. Why alpha?\nExplanation.\n### 2. Why beta?\nMore explanation.",
+        "> ### 1. Topic\n> What is alpha?\n> ### 2. Topic\n> What is beta?\n> Answer these.",
+        "```\n### 1. Topic\nWhat is alpha?\n### 2. Topic\nWhat is beta?\nAnswer these.\n```",
+        "1. Alpha is useful.\n2. Beta is useful.\nAnswer these later if you want.",
+        "### 1. What is alpha?\nVálaszolj számozva.",
+    ],
+)
+def test_teaching_and_quoted_examples_are_not_assessments(text):
+    assert (
+        MasteryLoopCapability().finish_instruction(
+            UnifiedContext(metadata={"mastery_mode": True}), text
+        )
+        is None
+    )
+
+
+@pytest.fixture
+def service(tmp_path):
+    svc = LearningService(LearningStore(tmp_path))
+    svc.save(
+        LearningProgress(
+            book_id="path",
+            modules=[
+                LearningModule(
+                    id="m",
+                    name="Synthetic module",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(id=key, name=key, module_id="m", type=KnowledgeType.MEMORY)
+                        for key in ["one", "two"]
+                    ],
+                )
+            ],
+        )
+    )
+    parent = PendingQuestion(
+        question_id="parent",
+        knowledge_point_id="one",
+        question_type="group",
+        questions=[
+            PendingQuestion(
+                question_id=key,
+                knowledge_point_id=key,
+                module_id="m",
+                prompt=f"Question {key}?",
+                expected_answer="answer",
+            )
+            for key in ["one", "two"]
+        ],
+    )
+    svc.register_question("path", parent)
+    svc.mark_question_awaiting("path", interaction_id="parent")
+    return svc
+
+
+def test_resume_preserves_partial_answers_results_and_credit(service):
+    service.grade_interaction("path", answer="", question_id="parent", answers={"one": "answer"})
+    before = service.store.load("path").model_dump()
+    saved = service.store.get_active_interaction("path").model_dump()
+    progress, interaction, created = service.register_question(
+        "path",
+        None,
+        pending_action="resume",
+        resume_question_id="parent",
+    )
+    assert not created
+    assert interaction.model_dump() == saved
+    assert progress.model_dump() == before
+
+
+@pytest.mark.parametrize("question_id", ["", "unknown", "one"])
+def test_resume_rejects_noncurrent_parent_without_mutation(service, question_id):
+    before = service.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError):
+        service.register_question(
+            "path", None, pending_action="resume", resume_question_id=question_id
+        )
+    assert service.store.load("path").model_dump() == before
+
+
+def test_resume_rejects_answered_group_until_grade_finishes(service):
+    service.record_question_answer(
+        "path", "", interaction_id="parent", answers={"one": "answer", "two": "answer"}
+    )
+    before = service.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError):
+        service.register_question(
+            "path", None, pending_action="resume", resume_question_id="parent"
+        )
+    assert service.store.load("path").model_dump() == before
+
+
+def test_resume_rejects_committed_partial_answer_until_grade_finishes(service):
+    service.record_question_answer("path", "", interaction_id="parent", answers={"one": "answer"})
+    before = service.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError, match="Grade the committed"):
+        service.register_question(
+            "path", None, pending_action="resume", resume_question_id="parent"
+        )
+    assert service.store.load("path").model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_tool_resumes_without_constructing_throwaway_question(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+
+    async def forbidden(*args):
+        raise AssertionError("Resume must not build a question or regenerate a key")
+
+    monkeypatch.setattr(tools.MasteryQuizTool, "_build_question", forbidden)
+    service.grade_interaction("path", answer="", question_id="parent", answers={"one": "answer"})
+    ended = []
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        pending_action="resume",
+        resume_question_id="parent",
+        _end_turn_on_card=lambda: ended.append(True),
+    )
+    assert result.success
+    card = result.metadata["mastery_question"]
+    assert card["question_id"] == "parent"
+    receipt = result.metadata["mastery_grade"]
+    assert receipt["replayed"] and not receipt["complete"]
+    assert receipt["remaining_question_ids"] == ["two"]
+    assert receipt["result"]["results"][0]["learner_answer"] == "answer"
+    assert ended == [True]
+    assert "expected_answer" not in json.dumps(result.metadata)
+    assert len(service.store.load("path").quiz_attempts) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"question": "Throwaway?"},
+        {"questions": []},
+        {"expected_answer": "secret"},
+        {"replace_question_id": "parent"},
+        {"pending_action": "retain"},
+    ],
+)
+async def test_tool_resume_rejects_conflicting_payloads(service, monkeypatch, extra):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = service.store.load("path").model_dump()
+    result = await tools.MasteryQuizTool().execute(
+        **{
+            "_mastery_path_id": "path",
+            "pending_action": "resume",
+            "resume_question_id": "parent",
+            **extra,
+        }
+    )
+    assert not result.success
+    assert service.store.load("path").model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_markdown_discussion_preserves_existing_card(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    context = UnifiedContext(
+        user_message="Practice both", metadata={"mastery_mode": True, "mastery_path_id": "path"}
+    )
+    capability = MasteryLoopCapability()
+    draft = "### 1. First\nWhat is alpha?\n### 2. Second\nWhat is beta?\nAnswer these."
+    instruction = capability.finish_instruction(context, draft)
+    assert instruction is None
+    kwargs = capability.augment_kwargs(
+        "mastery_quiz",
+        {
+            "pending_action": "resume",
+            "resume_question_id": "parent",
+        },
+        context,
+    )
+    result = await tools.MasteryQuizTool().execute(**kwargs)
+    assert result.success
+    assert result.metadata["mastery_question"]["question_id"] == "parent"
+    assert capability.finish_instruction(context, "The questions are on your card.") is None
+    assert service.store.load("path").quiz_attempts == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resume_id", [None, "", " \t"])
+@pytest.mark.parametrize("questions", [None, []])
+async def test_blank_optional_arguments_allow_single_question(
+    service, monkeypatch, resume_id, questions
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    progress = service.store.load("path").model_copy(deep=True)
+    progress.book_id = "new-path"
+    progress.version = 0
+    progress.pending_question = None
+    service.save(progress)
+    ended = []
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="open",
+        options=[],
+        questions=questions,
+        pending_action="retain",
+        resume_question_id=resume_id,
+        replace_question_id="",
+        replacement_request="",
+        _end_turn_on_card=lambda: ended.append(True),
+    )
+    assert result.success, result.content
+    question_id = result.metadata["mastery_question"]["question_id"]
+    assert service.store.get_active_interaction("new-path").interaction_id == question_id
+    assert service.store.load("new-path").quiz_attempts == []
+    assert ended == [True]
+    assert "expected_answer" not in json.dumps(result.metadata)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resume_id", ["parent", False, 0, [], {}])
+async def test_nonblank_or_malformed_resume_id_still_requires_resume(
+    service, monkeypatch, resume_id
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = service.store.load("path").model_dump()
+    interaction = service.store.get_active_interaction("path").model_dump()
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path", pending_action="retain", resume_question_id=resume_id
+    )
+    assert not result.success
+    assert "requires pending_action='resume'" in result.content
+    assert service.store.load("path").model_dump() == before
+    assert service.store.get_active_interaction("path").model_dump() == interaction
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("questions", [[{}], [{}, {}, {}, {}, {}], {}])
+async def test_nonempty_malformed_groups_are_not_treated_as_single_questions(
+    service, monkeypatch, questions
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = service.store.load("path").model_dump()
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        questions=questions,
+    )
+    assert not result.success
+    assert "two to four" in result.content
+    assert service.store.load("path").model_dump() == before
+
+
+def _placeholder_visual(hints_used=0):
+    """What a strict-normalizing endpoint makes the model send for a card with no figure."""
+    return {
+        "task": "identification",
+        "sources": [
+            {
+                "kb_name": "",
+                "asset_id": "",
+                "source_path": "",
+                "page": 1,
+                "source_hash": "",
+                "figure": "",
+                "region": [0, 0, 1, 1],
+            }
+        ],
+        "reference_quote": "",
+        "accepted_answers": [],
+        "key_status": "unverified",
+        "answer_cues": "none",
+        "hints_used": hints_used,
+    }
+
+
+def _no_source_lookup(*args, **kwargs):
+    pytest.fail("a placeholder visual must not reach source lookup")
+
+
+def _fresh_path(service):
+    progress = service.store.load("path").model_copy(deep=True)
+    progress.book_id = "new-path"
+    progress.version = 0
+    progress.pending_question = None
+    service.save(progress)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "visual",
+    [
+        _placeholder_visual(0),
+        _placeholder_visual([]),
+        _placeholder_visual(None),
+        {},
+        {"sources": []},
+    ],
+)
+async def test_placeholder_visual_allows_text_only_question(service, monkeypatch, visual):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr("deeptutor.learning.visual_practice.prepare_visual", _no_source_lookup)
+    _fresh_path(service)
+    ended = []
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="short",
+        options=[],
+        explanation="",
+        difficulty="easy",
+        visual=visual,
+        questions=[],
+        pending_action="retain",
+        resume_question_id="",
+        replace_question_id="",
+        replacement_request="",
+        _end_turn_on_card=lambda: ended.append(True),
+    )
+    assert result.success, result.content
+    assert service.store.get_active_interaction("new-path").question.visual_context == {}
+    assert service.store.load("new-path").quiz_attempts == []
+    assert ended == [True]
+
+
+@pytest.mark.asyncio
+async def test_group_leaves_with_placeholder_visual_register(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr("deeptutor.learning.visual_practice.prepare_visual", _no_source_lookup)
+    _fresh_path(service)
+    leaf = {
+        "question_type": "short",
+        "options": [],
+        "explanation": "",
+        "difficulty": "easy",
+        "visual": _placeholder_visual([]),
+    }
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="",
+        question="",
+        expected_answer="",
+        visual=_placeholder_visual(),
+        questions=[
+            {**leaf, "knowledge_point_id": "one", "question": "1 + 1?", "expected_answer": "2"},
+            {**leaf, "knowledge_point_id": "two", "question": "2 + 2?", "expected_answer": "4"},
+        ],
+        pending_action="retain",
+        resume_question_id="",
+        replace_question_id="",
+        replacement_request="",
+    )
+    assert result.success, result.content
+    group = service.store.get_active_interaction("new-path").question
+    assert [leaf.visual_context for leaf in group.questions] == [{}, {}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", [{"kb_name": "other-kb"}, {"asset_id": "figure-1"}])
+async def test_visual_naming_a_source_still_fails(service, monkeypatch, reference):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    _fresh_path(service)
+    before = service.store.load("new-path").model_dump()
+    visual = _placeholder_visual()
+    visual["sources"][0].update(reference)
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        visual=visual,
+    )
+    assert not result.success
+    assert "Visual practice is unavailable" in result.content
+    assert service.store.load("new-path").model_dump() == before
+    assert service.store.get_active_interaction("new-path") is None
+
+
+def _assign_pending_session(service, session_id):
+    def update(tx):
+        interaction = tx.get_interaction("parent")
+        interaction.session_id = session_id
+        tx.put_interaction(interaction)
+
+    service.store.mutate("path", update)
+
+
+@pytest.mark.parametrize("session_id,created", [("old", False), ("new", True), ("", False)])
+def test_question_registration_respects_session_boundary(service, session_id, created):
+    _assign_pending_session(service, "old")
+    previous = service.store.get_active_interaction("path")
+    replacement = previous.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    _, interaction, actual_created = service.register_question(
+        "path", replacement, session_id=session_id
+    )
+    assert actual_created is created
+    assert interaction.interaction_id == ("fresh" if created else "parent")
+    old = service.store.get_interaction("path", "parent")
+    assert old.status.value == ("abandoned" if created else "awaiting_input")
+    assert old.question == previous.question
+    assert service.store.load("path").quiz_attempts == []
+
+
+def test_new_session_preserves_committed_ungraded_answers(service):
+    _assign_pending_session(service, "old")
+    service.record_question_answer("path", "", interaction_id="parent", answers={"one": "answer"})
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    with pytest.raises(MasteryInteractionError, match="committed answers"):
+        service.register_question("path", replacement, session_id="new")
+    assert service.store.get_active_interaction("path").model_dump() == before.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_new_session_quiz_does_not_silently_replay_the_old_card(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _assign_pending_session(service, "old")
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        _session_id="new",
+        _learner_message="Start practice",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="open",
+        pending_action="replace",
+        replace_question_id="parent",
+        replacement_request="not a learner request",
+    )
+    assert result.success, result.content
+    new_id = result.metadata["mastery_question"]["question_id"]
+    assert new_id != "parent"
+    assert service.store.get_active_interaction("path").session_id == "new"
+    assert service.store.get_interaction("path", "parent").status.value == "abandoned"
+
+
+@pytest.mark.asyncio
+async def test_status_explains_cross_session_pending_card(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _assign_pending_session(service, "old")
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    result = await tools.MasteryStatusTool().execute(_mastery_path_id="path", _session_id="new")
+    payload = json.loads(result.content)
+    assert payload["pending_interaction"]["session_id"] == "old"
+    assert "earlier conversation" in payload["pending_interaction"]["instruction"]
+
+
+def test_invalid_new_session_question_leaves_old_card_untouched(service):
+    _assign_pending_session(service, "old")
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    replacement.questions[0].knowledge_point_id = "missing-objective"
+    with pytest.raises(MasteryInteractionError, match="Unknown objective"):
+        service.register_question("path", replacement, session_id="new")
+    assert service.store.get_active_interaction("path").model_dump() == before.model_dump()
+
+
+def test_new_session_keeps_partial_group_grades_in_history(service):
+    _assign_pending_session(service, "old")
+    service.grade_interaction("path", answer="", question_id="parent", answers={"one": "answer"})
+    attempts = service.store.load("path").quiz_attempts
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    service.register_question("path", replacement, session_id="new")
+    old = service.store.get_interaction("path", "parent")
+    assert old.result == before.result
+    assert old.answers == before.answers
+    assert service.store.load("path").quiz_attempts == attempts
+
+
+def test_concurrent_fresh_session_retries_create_one_card(service):
+    _assign_pending_session(service, "old")
+    previous = service.store.get_active_interaction("path")
+    barrier = Barrier(2)
+
+    def register(index):
+        question = previous.question.model_copy(deep=True)
+        question.question_id = f"fresh-{index}"
+        barrier.wait(timeout=5)
+        return service.register_question("path", question, session_id="new")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(register, [1, 2]))
+    assert sum(created for _, _, created in results) == 1
+    ids = {interaction.interaction_id for _, interaction, _ in results}
+    assert len(ids) == 1
+    assert service.store.get_active_interaction("path").interaction_id in ids
+    old = service.store.get_interaction("path", "parent")
+    assert old.status.value == "abandoned"
+    assert old.question == previous.question
+    assert service.store.load("path").quiz_attempts == []

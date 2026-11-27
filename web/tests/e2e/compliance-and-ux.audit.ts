@@ -1,4 +1,9 @@
+import { sourceModuleInventory } from "./fixtures/modules";
 import { test, expect } from "@playwright/test";
+
+test.beforeEach(async ({ page }) => {
+  await page.route(url => url.pathname === "/api/modules", route => route.fulfill({ json: sourceModuleInventory }));
+});
 
 // Minimal compliance and UX checks without external deps (axe-core)
 // Focus on semantic landmarks, headings, alt text, link names, and basic error messaging.

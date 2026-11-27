@@ -76,7 +76,7 @@ async def test_ui_languages_are_persisted_independently(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("language", ["fr", "uk", "pl"])
+@pytest.mark.parametrize("language", ["fr", "uk", "pl", "pt", "vi", "ja", "tr"])
 async def test_ui_settings_persist_supported_languages_independently(
     monkeypatch: pytest.MonkeyPatch, tmp_path, language: str
 ) -> None:
@@ -127,6 +127,48 @@ async def test_ui_accepts_extended_response_languages(
     )
     assert response["response_language"] == "ms"
     assert settings_router.load_ui_settings()["response_language"] == "ms"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="vi")
+    )
+    assert response["response_language"] == "vi"
+    assert settings_router.load_ui_settings()["response_language"] == "vi"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="hi")
+    )
+    assert response["response_language"] == "hi"
+    assert settings_router.load_ui_settings()["response_language"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_changing_ui_language_to_vietnamese_keeps_an_existing_response_preference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="en", response_language="ja")
+    )
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="vi")
+    )
+
+    assert response["language"] == "vi"
+    assert response["response_language"] == "ja"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="vi")
+    )
+    assert response["language"] == "vi"
+    assert response["response_language"] == "vi"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="en")
+    )
+    assert response["language"] == "en"
+    assert response["response_language"] == "vi"
 
 
 class _FakeEmbeddingAdapter:
@@ -381,6 +423,42 @@ async def test_network_settings_roundtrip_normalizes_cors_origins(
 
 
 @pytest.mark.asyncio
+async def test_web_fetch_settings_roundtrip_and_validation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from fastapi import HTTPException
+
+    from deeptutor.services.config.provider_runtime import FETCH_PROVIDERS
+
+    service = RuntimeSettingsService(
+        tmp_path / "settings", process_env={"DEEPTUTOR_FETCH_BACKEND": "deepseek"}
+    )
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    initial = await settings_router.get_web_fetch_settings()
+    # The dropdown mirrors the backend FETCH_PROVIDERS table, and the env
+    # override shows up as effective without being the stored choice.
+    assert [choice["value"] for choice in initial["choices"]] == list(FETCH_PROVIDERS)
+    assert initial["settings"]["backend"] == "local"
+    assert initial["effective"]["backend"] == "deepseek"
+
+    response = await settings_router.update_web_fetch_settings(
+        settings_router.WebFetchSettingsUpdate(backend="DeepSeek")
+    )
+    assert response["settings"]["backend"] == "deepseek"
+    assert response["effective"]["backend"] == "deepseek"
+    # The write loads without process overrides, so the deployment env value
+    # is never baked into system.json as if the operator had chosen it.
+    assert service.load_system(include_process_overrides=False)["web_fetch_backend"] == ("deepseek")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await settings_router.update_web_fetch_settings(
+            settings_router.WebFetchSettingsUpdate(backend="tarball")
+        )
+    assert excinfo.value.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_chat_attachment_settings_roundtrip(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -409,6 +487,33 @@ async def test_chat_attachment_settings_roundtrip(
     stored = service.load_system(include_process_overrides=False)
     assert stored["backend_port"] == 8001
     assert stored["chat_attachment_max_chars_per_doc"] == 400_000
+
+
+@pytest.mark.asyncio
+async def test_chat_starter_settings_keep_ask_hint_when_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from deeptutor.services.settings import starter_settings
+
+    monkeypatch.setattr(
+        starter_settings,
+        "get_path_service",
+        lambda: SimpleNamespace(get_settings_file=lambda name: tmp_path / f"{name}.json"),
+    )
+
+    initial = await settings_router.get_chat_starter_settings()
+    assert initial["settings"]["ask_hint_enabled"] is True
+
+    turned_off = await settings_router.update_chat_starter_settings(
+        settings_router.ChatStarterSettingsUpdate(trace_count=20, ask_hint_enabled=False)
+    )
+    assert turned_off["settings"]["ask_hint_enabled"] is False
+
+    # A client that predates the switch only sends trace_count.
+    legacy = await settings_router.update_chat_starter_settings(
+        settings_router.ChatStarterSettingsUpdate(trace_count=30)
+    )
+    assert legacy["settings"] == {"version": 1, "trace_count": 30, "ask_hint_enabled": False}
 
 
 @pytest.mark.asyncio
@@ -656,7 +761,8 @@ def test_media_and_voice_provider_choices_include_dashscope() -> None:
         item["base_url"] == "https://dashscope.aliyuncs.com/api/v1" for item in dashscope.values()
     )
     assert dashscope["tts"]["default_model"] == "qwen3-tts-flash"
-    assert dashscope["tts"]["default_voice"] == "Cherry"
+    # Voice IDs are selected explicitly from provider discovery or entered by the user.
+    assert dashscope["tts"]["default_voice"] == ""
     assert dashscope["stt"]["default_model"] == "paraformer-realtime-v2"
     assert dashscope["imagegen"]["default_model"] == "wanx2.1-t2i-turbo"
     assert dashscope["videogen"]["default_model"] == "wanx2.1-t2v-turbo"
@@ -704,6 +810,34 @@ def test_llm_provider_choices_include_futureinfra() -> None:
     assert llm["futureinfra"]["base_url"] == "https://futureinfra.ai/v1/ai"
 
 
+def test_llm_provider_choices_include_y_api() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["y_api"]["label"] == "Y-API"
+    assert llm["y_api"]["base_url"] == "https://api.y-api.bestvirtualgoods.com/v1"
+
+
+def test_llm_provider_choices_include_onomeo() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["onomeo"]["label"] == "onomeo"
+    assert llm["onomeo"]["base_url"] == "https://onomeo.com/v1"
+
+
+def test_llm_provider_choices_include_runcrate() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["runcrate"]["label"] == "Runcrate"
+    assert llm["runcrate"]["base_url"] == "https://api.runcrate.ai/v1"
+
+
+def test_llm_provider_choices_include_llmtr() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["llmtr"]["label"] == "LLMTR"
+    assert llm["llmtr"]["base_url"] == "https://llmtr.com/v1"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
@@ -728,6 +862,9 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
         embedding_base_url="https://emb.example/v1/embeddings",
         embedding_api_key="emb-key",
     )
+    # A catalog declaration must win over the provider table: gpt-4o-mini is
+    # vision-capable by default, so only a declared False can reach the API.
+    catalog["services"]["llm"]["profiles"][0]["models"][0]["capabilities"] = {"vision": False}
     service = _FakeCatalogService(catalog)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
 
@@ -738,6 +875,8 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
         "model_id": "llm-model-default",
     }
     assert response["options"][0]["model"] == "gpt-4o-mini"
+    # The Document Parsing model dropdown filters on this field (#2037).
+    assert response["options"][0]["supports_vision"] is False
     assert "api_key" not in response["options"][0]
     assert "base_url" not in response["options"][0]
 
@@ -865,6 +1004,75 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
     assert new_llm_client.config.base_url == "https://after-apply-llm.example/v1"
     assert new_embedding_client is not old_embedding_client
     assert new_embedding_client.config.model == "text-embedding-after-apply"
+
+
+@pytest.mark.parametrize("endpoint", ["apply", "catalog"])
+def test_denied_catalog_replace_retains_settings_draft_and_runtime(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    """#1984: a denied atomic save returns useful HTTP feedback without losing edits."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from deeptutor.services.config import model_catalog
+    from deeptutor.services.config.settings_draft import SettingsDraftService
+
+    service = model_catalog.ModelCatalogService(tmp_path / "model_catalog.json")
+    current = service.save(
+        _build_catalog(
+            llm_model="gpt-test",
+            llm_base_url="https://llm.example/v1",
+            llm_api_key="test-key",
+            embedding_model="embedding-test",
+            embedding_base_url="https://embedding.example/v1",
+            embedding_api_key="test-key",
+        )
+    )
+    proposed = deepcopy(current)
+    proposed["services"]["llm"]["profiles"][0]["name"] = "Unapplied change"
+    draft = SettingsDraftService(tmp_path / "settings_draft.json")
+    draft.save({"catalog": proposed})
+    saved_bytes = service.path.read_bytes()
+    saved_draft = draft.load()
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    monkeypatch.setattr(settings_router, "get_settings_draft_service", lambda: draft)
+    monkeypatch.setattr(settings_router, "_require_settings_admin", lambda: None)
+    resets = []
+    monkeypatch.setattr(llm_client_module, "reset_llm_client", lambda: resets.append("llm"))
+    monkeypatch.setattr(
+        embedding_client_module, "reset_embedding_client", lambda: resets.append("embedding")
+    )
+    original_replace = model_catalog.os.replace
+
+    def denied_replace(source, target):
+        if target == service.path:
+            raise PermissionError(13, "Access denied: private diagnostic", str(target))
+        return original_replace(source, target)
+
+    monkeypatch.setattr(model_catalog.os, "replace", denied_replace)
+    app = FastAPI()
+    app.include_router(settings_router.router, prefix="/api/settings")
+    client = TestClient(app, raise_server_exceptions=False)
+    response = (
+        client.post("/api/settings/apply")
+        if endpoint == "apply"
+        else client.put("/api/settings/catalog", json={"catalog": proposed})
+    )
+
+    assert response.status_code == 503
+    assert "service account" in response.json()["detail"]
+    assert "private diagnostic" not in response.text
+    assert str(tmp_path) not in response.text
+    assert service.path.read_bytes() == saved_bytes
+    assert draft.load() == saved_draft
+    assert resets == []
+    assert not list(tmp_path.glob(".model_catalog.json.*.tmp"))
+
+    # The retained draft remains applicable after the external denial is removed.
+    monkeypatch.setattr(model_catalog.os, "replace", original_replace)
+    assert client.post("/api/settings/apply").status_code == 200
+    assert service.load()["services"]["llm"]["profiles"][0]["name"] == "Unapplied change"
+    assert resets == ["llm", "embedding"]
 
 
 @pytest.mark.asyncio
@@ -1686,7 +1894,7 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
         }
     )
 
-    # When: the frontend explicitly provides the full-model default values.
+    # When: the frontend explicitly provides a palette and language.
     await settings_router.update_ui_settings(
         settings_router.UISettingsUpdate(theme="snow", language="en")
     )
@@ -1695,6 +1903,25 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
     persisted = settings_router.load_ui_settings()
     assert persisted["theme"] == "snow"
     assert persisted["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_ui_updates_accept_system_theme(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """System is a stored preference, not only a client-side fallback."""
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings({**settings_router.DEFAULT_UI_SETTINGS, "theme": "dark"})
+
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(theme="system", language="en")
+    )
+    assert settings_router.load_ui_settings()["theme"] == "system"
+
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="glass"))
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="system"))
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored["theme"] == "system"
 
 
 def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -1898,3 +2125,135 @@ async def test_voice_math_speak_persists_without_freezing_defaults(
     loaded = settings_router.load_ui_settings()
     assert loaded["voice_math_speak"] is False
     assert loaded["voice_autoplay"] is False
+
+
+def test_llm_provider_choices_include_opper() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["opper"]["label"] == "Opper"
+    assert llm["opper"]["base_url"] == "https://api.opper.ai/v3/compat"
+
+
+@pytest.mark.parametrize("value", [None, True, 100.0, "150", 80, 200, {}, []])
+def test_learning_font_scale_rejects_invalid_values(value):
+    """Only integer percentages from the supported set may be written."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(content_font_scale=value)
+
+
+@pytest.mark.parametrize("value", [None, 1.5, "wide", True, {}])
+def test_learning_line_spacing_rejects_invalid_values(value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(content_line_spacing=value)
+
+
+@pytest.mark.asyncio
+async def test_learning_display_partial_updates_preserve_legacy_and_unrelated_fields(
+    monkeypatch, tmp_path
+):
+    """Old clients and parked drafts must not reset newer display preferences."""
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+    settings_file.write_text(json.dumps({"language": "zh", "unrelated": {"keep": True}}))
+    assert (await settings_router.get_display_settings()).model_dump() == {
+        "content_font_scale": 100,
+        "content_line_spacing": "normal",
+    }
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(
+            content_font_scale=150,
+            content_line_spacing="relaxed",
+        )
+    )
+    await settings_router.update_ui_settings(settings_router.UISettingsUpdate(theme="system"))
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(content_line_spacing="compact")
+    )
+    saved = json.loads(settings_file.read_text())
+    assert saved["unrelated"] == {"keep": True}
+    assert saved["content_font_scale"] == 150
+    assert saved["content_line_spacing"] == "compact"
+    assert saved["language"] == "zh"
+    assert interface_settings.get_ui_settings()["content_font_scale"] == 150
+    public = await settings_router.get_ui_settings()
+    assert set(public) == {"theme", "language", "response_language"}
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        {},
+        {"content_font_scale": "150", "content_line_spacing": "bad"},
+        {"content_font_scale": True, "content_line_spacing": None},
+        {"content_font_scale": 999, "content_line_spacing": []},
+    ],
+)
+def test_both_display_readers_default_malformed_or_legacy_settings(monkeypatch, tmp_path, saved):
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(json.dumps(saved))
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+    for settings in (settings_router.load_ui_settings(), interface_settings.get_ui_settings()):
+        assert settings["content_font_scale"] == 100
+        assert settings["content_line_spacing"] == "normal"
+
+
+def test_display_read_is_not_on_public_settings_router():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(settings_router.public_router, prefix="/api/settings")
+    assert TestClient(app).get("/api/settings/display").status_code == 404
+
+
+def test_display_read_requires_auth_and_returns_only_display_fields(monkeypatch, tmp_path):
+    """Mount through the real authentication and learner-surface dependency."""
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from deeptutor.api.routers import auth as auth_router
+
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(
+        json.dumps({"content_font_scale": 125, "sidebar_description": "private"})
+    )
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+    app = FastAPI()
+    app.include_router(
+        settings_router.router,
+        prefix="/api/settings",
+        dependencies=[Depends(auth_router.require_learning_surface)],
+    )
+    client = TestClient(app)
+    assert client.get("/api/settings/display").status_code == 401
+    assert (
+        client.get(
+            "/api/settings/display", headers={"Authorization": "Bearer invalid-display-token"}
+        ).status_code
+        == 401
+    )
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", False)
+    response = client.get("/api/settings/display")
+    assert response.status_code == 200
+    assert response.json() == {"content_font_scale": 125, "content_line_spacing": "normal"}
+
+
+def test_llm_provider_choices_include_cloudgpu() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cloudgpu"]["label"] == "CloudGPU"
+    assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"
+
+
+def test_llm_provider_choices_include_standardcompute() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["standardcompute"]["label"] == "Standard Compute"
+    assert llm["standardcompute"]["base_url"] == "https://api.stdcmpt.com/v1"

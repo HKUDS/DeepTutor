@@ -19,6 +19,8 @@ unit-tested in isolation and reused by any ingestion path.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
@@ -64,6 +66,23 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
+@contextmanager
+def _remove_on_error(paths: list[Path]) -> Iterator[None]:
+    """Delete ``paths`` if the block raises, then re-raise.
+
+    The caller rejects the whole archive on any error, so members written
+    before the failing one must not stay behind in the target directory.
+    """
+    try:
+        yield
+    except BaseException:
+        for path in paths:
+            # Best effort: a failed unlink must not mask the original error.
+            with suppress(OSError):
+                path.unlink(missing_ok=True)
+        raise
+
+
 def safe_extract_zip(
     zip_path: str | Path,
     target_dir: str | Path,
@@ -78,7 +97,8 @@ def safe_extract_zip(
         target_dir: Directory that extracted files are written into (created
             if missing). Files are written flat — subdirectories in the
             archive are dropped, so two members with the same basename collide
-            and the later one is skipped as a duplicate.
+            and the later one is skipped as a duplicate. On a case-insensitive
+            filesystem, basenames that differ only in case collide the same way.
         allowed_extensions: Extensions a member may have to be extracted.
             ``.zip`` is always excluded to prevent nested-archive recursion.
         limits: Optional size/count bounds; sensible defaults are used.
@@ -90,6 +110,10 @@ def safe_extract_zip(
     Raises:
         ArchiveTooLargeError: If the archive trips a zip-bomb guard.
         zipfile.BadZipFile: If the file is not a valid zip archive.
+
+    When any error propagates, the files this call already wrote are removed
+    first, so a rejected archive leaves none of its members behind in
+    ``target_dir``. Files this call did not write are not touched.
     """
     limits = limits or ZipExtractionLimits()
     target_dir = Path(target_dir)
@@ -103,7 +127,7 @@ def safe_extract_zip(
     seen_names: set[str] = set()
     total_bytes = 0
 
-    with zipfile.ZipFile(zip_path) as archive:
+    with zipfile.ZipFile(zip_path) as archive, _remove_on_error(result.extracted):
         members = [info for info in archive.infolist() if not info.is_dir()]
         if len(members) > limits.max_entries:
             raise ArchiveTooLargeError(
@@ -158,6 +182,13 @@ def safe_extract_zip(
                 result.skipped.append((member, "path escapes target directory"))
                 continue
 
+            # On a case-insensitive filesystem (the Windows and macOS default)
+            # ``readme.md`` is the ``README.md`` this call already wrote: the
+            # same flattening collision, not a pre-existing file to refuse.
+            if destination.exists() and any(destination.samefile(p) for p in result.extracted):
+                result.skipped.append((member, "duplicate name after flattening"))
+                continue
+
             written = _extract_member(archive, info, destination, limits.max_entry_bytes)
             if written > info.file_size:
                 # Decompressed more than the header declared → treat as a bomb.
@@ -187,14 +218,18 @@ def _extract_member(
     returned still exceeds the limit so the caller can detect the overflow.
     """
     written = 0
-    with archive.open(info) as source, open(destination, "wb") as sink:
-        while True:
-            chunk = source.read(chunk_size)
-            if not chunk:
-                break
-            written += len(chunk)
-            if written > max_entry_bytes:
+    with archive.open(info) as source:
+        # Acquire exclusively before registering cleanup, then close before
+        # unlinking (required by Windows and by buffered flush failures).
+        sink = open(destination, "xb")
+        with _remove_on_error([destination]), sink:
+            while True:
+                chunk = source.read(chunk_size)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_entry_bytes:
+                    sink.write(chunk)
+                    return written  # signal overflow; caller cleans up
                 sink.write(chunk)
-                return written  # signal overflow; caller cleans up
-            sink.write(chunk)
     return written

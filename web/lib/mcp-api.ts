@@ -30,10 +30,12 @@ export interface McpServerConfig {
   // which silently drops a hand-written blocklist.
   disabled_tools: string[];
   enabled: boolean;
+  allow_private_network?: boolean;
   /**
    * `"oauth"` when this server needs an authorization the account grants in a
-   * browser rather than a credential typed into the form. Read-only from the
-   * client's side: it comes from the catalog entry.
+   * browser rather than a credential typed into the form. Catalog entries set
+   * it at install time; the add/edit form exposes it so a server added by URL
+   * can opt in too.
    */
   auth: "" | "oauth";
   /**
@@ -235,6 +237,9 @@ export interface McpServerFormDraft {
   headerPairs: McpKvPair[];
   toolTimeout: number;
   enabledToolsText: string;
+  allowPrivateNetwork?: boolean;
+  /** OAuth opt-in for remote servers; left undefined to keep the stored value. */
+  auth?: "" | "oauth";
 }
 
 /**
@@ -243,7 +248,8 @@ export interface McpServerFormDraft {
  * `base` is the entry being edited (or `emptyMcpServerConfig()` for a new one).
  * Fields the form does not expose — `enabled`, `disabled_tools`,
  * `catalog_entry` — are carried over from it rather than defaulted away, so a UI
- * save never clobbers state it cannot show.
+ * save never clobbers state it cannot show. `auth` follows the same rule when
+ * the draft leaves it unset.
  */
 export function buildMcpServerConfig(
   draft: McpServerFormDraft,
@@ -262,8 +268,9 @@ export function buildMcpServerConfig(
     enabled_tools: enabledTools.length > 0 ? enabledTools : ["*"],
     disabled_tools: [...base.disabled_tools],
     enabled: base.enabled,
-    auth: base.auth,
+    auth: draft.auth !== undefined ? draft.auth : base.auth,
     catalog_entry: base.catalog_entry,
+    ...(draft.allowPrivateNetwork !== undefined ? { allow_private_network: draft.allowPrivateNetwork } : base.allow_private_network !== undefined ? { allow_private_network: base.allow_private_network } : {}),
   };
 }
 
@@ -379,6 +386,7 @@ export function normalizeServerConfig(raw: unknown): McpServerConfig {
     enabled: item.enabled === undefined ? base.enabled : Boolean(item.enabled),
     auth: item.auth === "oauth" ? "oauth" : base.auth,
     catalog_entry: String(item.catalog_entry ?? base.catalog_entry),
+    ...(typeof item.allow_private_network === "boolean" ? { allow_private_network: item.allow_private_network } : {}),
   };
 }
 

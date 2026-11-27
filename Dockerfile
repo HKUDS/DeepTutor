@@ -20,7 +20,7 @@
 # Run on the build platform natively (not under QEMU emulation).
 # The output is platform-independent static assets (JS/HTML/CSS),
 # so there is no need to cross-compile this stage.
-FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:22.23.4-slim AS frontend-builder
 
 WORKDIR /app/web
 
@@ -56,7 +56,7 @@ RUN npm run build
 # Provides the correctly-architected node binary for the final image.
 # Unlike frontend-builder (pinned to BUILDPLATFORM), this stage pulls
 # the node image matching each target platform (amd64 / arm64).
-FROM node:22-slim AS node-runtime
+FROM node:22.23.4-slim AS node-runtime
 
 # ============================================
 # Stage 2: Python Base with Dependencies
@@ -75,7 +75,9 @@ WORKDIR /app
 # Install system dependencies
 # Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru)
 # Rust is required for building tiktoken and other packages without pre-built wheels
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     curl \
     git \
     build-essential \
@@ -135,7 +137,9 @@ WORKDIR /app
 # Office previews convert documents to PDF in the main app. Writer, Calc and
 # Impress cover DOCX, XLSX and PPTX; Noto CJK preserves Chinese text and
 # Liberation supplies common Latin font substitutes in the rendered pages.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     curl \
     ca-certificates \
     bash \
@@ -146,6 +150,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    ffmpeg \
     libreoffice-writer \
     libreoffice-calc \
     libreoffice-impress \
@@ -161,6 +166,9 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && node --version && npm --version
 
 # Copy Python packages from builder stage
+# Replace the base image's package tree instead of merging dist-info from
+# different pip/setuptools versions into one environment.
+RUN rm -rf /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
@@ -175,7 +183,7 @@ COPY --from=frontend-builder /app/web/public/ ./web/public/
 COPY deeptutor/ ./deeptutor/
 COPY deeptutor_cli/ ./deeptutor_cli/
 COPY scripts/ ./scripts/
-COPY pyproject.toml ./
+COPY pyproject.toml build_metadata.py ./
 COPY requirements/ ./requirements/
 COPY requirements.txt ./
 
@@ -207,6 +215,7 @@ RUN mkdir -p \
 # skipped (no CAP_SETUID) and UID 1000 matches the typical host user.
 RUN groupadd --system --gid 1000 deeptutor \
     && useradd --system --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin deeptutor \
+    && install -d -o deeptutor -g deeptutor -m 0755 /home/deeptutor \
     && chown -R deeptutor:deeptutor /app/data /app/web/.next
 
 # supervisord config is split into two files so the production and development
@@ -252,7 +261,7 @@ stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
-environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
+environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1",HOME="/home/deeptutor"
 
 [program:frontend]
 command=/bin/bash /app/start-frontend.sh
@@ -265,7 +274,7 @@ stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="production"
+environment=NODE_ENV="production",HOME="/home/deeptutor"
 EOF
 
 RUN sed -i 's/\r$//' /etc/supervisor/conf.d/programs.conf
@@ -592,7 +601,7 @@ stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
-environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
+environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1",HOME="/home/deeptutor"
 
 [program:frontend]
 command=/bin/bash -c "cd /app/web && node scripts/dev.mjs -H 0.0.0.0 -p ${FRONTEND_PORT:-3782}"
@@ -605,7 +614,7 @@ stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="development"
+environment=NODE_ENV="development",HOME="/home/deeptutor"
 EOF
 
 RUN sed -i 's/\r$//' /etc/supervisor/conf.d/programs.conf

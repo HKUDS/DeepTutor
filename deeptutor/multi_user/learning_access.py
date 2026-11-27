@@ -70,6 +70,15 @@ def assert_learning_surface(surface: str) -> None:
         raise PermissionError(f"This learning account cannot use the {target}.")
 
 
+def learning_surface_allowed(surface: str) -> bool:
+    """Filter aggregate navigation with the same policy as individual routes."""
+    try:
+        assert_learning_surface(surface)
+    except PermissionError:
+        return False
+    return True
+
+
 def assert_learning_material(material_id: str, *, upload: bool = False) -> None:
     """Enforce upload and assigned-material policy in the authenticated scope."""
     policy = current_learning_policy()
@@ -125,4 +134,5 @@ __all__ = [
     "current_learning_policy",
     "learning_material_allowed",
     "learning_policy_for_user",
+    "learning_surface_allowed",
 ]

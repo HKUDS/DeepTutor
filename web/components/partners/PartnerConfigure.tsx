@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PartnerModelSelect from "@/components/partners/PartnerModelSelect";
+import PartnerReplyLanguageSelect from "@/components/partners/PartnerReplyLanguageSelect";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
@@ -89,6 +90,7 @@ export default function PartnerConfigure({
   // Soul
   const [soul, setSoul] = useState("");
   const [soulLoaded, setSoulLoaded] = useState(false);
+  const [soulError, setSoulError] = useState<string | null>(null);
   const [savingSoul, setSavingSoul] = useState(false);
 
   // Model
@@ -124,13 +126,19 @@ export default function PartnerConfigure({
   });
   const [addingAssets, setAddingAssets] = useState(false);
 
+  const loadSoul = useCallback(async () => {
+    setSoulLoaded(false);
+    setSoulError(null);
+    try {
+      setSoul(await getPartnerSoul(partnerId));
+      setSoulLoaded(true);
+    } catch (error) {
+      setSoulError(error instanceof Error ? error.message : String(error));
+    }
+  }, [partnerId]);
+
   useEffect(() => {
-    void getPartnerSoul(partnerId)
-      .then((content) => {
-        setSoul(content);
-        setSoulLoaded(true);
-      })
-      .catch(() => setSoulLoaded(true));
+    void loadSoul();
     void getPartnerAssets(partnerId)
       .then(setAssets)
       .catch(() => {});
@@ -163,7 +171,7 @@ export default function PartnerConfigure({
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partnerId]);
+  }, [partnerId, loadSoul]);
 
   const saveWorkspace = async (workspaceId: string) => {
     setSavingWorkspace(true);
@@ -348,15 +356,11 @@ export default function PartnerConfigure({
             <label className="mb-1 block text-[12px] font-medium">
               {t("Reply language")}
             </label>
-            <select
+            <PartnerReplyLanguageSelect
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={setLanguage}
               className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] outline-none focus:border-[var(--ring)]"
-            >
-              <option value="">{t("Auto (English)")}</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-            </select>
+            />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-[12px] font-medium">
@@ -398,6 +402,14 @@ export default function PartnerConfigure({
           </button>
         }
       >
+        {soulError && (
+          <div className="mb-3 flex items-center gap-2 text-[12px] text-red-500">
+            <span>{soulError}</span>
+            <button type="button" onClick={() => void loadSoul()}>
+              {t("Retry")}
+            </button>
+          </div>
+        )}
         <SoulEditor value={soul} onChange={setSoul} heightClass="h-[280px]" />
       </Section>
 

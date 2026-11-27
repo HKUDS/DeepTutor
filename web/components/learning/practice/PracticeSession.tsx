@@ -3,7 +3,6 @@
 import Markdown from '@/components/common/MarkdownRenderer'
 import { practiceMarkdown } from '@/lib/practice-content'
 import { randomUuid } from '@/lib/random-uuid'
-import { WorkspaceLabel } from '../LibraryWorkspace'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
@@ -101,7 +100,6 @@ export function PracticeSession({
           key={`${index}:${queue[index].content_workspace_id}:${queue[index].id}`}
           id={queue[index].id}
           workspaceId={queue[index].content_workspace_id}
-          workspaceName={queue[index].content_workspace_name}
           onBusy={setSaving}
           onSaved={(due, rating) => {
             if (rating === 'again') setQueue(current => [...current, current[index]])
@@ -128,14 +126,12 @@ export function PracticeSession({
 function PracticeTurn({
   id,
   workspaceId,
-  workspaceName,
   onSaved,
   onSkip,
   onBusy,
 }: {
   id: number
   workspaceId?: string
-  workspaceName?: string
   onSaved: (due: number | null, rating: PracticeRating) => void
   onSkip: () => void
   onBusy: (busy: boolean) => void
@@ -248,14 +244,6 @@ function PracticeTurn({
         <>
           <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{entry.material_title || t('Practice')}</span>
-            {workspaceId !== undefined && (
-              <>
-                <span aria-hidden="true">·</span>
-                <WorkspaceLabel
-                  row={{ content_workspace_id: workspaceId, content_workspace_name: workspaceName }}
-                />
-              </>
-            )}
             {entry.categories?.map(tag => (
               <span key={tag.id} className="rounded-full bg-muted px-2 py-1">
                 {tag.name}
@@ -264,6 +252,7 @@ function PracticeTurn({
           </div>
           <div className="text-base leading-relaxed">
             <Markdown
+              learningTextSize={16}
               content={practiceMarkdown(entry.question)}
               allowHtml={false}
               className="[overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
@@ -303,7 +292,7 @@ function PracticeTurn({
                     />
                     <span className="font-semibold">{key}</span>
                     <div className="min-w-0">
-                      <Markdown content={practiceMarkdown(text)} allowHtml={false} />
+                      <Markdown learningTextSize={16} content={practiceMarkdown(text)} allowHtml={false} />
                     </div>
                   </label>
                 )
@@ -362,6 +351,7 @@ function PracticeTurn({
                 </p>
                 <div className="text-sm">
                   <Markdown
+                    learningTextSize={16}
                     content={
                       entry.correct_answer ||
                       t(
@@ -371,7 +361,7 @@ function PracticeTurn({
                   />
                   {entry.explanation && (
                     <div className="mt-3 border-t border-border pt-3">
-                      <Markdown content={entry.explanation} />
+                      <Markdown learningTextSize={16} content={entry.explanation} />
                     </div>
                   )}
                 </div>

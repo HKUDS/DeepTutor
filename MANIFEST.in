@@ -1,2 +1,8 @@
 recursive-include deeptutor_web *
 recursive-include deeptutor_web/.next *
+
+include build_metadata.py build_support.py setup.py
+recursive-include deeptutor *.py *.json *.yaml *.yml *.md *.ts *.tsx *.js *.mjs *.sh *.j2
+recursive-include deeptutor_cli *.py *.json *.yaml
+include scripts/build_modules.py scripts/check_minimal_install.py scripts/check_module_install.py scripts/sync_module_requirements.py
+recursive-include packaging *.toml *.py

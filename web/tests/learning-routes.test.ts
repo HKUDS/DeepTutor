@@ -21,8 +21,8 @@ test('learning route builders encode resource identities once', () => {
   assert.equal(readingSessionIdFromPath(readingSessionRoute(id, id)), id)
   assert.equal(watchingRoute(id), `/learning/watching/${encoded}`)
   assert.equal(
-    masterySessionsRoute(id, new URLSearchParams({ course: id })),
-    `/learning/mastery/${encoded}/sessions?course=${encodeURIComponent(id).replace(/%20/g, '+')}`
+    masterySessionsRoute(id, new URLSearchParams({ mode: "outline" })),
+    `/learning/mastery/${encoded}/sessions?mode=outline`
   )
 })
 

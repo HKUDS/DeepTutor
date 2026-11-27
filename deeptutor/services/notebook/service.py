@@ -8,7 +8,7 @@ can operate on the same files under ``data/user``.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from enum import Enum
 import json
 import logging
@@ -150,7 +150,15 @@ class NotebookManager:
             try:
                 with open(path, encoding="utf-8") as f:
                     notebook = json.load(f)
-            except Exception:
+            except Exception as exc:
+                # The file is left untouched on disk, so the damage stays
+                # visible and repairable: list_notebooks() re-adopts it as an
+                # ``unreadable`` entry instead of the notebook quietly vanishing.
+                logger.warning(
+                    "notebook file %s is unreadable (%s); excluded from the rebuilt index",
+                    path,
+                    exc,
+                )
                 continue
             entries.append(self._index_row(notebook))
         return entries
@@ -179,12 +187,13 @@ class NotebookManager:
             raise ValueError(f"notebook id escapes base directory: {notebook_id!r}")
         return target
 
-    def _load_notebook(self, notebook_id: str) -> dict | None:
+    def _load_notebook(self, notebook_id: str, *, read_only: bool = False) -> dict | None:
         """Return the notebook, or ``None`` when no such file exists.
 
         A file that exists but cannot be parsed raises
         :class:`NotebookCorruptedError` rather than returning ``None`` —
         conflating the two is what made damaged notebooks look deleted.
+        ``read_only`` sanitizes the returned copy without persisting repairs.
         """
         filepath = self._get_notebook_file(notebook_id)
         if not filepath.exists():
@@ -197,7 +206,7 @@ class NotebookManager:
         except Exception as exc:
             logger.error("notebook %s failed to load from %s: %s", notebook_id, filepath, exc)
             raise NotebookCorruptedError(notebook_id, filepath, exc) from exc
-        if self._sanitize_loaded_notebook(notebook):
+        if self._sanitize_loaded_notebook(notebook) and not read_only:
             try:
                 self._save_notebook(notebook_id, notebook)
             except Exception:
@@ -461,9 +470,24 @@ class NotebookManager:
         wanted = set(record_ids)
         return [record for record in records if str(record.get("id", "")) in wanted]
 
-    def get_record(self, notebook_id: str, record_id: str) -> dict | None:
-        records = self.get_records(notebook_id, [record_id])
-        return records[0] if records else None
+    def get_record(
+        self, notebook_id: str, record_id: str, *, read_only: bool = False
+    ) -> dict | None:
+        """Return one record; preserve the legacy repair behavior by default."""
+        if not read_only:
+            records = self.get_records(notebook_id, [record_id])
+            return records[0] if records else None
+        notebook = self._load_notebook(notebook_id, read_only=True)
+        if not notebook:
+            return None
+        return next(
+            (
+                record
+                for record in notebook.get("records", [])
+                if str(record.get("id", "")) == record_id
+            ),
+            None,
+        )
 
     def update_record(
         self,
@@ -602,26 +626,53 @@ class NotebookManager:
             self._touch_index_entry(target_notebook_id, target)
         return copied
 
+    def locate_record(self, record_id: str, notebook_id: str = "") -> str | None:
+        """Find a saved source within this workspace, preferring its original collection."""
+        ids = [notebook_id] if notebook_id else []
+        ids.extend(item["id"] for item in self.list_notebooks() if item["id"] != notebook_id)
+        for candidate in ids:
+            try:
+                if self.get_record(candidate, record_id) is not None:
+                    return candidate
+            except NotebookCorruptedError:
+                continue
+        return None
+
     def move_record(
         self, source_notebook_id: str, record_id: str, target_notebook_id: str
     ) -> dict | None:
-        """Move a record between notebooks.
+        """Move without changing identity, so existing note citations remain valid.
 
-        Writes the copy first and only then removes the original, so an
-        interruption leaves the record duplicated rather than destroyed.
+        Lock both collections in stable order. Write the destination first so
+        an interrupted write can never destroy the only copy of the source.
         """
-        copied = self.copy_record(source_notebook_id, record_id, target_notebook_id)
-        if copied is None:
+        if source_notebook_id == target_notebook_id:
             return None
-        if not self.remove_record(source_notebook_id, record_id):
-            # The copy already landed; report it rather than failing outright.
-            logger.warning(
-                "moved record %s into %s but could not remove the original from %s",
-                record_id,
-                target_notebook_id,
-                source_notebook_id,
-            )
-        return copied
+        with ExitStack() as stack:
+            for notebook_id in sorted([source_notebook_id, target_notebook_id]):
+                stack.enter_context(self._locked(notebook_id))
+            source = self._load_notebook(source_notebook_id)
+            target = self._load_notebook(target_notebook_id)
+            if source is None or target is None:
+                return None
+            record = next((r for r in source.get("records", []) if r["id"] == record_id), None)
+            if record is None:
+                return None
+            existing = next((r for r in target.get("records", []) if r["id"] == record_id), None)
+            if existing is not None and existing != record:
+                raise ValueError(
+                    "The destination already contains a different version of this favorite."
+                )
+            if existing is None:
+                target.setdefault("records", []).append(record)
+            target["updated_at"] = time.time()
+            self._save_notebook(target_notebook_id, target)
+            self._touch_index_entry(target_notebook_id, target)
+            source["records"] = [r for r in source.get("records", []) if r["id"] != record_id]
+            source["updated_at"] = time.time()
+            self._save_notebook(source_notebook_id, source)
+            self._touch_index_entry(source_notebook_id, source)
+            return record
 
     def export_markdown(self, notebook_id: str) -> str | None:
         """Render a whole notebook as one Markdown document."""

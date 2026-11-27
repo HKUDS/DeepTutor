@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -17,7 +18,7 @@ class PartnerRuntimeStatusRepository:
     def __init__(self, path: Path | None = None) -> None:
         self.path = (path or (get_data_dir() / "_runtime" / "status.sqlite3")).resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS partner_runtime_status (
@@ -65,7 +66,7 @@ class PartnerRuntimeStatusRepository:
                 "runtime_updated_at": updated_at,
             }
         )
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO partner_runtime_status(
@@ -95,7 +96,7 @@ class PartnerRuntimeStatusRepository:
         return safe_payload
 
     def get(self, partner_id: str) -> dict[str, Any] | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 "SELECT payload FROM partner_runtime_status WHERE partner_id=?",
                 (partner_id,),
@@ -103,14 +104,14 @@ class PartnerRuntimeStatusRepository:
         return json.loads(str(row[0])) if row else None
 
     def list(self) -> dict[str, dict[str, Any]]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 "SELECT partner_id, payload FROM partner_runtime_status"
             ).fetchall()
         return {str(row[0]): json.loads(str(row[1])) for row in rows}
 
     def delete(self, partner_id: str) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 "DELETE FROM partner_runtime_status WHERE partner_id=?", (partner_id,)
             )

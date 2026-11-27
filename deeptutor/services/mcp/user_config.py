@@ -33,7 +33,7 @@ import re
 import stat
 
 from deeptutor.services.mcp.config import MCPConfig, MCPServerConfig
-from deeptutor.services.mcp.network import validate_mcp_url
+from deeptutor.services.mcp.network import approved_private_origin, validate_mcp_url
 
 logger = logging.getLogger(__name__)
 
@@ -183,8 +183,14 @@ def _assert_self_service_allowed(
         )
     if transport not in ("sse", "streamableHttp"):
         raise UserMcpError("mcp.no_transport", "Provide an http(s) URL for the server")
+    trusted_origin = approved_private_origin(cfg.url) if cfg.allow_private_network else None
+    if cfg.allow_private_network and trusted_origin is None:
+        raise UserMcpError(
+            "mcp.private_origin_not_approved",
+            "Private-network MCP access requires current administrator approval for this exact origin.",
+        )
     if validate_url:
-        ok, error = validate_mcp_url(cfg.url, strict=True)
+        ok, error = validate_mcp_url(cfg.url, strict=True, trusted_origin=trusted_origin)
         if not ok:
             raise UserMcpError("mcp.blocked_url", error)
 

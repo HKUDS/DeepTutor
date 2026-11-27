@@ -24,7 +24,8 @@ class CodeRetryManager:
         *,
         renderer: ManimRenderService,
         repair_callback: Callable[[str, str, int], Awaitable[GeneratedCode]],
-        review_callback: Callable[[str, object], Awaitable[VisualReviewResult]] | None = None,
+        review_callback: Callable[[str, object], Awaitable[VisualReviewResult | None]]
+        | None = None,
         on_retry: Callable[[RetryAttempt], Awaitable[None]] | None = None,
         on_status: Callable[[str], Awaitable[None]] | None = None,
         max_retries: int = 4,
@@ -76,7 +77,7 @@ class CodeRetryManager:
                             f"Visual quality review timed out after {int(self.review_timeout_seconds)}s."
                         ) from timeout_exc
                     render_result.visual_review = review_result
-                    if not review_result.passed:
+                    if review_result is not None and not review_result.passed:
                         if attempt >= self.max_retries:
                             if self.on_status is not None:
                                 await self.on_status(
@@ -115,7 +116,8 @@ class CodeRetryManager:
                         except asyncio.TimeoutError as timeout_exc:
                             raise ManimRenderError(
                                 f"Code repair attempt #{attempt + 1} timed out after "
-                                f"{int(self.repair_timeout_seconds)}s."
+                                f"{int(self.repair_timeout_seconds)}s. This is the local overall "
+                                f"repair deadline (capabilities.math_animator.repair_timeout)."
                             ) from timeout_exc
                         code = repaired.code.strip() or code
                         if self.on_status is not None:
@@ -148,7 +150,8 @@ class CodeRetryManager:
                 except asyncio.TimeoutError as timeout_exc:
                     raise ManimRenderError(
                         f"Code repair attempt #{attempt + 1} timed out after "
-                        f"{int(self.repair_timeout_seconds)}s."
+                        f"{int(self.repair_timeout_seconds)}s. This is the local overall "
+                        f"repair deadline (capabilities.math_animator.repair_timeout)."
                     ) from timeout_exc
                 code = repaired.code.strip() or code
                 if self.on_status is not None:

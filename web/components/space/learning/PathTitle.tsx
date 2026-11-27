@@ -1,5 +1,6 @@
 "use client";
 
+import { PAGE_TITLE_CLASS } from '@/components/layout/FeaturePage'
 import { Check, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
@@ -81,8 +82,7 @@ export function PathTitle({
     setEditing(false);
   };
 
-  const TITLE_TYPE =
-    "font-serif text-[22px] font-semibold tracking-[-0.01em] text-[var(--foreground)]";
+  const TITLE_TYPE = PAGE_TITLE_CLASS;
 
   if (!editing) {
     return (

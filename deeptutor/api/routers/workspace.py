@@ -10,19 +10,32 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_auth
+from deeptutor.api.routers.render_storage import router as render_storage_router
 from deeptutor.multi_user.partner_access import visible_partners
 from deeptutor.multi_user.paths import user_context
 from deeptutor.services.auth import TokenPayload
-from deeptutor.services.partners.scope import partner_user
 from deeptutor.services.workspace import (
     WorkspaceError,
     WorkspaceItem,
     get_content_workspace_service,
 )
+from deeptutor.services.workspace.models import MAX_WORKSPACE_INSTRUCTIONS_CHARS
 from deeptutor.services.workspace.resources import WorkspaceResources
 
 settings_router = APIRouter()
 files_router = APIRouter()
+files_router.include_router(render_storage_router)
+
+
+@settings_router.get("/folders")
+async def list_server_folders(path: str = "") -> dict:
+    """Return folders available to the authenticated workspace picker."""
+    from deeptutor.services.workspace.folders import browse_folders
+
+    try:
+        return await asyncio.to_thread(browse_folders, get_content_workspace_service(), path)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class WorkspacePathPayload(BaseModel):
@@ -30,12 +43,14 @@ class WorkspacePathPayload(BaseModel):
 
 
 class CreateWorkspacePayload(BaseModel):
+    instructions: str | None = Field(default=None, max_length=MAX_WORKSPACE_INSTRUCTIONS_CHARS)
     resources: WorkspaceResources | None = None
     name: str = Field(min_length=1, max_length=100)
     path: str | None = None
 
 
 class UpdateWorkspacePayload(BaseModel):
+    instructions: str | None = Field(default=None, max_length=MAX_WORKSPACE_INSTRUCTIONS_CHARS)
     resources: WorkspaceResources | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     archived: bool | None = None
@@ -46,6 +61,7 @@ class DataMigrationPayload(BaseModel):
     target_workspace_id: str = ""
     features: list[str] = Field(min_length=1)
     include_historical: bool = False
+    session_ids: list[str] | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class KnowledgeMovePayload(BaseModel):
@@ -99,7 +115,11 @@ async def preview_workspace_data(payload: DataMigrationPayload) -> dict:
     from deeptutor.services.workspace.data_migration import preview
 
     return await _data_operation(
-        preview, payload.source_workspace_id, payload.target_workspace_id, payload.features
+        preview,
+        payload.source_workspace_id,
+        payload.target_workspace_id,
+        payload.features,
+        session_ids=set(payload.session_ids) if payload.session_ids is not None else None,
     )
 
 
@@ -108,7 +128,11 @@ async def migrate_workspace_data(payload: DataMigrationPayload) -> dict:
     from deeptutor.services.workspace.data_migration import migrate_data
 
     return await _data_operation(
-        migrate_data, payload.source_workspace_id, payload.target_workspace_id, payload.features
+        migrate_data,
+        payload.source_workspace_id,
+        payload.target_workspace_id,
+        payload.features,
+        session_ids=set(payload.session_ids) if payload.session_ids is not None else None,
     )
 
 
@@ -173,7 +197,7 @@ async def _migrate_workspaces(path: str, workspace_id: str | None = None) -> dic
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
         with data_activity(exclusive=True):
-            assert_no_pending_recovery()
+            assert_no_pending_recovery(reject_unreadable=True)
             return await migrate_location()
 
     async def migrate_location() -> dict:
@@ -246,6 +270,7 @@ async def create_workspace(payload: CreateWorkspacePayload) -> dict:
             payload.name,
             payload.path,
             resources=payload.resources.model_dump() if payload.resources else None,
+            instructions=payload.instructions,
         )
     except WorkspaceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -258,11 +283,12 @@ async def update_registered_workspace(workspace_id: str, payload: UpdateWorkspac
         from deeptutor.services.workspace.activity import data_activity
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
-        with data_activity(exclusive=True):
-            assert_no_pending_recovery()
-            workspace = get_content_workspace_service().update_workspace(
-                workspace_id, **payload.model_dump(exclude_unset=True)
-            )
+        # Instruction edits are atomic metadata updates. A running turn owns
+        # its admitted snapshot, so these edits can coexist with its data lease.
+        changes = payload.model_dump(exclude_unset=True)
+        with data_activity(exclusive=set(changes) != {"instructions"}):
+            assert_no_pending_recovery(reject_unreadable=True)
+            workspace = get_content_workspace_service().update_workspace(workspace_id, **changes)
     except WorkspaceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"workspace": workspace}
@@ -314,6 +340,8 @@ def _resolve_partner_item(
         partner_id = str(partner.get("partner_id") or "").strip()
         if not partner_id:
             continue
+        from deeptutor.services.partners.scope import partner_user
+
         with user_context(partner_user(partner_id)):
             try:
                 return get_content_workspace_service().resolve_published_item(

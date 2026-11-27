@@ -38,6 +38,10 @@ _LLM_ROUND_CALL_KINDS = frozenset({"agent_loop_round", "llm_final_response"})
 def _utf8_aware_terminal_input(stream: TextIO) -> Iterator[None]:
     """Make canonical-mode erase treat UTF-8 input as complete characters."""
 
+    if sys.platform == "win32":
+        yield
+        return
+
     try:
         import termios
     except ImportError:
@@ -190,12 +194,14 @@ async def stream_turn_as_json(*, app: DeepTutorApp, turn_id: str) -> None:
     "(empty reply)" as the tool result and must proceed on its own.
     """
     async for item in app.stream_turn(turn_id):
-        # One event per line: rich wraps long lines at terminal width and
-        # interprets ``[...]`` as markup, both of which corrupt NDJSON.
+        # One event per line: rich wraps long lines at terminal width,
+        # interprets ``[...]`` as markup and ``:name:`` as emoji codes, all of
+        # which corrupt NDJSON.
         console.print(
             json.dumps(item, ensure_ascii=False),
             soft_wrap=True,
             markup=False,
+            emoji=False,
             highlight=False,
         )
         if _ask_user_payload(item) is not None:
@@ -432,7 +438,7 @@ class TurnStreamRenderer:
         if call_state == "complete":
             call_role = str(metadata.get("call_role") or "")
             if call_role in {"narration", "finish"}:
-                if call_role == "narration" and metadata.get("answer_visible") is True:
+                if call_role == "narration":
                     call_role = "finish"
                 self._settle_round(str(metadata.get("call_id") or ""), role=call_role)
                 return
@@ -855,8 +861,17 @@ def build_turn_request(
 
 
 def maybe_run(coro):  # noqa: ANN001
+    async def run_and_close():
+        from deeptutor.app.container import close_application_container
+
+        try:
+            return await coro
+        finally:
+            # Release turns, subprocesses and module leases on the owning loop.
+            await close_application_container()
+
     try:
-        return asyncio.run(coro)
+        return asyncio.run(run_and_close())
     except KeyboardInterrupt:
         console.print("\n[dim]Interrupted.[/]")
         return None

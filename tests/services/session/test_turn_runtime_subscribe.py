@@ -8,7 +8,6 @@ import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.learning.storage import LearningStore
-from deeptutor.services.courses import CourseService
 from deeptutor.services.session._turn_runtime_shared import _resolve_turn_failure_metadata
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import (
@@ -447,54 +446,65 @@ async def test_start_turn_preserves_selection_tutor_runtime_context(
 
 
 @pytest.mark.asyncio
-async def test_start_turn_persists_requested_course(
+async def test_side_chat_starts_from_the_parent_alone(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    store = SQLiteSessionStore(tmp_path / "course-chat.db")
+    store = SQLiteSessionStore(tmp_path / "side-chat.db")
     runtime = TurnRuntimeManager(store)
-    course_service = CourseService(tmp_path / "courses")
-    course = course_service.create(name="Operating Systems")
-
-    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+    parent = await store.ensure_session(None)
+    await store.add_message(parent["id"], "user", "Explain fork()")
+    leaf = await store.add_message(parent["id"], "assistant", "It returns twice.")
 
     async def _noop_run_turn(_execution):
         return None
 
     monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
 
-    session, _ = await runtime.start_turn(
+    child, turn = await runtime.start_turn(
         {
             "type": "start_turn",
             "session_id": None,
             "capability": "chat",
-            "content": "Explain virtual memory",
+            "content": "Why twice?",
             "tools": [],
             "knowledge_bases": [],
             "attachments": [],
             "language": "en",
-            "config": {"_course_id": course.id},
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                }
+            },
         }
     )
 
-    persisted = await store.get_session(session["id"])
+    persisted = await store.get_session(child["id"])
     assert persisted is not None
-    assert persisted["preferences"]["course_id"] == course.id
+    assert persisted["preferences"]["parent_session_id"] == parent["id"]
+    assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    assert persisted["preferences"]["tutor_scope"] == "conversation"
+    # The branch tip is a reading bound, not the message this thread was
+    # opened from; without an explicit quote there is nothing to attribute.
+    assert "tutor_source_message_id" not in persisted["preferences"]
+    # The transcript is resolved again when the turn runs, never queued with it.
+    queued = runtime._executions[turn["id"]].payload["selection_tutor_context"]
+    assert "conversation_messages" not in queued
 
 
 @pytest.mark.asyncio
-async def test_selection_tutor_inherits_parent_course(
+async def test_side_chat_records_the_quoted_message(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    store = SQLiteSessionStore(tmp_path / "course-tutor.db")
+    """A quoted passage names the message it came from, even for a side chat
+    about the whole conversation (the branch tip is a different id)."""
+    store = SQLiteSessionStore(tmp_path / "quoted-message.db")
     runtime = TurnRuntimeManager(store)
-    course_service = CourseService(tmp_path / "courses")
-    course = course_service.create(name="Operating Systems")
     parent = await store.ensure_session(None)
-    await store.update_session_preferences(parent["id"], {"course_id": course.id})
-    source_text = "Load code and static data into memory before execution."
-    source_message_id = await store.add_message(parent["id"], "assistant", source_text)
-
-    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+    await store.add_message(parent["id"], "user", "Explain fork()")
+    quoted = await store.add_message(parent["id"], "assistant", "It returns twice.")
+    leaf = await store.add_message(parent["id"], "user", "So why does the child skip it?")
 
     async def _noop_run_turn(_execution):
         return None
@@ -506,17 +516,17 @@ async def test_selection_tutor_inherits_parent_course(
             "type": "start_turn",
             "session_id": None,
             "capability": "chat",
-            "content": "Will memory explode?",
+            "content": "Why twice?",
             "tools": [],
             "knowledge_bases": [],
             "attachments": [],
             "language": "en",
             "config": {
                 "selection_tutor_context": {
-                    "selected_text": "Load code and static data into memory",
+                    "scope": "conversation",
                     "parent_session_id": parent["id"],
-                    "source_message_id": source_message_id,
-                    "source_message_text": "forged fallback",
+                    "source_message_id": leaf,
+                    "quoted_message_id": quoted,
                 }
             },
         }
@@ -524,9 +534,237 @@ async def test_selection_tutor_inherits_parent_course(
 
     persisted = await store.get_session(child["id"])
     assert persisted is not None
-    assert persisted["preferences"]["course_id"] == course.id
-    assert persisted["preferences"]["parent_session_id"] == parent["id"]
-    assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    assert persisted["preferences"]["tutor_source_message_id"] == quoted
+    assert persisted["preferences"]["tutor_scope"] == "conversation"
+
+
+@pytest.mark.asyncio
+async def test_side_chat_keeps_its_quoted_message_when_a_turn_omits_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The client restates the quote each turn; a turn that does not must not
+    erase the attribution an earlier one recorded."""
+    store = SQLiteSessionStore(tmp_path / "quoted-message-kept.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    quoted = await store.add_message(parent["id"], "assistant", "It returns twice.")
+    leaf = await store.add_message(parent["id"], "user", "So why does the child skip it?")
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    child, first_turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Why twice?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                    "quoted_message_id": quoted,
+                }
+            },
+        }
+    )
+    await store.update_turn_status(first_turn["id"], "cancelled", "test")
+
+    await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": child["id"],
+            "capability": "chat",
+            "content": "And the parent?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["tutor_source_message_id"] == quoted
+
+
+@pytest.mark.asyncio
+async def test_side_chat_moves_its_quoted_message_when_the_client_says_so(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "quoted-moved.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    first_source = await store.add_message(parent["id"], "assistant", "It returns twice.")
+    second_source = await store.add_message(parent["id"], "user", "And in the child?")
+    leaf = await store.add_message(parent["id"], "assistant", "It skips the parent path.")
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    payload = {
+        "type": "start_turn",
+        "capability": "chat",
+        "tools": [],
+        "knowledge_bases": [],
+        "attachments": [],
+        "language": "en",
+    }
+    child, turn = await runtime.start_turn(
+        {
+            **payload,
+            "session_id": None,
+            "content": "Why twice?",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                    "quoted_message_id": first_source,
+                }
+            },
+        }
+    )
+    await store.update_turn_status(turn["id"], "cancelled", "test")
+
+    await runtime.start_turn(
+        {
+            **payload,
+            "session_id": child["id"],
+            "content": "Show me the child path.",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                    "quoted_message_id": second_source,
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["tutor_source_message_id"] == second_source
+
+
+@pytest.mark.asyncio
+async def test_side_chat_clears_its_quoted_message_on_an_explicit_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "quoted-cleared.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    quoted = await store.add_message(parent["id"], "assistant", "It returns twice.")
+    leaf = await store.add_message(parent["id"], "user", "So why does the child skip it?")
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    payload = {
+        "type": "start_turn",
+        "capability": "chat",
+        "tools": [],
+        "knowledge_bases": [],
+        "attachments": [],
+        "language": "en",
+    }
+    child, turn = await runtime.start_turn(
+        {
+            **payload,
+            "session_id": None,
+            "content": "Why twice?",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                    "quoted_message_id": quoted,
+                }
+            },
+        }
+    )
+    await store.update_turn_status(turn["id"], "cancelled", "test")
+
+    await runtime.start_turn(
+        {
+            **payload,
+            "session_id": child["id"],
+            "content": "Forget the passage.",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                    "quoted_message_id": None,
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["tutor_source_message_id"] == ""
+    # A deliberate detach must not be undone by the legacy-thread backfill.
+    assert persisted["preferences"]["tutor_source_backfill_attempted"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_quoted_message_outside_the_parent_is_treated_as_a_detach(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "quoted-invalid.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    await store.add_message(parent["id"], "assistant", "It returns twice.")
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    child, _ = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Why twice?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "quoted_message_id": 999,
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["tutor_source_message_id"] == ""
+    assert persisted["preferences"]["tutor_source_backfill_attempted"] is True
 
 
 @pytest.mark.asyncio
@@ -1122,3 +1360,73 @@ async def test_no_path_push_when_the_turn_never_moved(tmp_path) -> None:
     )
 
     assert [event for event in execution.events if event["type"] == "session_meta"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preparation_fails", [False, True])
+async def test_context_preparation_usage_is_included_in_durable_turn_total(
+    monkeypatch, tmp_path, preparation_fails
+):
+    """#1920/#1926: summary work is paid before the capability starts."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
+    from deeptutor.runtime.orchestrator import ChatOrchestrator
+    from deeptutor.services.llm.metrics import CallMeasurement, current_usage
+
+    store = SQLiteSessionStore(tmp_path / "usage.db")
+    runtime = TurnRuntimeManager(store)
+
+    def measure(tokens):
+        meter = CallMeasurement(model="test", provider="test")
+        meter.finish(
+            SimpleNamespace(
+                usage={"prompt_tokens": tokens, "completion_tokens": 1, "total_tokens": tokens + 1}
+            )
+        )
+
+    class Builder:
+        async def build(self, **kwargs):
+            measure(100)
+            if preparation_fails:
+                raise RuntimeError("Preparation unavailable")
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class Capability(TurnCapability):
+        manifest = CapabilityManifest(name="chat", description="Usage regression")
+
+        async def run(self, context, stream):
+            measure(20)
+            await stream.content("The answer", source="chat")
+
+    orchestrator = ChatOrchestrator.__new__(ChatOrchestrator)
+    orchestrator._cap_registry = MagicMock()
+    orchestrator._cap_registry.get.return_value = Capability()
+    orchestrator._tool_registry = MagicMock()
+    bus = MagicMock()
+    bus.publish = AsyncMock()
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.get_event_bus", lambda: bus)
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", lambda: orchestrator)
+    monkeypatch.setattr(runtime, "_create_context_builder", lambda **kwargs: Builder())
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", AsyncMock())
+    session, turn = await runtime.start_turn(
+        {"content": "Continue", "capability": "chat", "tools": []}
+    )
+    events = [e async for e in runtime.subscribe_turn(turn["id"])]
+    done = next(e for e in events if e["type"] == "done")
+    assert done["metadata"]["usage_summary"]["prompt_tokens"] == (100 if preparation_fails else 120)
+    assert done["metadata"]["usage_summary"]["total_calls"] == (1 if preparation_fails else 2)
+    messages = await store.get_messages(session["id"])
+    if preparation_fails:
+        assert done["metadata"]["status"] == "failed"
+        assert current_usage.get() is None
+        return
+    stored = next(e for e in messages[-1]["events"] if e["type"] == "done")
+    assert stored["metadata"]["usage_summary"] == done["metadata"]["usage_summary"]
+    assert current_usage.get() is None

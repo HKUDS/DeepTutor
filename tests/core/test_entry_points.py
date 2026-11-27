@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import deeptutor.core.entry_points as ep_module
-from deeptutor.core.entry_points import load_entry_point_group
+import deeptutor.plugins.entry_points as ep_module
+from deeptutor.plugins.entry_points import load_entry_point_group
 
 
 def _ep(name: str, load):

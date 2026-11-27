@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -400,6 +401,98 @@ async def test_codebuddy_session_drains_interrupt_before_tool_result_round(monke
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_interrupt_failure_after_tool_calls_logs_warning(
+    monkeypatch, caplog
+) -> None:
+    """A failed interrupt after tool_calls must warn, not vanish silently.
+
+    The SDK keeps generating in the background when interrupt() fails; without
+    a log the operator only sees the quota drain.
+    """
+
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.response_index = 0
+            self.interrupt_calls = 0
+
+        async def connect(self):
+            pass
+
+        async def query(self, _prompt):
+            self.response_index += 1
+
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                [
+                    FakeToolUseBlock(
+                        "tool-1",
+                        "mcp__deeptutor__web_search",
+                        {"query": "latest news"},
+                    )
+                ]
+            )
+
+        async def interrupt(self):
+            self.interrupt_calls += 1
+            raise RuntimeError("Authorization: Bearer fake-token; prompt=private-user-body")
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=lambda **_kwargs: None,
+            CodeBuddyAgentOptions=FakeOptions,
+            CodeBuddySDKClient=FakeClient,
+            tool=fake_tool,
+            create_sdk_mcp_server=fake_mcp_server,
+        ),
+    )
+    provider = CodeBuddyProvider()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="deeptutor.services.llm.provider_core.sdk_bridge",
+    ):
+        response = await provider.chat(
+            [{"role": "user", "content": "Search"}],
+            tools=tools,
+            deeptutor_session_id="chat-interrupt-fail",
+        )
+
+    assert response.finish_reason == "tool_calls"
+    assert len(response.tool_calls) == 1
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING
+        and r.name == "deeptutor.services.llm.provider_core.sdk_bridge"
+    ]
+    assert any(
+        "interrupt" in r.getMessage().lower() and "RuntimeError" in r.getMessage() for r in warnings
+    ), [r.getMessage() for r in warnings]
+    assert "fake-token" not in caplog.text
+    assert "private-user-body" not in caplog.text
+    assert all(record.exc_info is None for record in warnings)
+    session = provider._sessions["chat-interrupt-fail"]
+    assert session.client.interrupt_calls == 1
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -430,6 +523,56 @@ async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     assert await fetch_codebuddy_models("secret") == ["hy3", "glm-5.2"]
     assert isinstance(captured["env"], dict)
     assert captured["env"]["CODEBUDDY_API_KEY"] == "secret"
+
+
+@pytest.mark.asyncio
+async def test_fetch_codebuddy_models_runs_the_windows_shim_directly(monkeypatch) -> None:
+    # "cmd.exe /d /s /c <list2cmdline(...)>" quoted the line twice, so a CLI
+    # path with a space reached cmd.exe as \"...\" and was not found.
+    import subprocess
+
+    import deeptutor.services.llm.provider_core.codebuddy_provider as module
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        async def communicate(self):
+            return (b"supported models for your account:\n  - hy3\n", b"")
+
+    async def fake_subprocess(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    shim = r"C:\Users\John Smith\AppData\Roaming\npm\codebuddy.cmd"
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess)
+    monkeypatch.setattr(shutil, "which", lambda name: shim if name == "codebuddy" else None)
+    monkeypatch.setitem(sys.modules, "codebuddy_agent_sdk", SimpleNamespace(query=lambda: None))
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
+    monkeypatch.setattr(module.os, "name", "nt")
+
+    assert await fetch_codebuddy_models() == ["hy3"]
+    assert captured["args"][0] == shim
+    assert captured["kwargs"]["creationflags"] == 0x08000000 | 0x00000200
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "nt", reason="launches a real Windows .cmd shim")
+async def test_fetch_codebuddy_models_finds_a_shim_under_a_path_with_spaces(
+    tmp_path, monkeypatch
+) -> None:
+    shim_dir = tmp_path / "John Smith & Co" / "npm"
+    shim_dir.mkdir(parents=True)
+    shim = shim_dir / "codebuddy.cmd"
+    shim.write_text(
+        "@echo off\r\necho supported models for your account:\r\necho  - hy3\r\n",
+        encoding="ascii",
+    )
+    monkeypatch.setattr(shutil, "which", lambda name: str(shim) if name == "codebuddy" else None)
+    monkeypatch.setitem(sys.modules, "codebuddy_agent_sdk", SimpleNamespace(query=lambda: None))
+
+    assert await fetch_codebuddy_models() == ["hy3"]
 
 
 def test_codebuddy_registry_aliases_and_factory(monkeypatch) -> None:
@@ -464,3 +607,30 @@ def test_codebuddy_ignores_deeptutor_no_key_placeholder() -> None:
 
 async def _append_async(items: list[str], text: str) -> None:
     items.append(text)
+
+
+@pytest.mark.asyncio
+async def test_interrupted_drain_logs_error_type_without_exception_body(caplog):
+    from deeptutor.services.llm.provider_core.sdk_bridge import _drain_interrupted_response
+
+    async def broken_stream():
+        yield {"type": "intermediate"}
+        raise RuntimeError("Authorization: Bearer fake-token; prompt=private-user-body")
+
+    with caplog.at_level(logging.WARNING):
+        await _drain_interrupted_response(broken_stream())
+
+    assert "drain failed (RuntimeError)" in caplog.text
+    assert "fake-token" not in caplog.text
+    assert "private-user-body" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_an_empty_sdk_exception_still_names_a_reason() -> None:
+    """Same blank-error hole as #2539, on the CodeBuddy bridge."""
+    from deeptutor.services.llm.provider_core.codebuddy_provider import _friendly_error
+
+    for exc in (Exception(""), RuntimeError(), ValueError("   ")):
+        message = _friendly_error(exc)
+        assert message != "Error calling CodeBuddy: "
+        assert type(exc).__name__ in message

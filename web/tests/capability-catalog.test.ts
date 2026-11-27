@@ -92,7 +92,6 @@ test("home capability menu uses the curated order and workspace boundaries", () 
       capabilities: [
         "ask_questions",
         "immersive_reading",
-        "immersive_watching",
         "chat",
         "deep_question",
         "deep_solve",
@@ -111,7 +110,7 @@ test("home capability menu uses the curated order and workspace boundaries", () 
     visible
       .filter((capability) => capability.secondary)
       .map((capability) => capability.value),
-    ["deep_solve", "immersive_watching"],
+    ["deep_solve"],
   );
   assert.equal(
     visible.some((capability) => capability.value === "immersive_reading"),

@@ -214,20 +214,37 @@ def outgoing_links(root: Path, ref: str) -> list[str]:
 
 
 def backlinks(root: Path, ref: str, limit: int = 50) -> list[dict[str, str]]:
-    """Notes that link to ``ref`` via ``[[name]]`` (matched by basename)."""
+    """Notes whose wikilinks resolve to the same destination as ``ref``."""
     target = resolve_note(root, ref)
     if target is None:
         raise VaultError(f"Note {ref!r} not found in the vault.")
-    stem = target.stem.lower()
+    notes = list(_iter_markdown(root))
+    exact_names: dict[str, Path] = {}
+    folded_names: dict[str, Path] = {}
+    for note in notes:
+        exact_names.setdefault(note.stem, note)
+        folded_names.setdefault(note.stem.lower(), note)
+
+    def points_to_target(link: str) -> bool:
+        link = link.strip()
+        if "/" in link or link.lower().endswith(".md"):
+            try:
+                destination = resolve_note(root, link)
+            except VaultError:
+                return False
+        else:
+            destination = exact_names.get(link) or folded_names.get(link.lower())
+        return destination is not None and destination.resolve() == target.resolve()
+
     out: list[dict[str, str]] = []
-    for path in _iter_markdown(root):
+    for path in notes:
         if path == target:
             continue
         try:
             text = _read_text(path)
         except OSError:
             continue
-        if any(t.strip().lower() == stem for t in _WIKILINK_RE.findall(text)):
+        if any(points_to_target(link) for link in _WIKILINK_RE.findall(text)):
             out.append({"path": _rel(root, path), "snippet": _snippet(text, target.stem)})
             if len(out) >= limit:
                 break

@@ -17,6 +17,7 @@ export type ClientCommand =
   | UserInputCommand
   | CheckActiveTurnCommand
   | PingCommand;
+export type AnswerBy = string | null;
 export type Base64 = string | null;
 export type Filename = string | null;
 export type Id = string | null;
@@ -33,7 +34,7 @@ export type CapabilityOnce = boolean;
 export type ClientSubmissionId = string | null;
 export type ConsultPartnerId = string | null;
 export type Content = string;
-export type CourseId = string | null;
+export type CreateTarget = string | null;
 export type FollowupQuestionContext = {
   [k: string]: unknown;
 } | null;
@@ -42,6 +43,10 @@ export type KnowledgeBases = string[];
 export type Language = string | null;
 export type ModelId = string;
 export type ProfileId = string;
+export type ReasoningEffort = string | null;
+export type Answers = {
+  [k: string]: string;
+} | null;
 export type QuestionId = string;
 export type Text = string;
 export type MasteryPathId = string | null;
@@ -52,6 +57,9 @@ export type Mcp = string[];
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
+export type NoteDocumentId = string | null;
+export type BlockId = string;
+export type Kind = string;
 export type NotebookId = string;
 export type RecordIds = string[];
 export type NotebookReferences = NotebookReference[];
@@ -73,6 +81,7 @@ export type Revision = number;
 export type ReadingReferences = ReadingReference[];
 export type Locator = number | null;
 export type Selection = string | null;
+export type TimeSeconds = number | null;
 export type ReadingWorkspaceId = string | null;
 export type Regenerate = boolean;
 export type RegeneratedFromMessageId = number | string | null;
@@ -85,7 +94,7 @@ export type Skills = string[];
 export type SubagentConsultBudget = number | null;
 export type SupersededTurnId = string | null;
 export type TimedMediaId = string | null;
-export type TimeSeconds = number;
+export type TimeSeconds1 = number;
 export type Tools = string[] | null;
 export type Type1 = "message" | "start_turn";
 export type WorkspaceId = string | null;
@@ -113,7 +122,7 @@ export type Type6 = "cancel_turn";
 export type ProtocolVersion6 = "2.0";
 export type SessionId3 = string;
 export type Type7 = "regenerate";
-export type Answers = UserAnswer[] | null;
+export type Answers1 = UserAnswer[] | null;
 export type Questionid = string;
 export type Text1 = string;
 export type CommandId1 = string;
@@ -126,6 +135,7 @@ export type Content1 = string;
 export type ProtocolVersion8 = "2.0";
 export type TurnId5 = string;
 export type Type9 = "user_input";
+export type Withdraw = string | null;
 export type ProtocolVersion9 = "2.0";
 export type SessionId4 = string;
 export type Type10 = "check_active_turn";
@@ -275,6 +285,7 @@ export interface TurnProtocolDocument {
  * via the `definition` "StartTurnCommand".
  */
 export interface StartTurnCommand {
+  answer_by?: AnswerBy;
   attachments?: Attachments;
   auto_route?: AutoRoute;
   book_references?: BookReferences;
@@ -284,7 +295,7 @@ export interface StartTurnCommand {
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;
-  course_id?: CourseId;
+  create_target?: CreateTarget;
   followup_question_context?: FollowupQuestionContext;
   history_references?: HistoryReferences;
   knowledge_bases?: KnowledgeBases;
@@ -297,6 +308,8 @@ export interface StartTurnCommand {
   mastery_skip?: MasteryCardSkip | null;
   mcp?: Mcp;
   memory_references?: MemoryReferences;
+  note_document_id?: NoteDocumentId;
+  note_generation?: NoteGeneration | null;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
   partner_discussion_group_id?: PartnerDiscussionGroupId;
@@ -356,6 +369,7 @@ export interface Config {
 export interface LLMSelection {
   model_id: ModelId;
   profile_id: ProfileId;
+  reasoning_effort?: ReasoningEffort;
 }
 /**
  * An answer submitted from a mastery question card.
@@ -370,6 +384,7 @@ export interface LLMSelection {
  * via the `definition` "MasteryCardAnswer".
  */
 export interface MasteryCardAnswer {
+  answers?: Answers;
   question_id: QuestionId;
   text: Text;
 }
@@ -386,6 +401,20 @@ export interface MasteryCardAnswer {
  */
 export interface MasteryCardSkip {
   question_id: QuestionId1;
+}
+/**
+ * The learning block on the open note page this turn fills in.
+ *
+ * Sent by the note companion when a block's own "Generate" runs. The server
+ * owns the instructions that follow from it, so the learner's message stays
+ * exactly what they see in the conversation.
+ *
+ * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
+ * via the `definition` "NoteGeneration".
+ */
+export interface NoteGeneration {
+  block_id: BlockId;
+  kind?: Kind;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
@@ -411,13 +440,14 @@ export interface ReadingReference {
 export interface ReadingViewport {
   locator?: Locator;
   selection?: Selection;
+  time_seconds?: TimeSeconds;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
  * via the `definition` "TimedMediaViewport".
  */
 export interface TimedMediaViewport {
-  time_seconds: TimeSeconds;
+  time_seconds: TimeSeconds1;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
@@ -487,7 +517,7 @@ export interface Overrides {
  * via the `definition` "SubmitUserReplyCommand".
  */
 export interface SubmitUserReplyCommand {
-  answers?: Answers;
+  answers?: Answers1;
   command_id: CommandId1;
   protocol_version: ProtocolVersion7;
   text?: Text2;
@@ -503,6 +533,8 @@ export interface UserAnswer {
   text?: Text1;
 }
 /**
+ * A message for a turn that is still running, read at its next step.
+ *
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
  * via the `definition` "UserInputCommand".
  */
@@ -512,6 +544,7 @@ export interface UserInputCommand {
   protocol_version: ProtocolVersion8;
   turn_id: TurnId5;
   type?: Type9;
+  withdraw?: Withdraw;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema

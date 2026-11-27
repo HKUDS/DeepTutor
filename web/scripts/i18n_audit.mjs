@@ -91,12 +91,14 @@ function translationKeys(file, content) {
   return keys;
 }
 
-const REQUIRED_LOCALES = ["en", "zh", "fr", "de", "uk"];
-// French and Ukrainian are deliberately partial. i18next falls back to the
+const REQUIRED_LOCALES = ["en", "zh", "fr", "de", "uk", "vi", "tr"];
+// French, Ukrainian and Korean are deliberately partial. i18next falls back to the
 // English resource per key; these floors make a coverage regression visible.
 const MIN_USED_COVERAGE = new Map([
   ["fr", 0.65],
   ["uk", 0.75],
+  // Initial Korean contribution covers navigation, common actions and learning.
+  ["ko", 0.07],
 ]);
 
 function hasTranslation(entries, pluralForms, key) {
@@ -133,7 +135,7 @@ function reportUntranslatedKeys() {
   }
   const locales = new Set(REQUIRED_LOCALES);
   for (const ent of fs.readdirSync(localeDir, { withFileTypes: true })) {
-    if (ent.isDirectory()) locales.add(ent.name);
+    if (ent.isDirectory() && !ent.name.startsWith(".")) locales.add(ent.name);
   }
 
   const known = new Map();

@@ -7,9 +7,7 @@ from zoneinfo import ZoneInfo
 from .scheduler import day_bounds
 
 
-def analytics(
-    conn: sqlite3.Connection, timezone: str, days: int, now: float, scope: str, params: list
-) -> dict:
+def analytics(conn: sqlite3.Connection, timezone: str, days: int, now: float) -> dict:
     if days not in {7, 30, 90}:
         raise ValueError("Choose 7, 30 or 90 days")
     day_bounds(timezone, now)
@@ -44,9 +42,9 @@ def analytics(
             f"""SELECT practice_day({timestamp}) AS day,
                 COALESCE(NULLIF(n.source, ''), 'deep_question') AS source, COUNT(*) AS count
                 FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id {join}
-                WHERE {scope} {extra} AND {timestamp}>=? AND {timestamp}<=?
+                WHERE (n.session_id IS NULL OR s.deleted_at IS NULL) {extra} AND {timestamp}>=? AND {timestamp}<=?
                 GROUP BY day, source""",  # nosec B608 - identifiers and scope are internal literals
-            [*params, start, now],
+            [start, now],
         )
         for row in rows:
             daily[row["day"]][metric] += row["count"]

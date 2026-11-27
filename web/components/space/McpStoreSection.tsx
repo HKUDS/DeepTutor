@@ -38,7 +38,6 @@ export default function McpStoreSection() {
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={Plug}
         title={t("MCP Services")}
         description={t(
           "Connect hosted MCP services to your account — their tools become available to the chat agent.",

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "memory",
+  "distribution": "deeptutor-memory",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/services/memory",
+    "deeptutor_cli/memory.py",
+    "deeptutor/api/routers/memory.py",
+    "deeptutor/agents/loop/native_memory.py"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {
+    "read_memory": {
+      "class_path": "deeptutor.tools.builtin:ReadMemoryTool",
+      "order": 13
+    },
+    "write_memory": {
+      "class_path": "deeptutor.tools.builtin:WriteMemoryTool",
+      "order": 14
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.memory:router",
+      "options": {
+        "prefix": "/api/memory",
+        "tags": [
+          "memory"
+        ]
+      },
+      "auth": "learning",
+      "order": 662
+    }
+  ],
+  "commands": [
+    {
+      "name": "memory",
+      "register": "deeptutor_cli.memory:register",
+      "help": "Manage memory."
+    }
+  ],
+  "navigation": [
+    "/memory"
+  ],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

@@ -23,7 +23,7 @@ from deeptutor.agents.loop.context_budget import (
     resolve_window_info,
 )
 from deeptutor.capabilities import PromptBlock
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import TurnRuntimeContext, UnifiedContext, WorkspaceRuntimeContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolResult
 from deeptutor.runtime.stream_bus import StreamBus
@@ -118,6 +118,21 @@ def test_capability_blocks_are_summed_under_one_key() -> None:
 
     assert _tokens(budget) == {
         "capability": _chars("## solve\naaa") + _chars("## obsidian\nbb"),
+    }
+
+
+def test_learning_journal_is_not_folded_into_capability() -> None:
+    snapshot = "## Mission\n- Topic: Fourier transform"
+    budget = _budget(blocks=[PromptBlock("learning_journal", snapshot)])
+
+    assert _tokens(budget) == {"learning_journal": _chars(f"## learning_journal\n{snapshot}")}
+
+
+def test_workspace_instructions_have_their_own_context_budget_segment() -> None:
+    content = "Explain with geometric intuition"
+    budget = _budget(blocks=[PromptBlock("workspace_instructions", content)])
+    assert _tokens(budget) == {
+        "workspace_instructions": _chars(f"## workspace_instructions\n{content}")
     }
 
 
@@ -441,6 +456,7 @@ async def test_turn_result_carries_the_context_budget(monkeypatch: pytest.Monkey
             user_message="Explain gradient descent",
             language="en",
             metadata={"turn_id": "t1"},
+            runtime=TurnRuntimeContext(workspace=WorkspaceRuntimeContext()),
         ),
         bus,
     )
@@ -460,6 +476,70 @@ async def test_turn_result_carries_the_context_budget(monkeypatch: pytest.Monkey
     assert {"system_prompt", "tool_manifest", "system_tools", "messages"} <= keys
     sent_system = client.calls[0]["messages"][0]["content"]
     assert "Explain gradient descent" not in sent_system
+
+
+@pytest.mark.asyncio
+async def test_context_budget_reports_effective_reasoning_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runtime readout shows the effort the turn actually used (#641)."""
+    monkeypatch.setattr(
+        "deeptutor.agents.loop.pipeline.get_llm_config",
+        lambda: SimpleNamespace(
+            binding="openai",
+            model="gpt-test",
+            api_key="k",
+            base_url="u",
+            api_version=None,
+            context_window=128000,
+            reasoning_effort="high",
+        ),
+    )
+    client = _ScriptedChatClient(
+        [
+            SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="Answer.", tool_calls=None))]
+            )
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()  # type: ignore[assignment]
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["rag"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    bus = StreamBus()
+    events: list[StreamEvent] = []
+
+    async def _consume() -> None:
+        async for event in bus.subscribe():
+            events.append(event)
+
+    consumer = asyncio.create_task(_consume())
+    await asyncio.sleep(0)
+    await pipeline.run(
+        UnifiedContext(
+            session_id="s1",
+            user_message="Explain gradient descent",
+            language="en",
+            metadata={"turn_id": "t1"},
+            runtime=TurnRuntimeContext(workspace=WorkspaceRuntimeContext()),
+        ),
+        bus,
+    )
+    await asyncio.sleep(0)
+    await bus.close()
+    await consumer
+
+    result = [e for e in events if e.type == StreamEventType.RESULT][-1]
+    budget = result.metadata["metadata"]["context_budget"]
+    assert budget["reasoning_effort"] == "high"
+
+    # Without a resolved effort the key stays absent — the popover then
+    # shows the model alone, matching "provider default" runs.
+    pipeline.reasoning_effort = None
+    plain = pipeline.measure_context_budget(LLMRequestSnapshot())
+    assert plain is not None
+    assert "reasoning_effort" not in plain
 
 
 @pytest.mark.asyncio
@@ -522,6 +602,7 @@ async def test_forced_finish_still_reports_the_tools_the_turn_carried(
             user_message="Explain gradient descent",
             language="en",
             metadata={"turn_id": "t2"},
+            runtime=TurnRuntimeContext(workspace=WorkspaceRuntimeContext()),
         ),
         bus,
     )

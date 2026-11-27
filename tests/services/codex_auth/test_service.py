@@ -4,6 +4,7 @@ import asyncio
 from copy import deepcopy
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -1624,6 +1625,37 @@ async def test_revoke_failure_does_not_block_local_logout_and_restore(
 
 
 @pytest.mark.asyncio
+async def test_revoke_failure_logs_warning_without_token_content(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service, _callback, oauth, _catalog, store, _model_catalog = await _oauth_service(tmp_path)
+    store.commit_credentials(_stored_credentials(), expected_generation=0)
+    oauth.revoke_error = CodexAuthError(
+        "token_revoke_failed",
+        "Codex authentication could not be revoked remotely.",
+        502,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.codex_auth.service"):
+        status = await service.logout()
+
+    assert status["connection"] == "disconnected"
+    assert store.load_credentials() is None
+    warnings = [
+        record
+        for record in caplog.records
+        if record.name == "deeptutor.services.codex_auth.service"
+        and record.levelno >= logging.WARNING
+    ]
+    assert warnings, "a failed token revocation during logout must be logged"
+    rendered = "\n".join(record.getMessage() for record in warnings)
+    assert "token_revoke_failed" in rendered
+    for secret in ("old-access", "old-refresh", "old-id", "account-123"):
+        assert secret not in rendered
+
+
+@pytest.mark.asyncio
 async def test_restarted_service_restores_connection_without_operation_or_secrets(
     tmp_path: Path,
 ) -> None:
@@ -1698,7 +1730,7 @@ async def test_get_token_stops_refreshing_after_a_failed_refresh(tmp_path: Path)
     When the stored credential no longer refreshes (a revoked session, an
     account the provider no longer authorizes), every turn used to call the
     token endpoint again, fail again, and surface a fresh reauth each message.
-    One failure is enough to hold the auth state for the cooldown window and
+    One failure is enough to hold the auth state until a new sign-in and
     fail fast with a clear error instead of hammering the provider per turn.
     """
     clock = [1_000]
@@ -1729,8 +1761,8 @@ async def test_get_token_stops_refreshing_after_a_failed_refresh(tmp_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_get_token_retries_after_the_reauth_cooldown_elapses(tmp_path: Path) -> None:
-    """The cooldown is not a permanent lock: a transient failure can recover."""
+async def test_rejected_grant_stays_terminal_after_time_and_service_restart(tmp_path: Path) -> None:
+    """#1454: a revoked grant cannot become valid just because 60 seconds elapsed."""
     clock = [1_000]
     service, _callback, oauth, _catalog, store, _models = await _oauth_service(
         tmp_path, clock=clock
@@ -1745,12 +1777,36 @@ async def test_get_token_retries_after_the_reauth_cooldown_elapses(tmp_path: Pat
         await service.get_token()
     assert oauth.refresh_calls == 1
 
-    # Let the cooldown elapse; the next call is allowed one fresh attempt.
-    clock[0] += 120
+    clock[0] += 3600
     oauth.refresh_error = None
-    token = await service.get_token()
-    assert oauth.refresh_calls == 2
-    assert token.access_token == "refreshed-access"
+    with pytest.raises(CodexAuthError, match="Sign in to Codex again"):
+        await service.get_token()
+    assert oauth.refresh_calls == 1
+    assert service.public_status()["connection"] == "error"
+    assert service.public_status()["error_code"] == "authentication_required"
+
+    restarted, _callback, restarted_oauth, _catalog, _store, _models = await _oauth_service(
+        tmp_path, clock=clock
+    )
+    with pytest.raises(CodexAuthError, match="Sign in to Codex again"):
+        await restarted.get_token()
+    with pytest.raises(CodexAuthError, match="Sign in to Codex again"):
+        await restarted.recover_after_unauthorized(store.current_generation())
+    assert restarted_oauth.refresh_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_old_refresh_rejection_does_not_block_a_new_credential_generation(
+    tmp_path: Path,
+) -> None:
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(tmp_path)
+    old = store.commit_credentials(_stored_credentials(expires_at=20_000), expected_generation=0)
+    current = store.commit_credentials(
+        _stored_credentials(expires_at=30_000), expected_generation=old.generation
+    )
+    store.mark_authentication_rejected(old.generation)
+    assert await service.get_token() == current.public_token()
+    assert oauth.refresh_calls == 0
 
 
 @pytest.mark.asyncio

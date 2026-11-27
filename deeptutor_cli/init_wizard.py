@@ -47,6 +47,7 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
     "gemini",
     "siliconflow",
     "openrouter",
+    "github_copilot",
     "ollama",
 )
 
@@ -54,6 +55,11 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
 # provider is "custom". Live fetch is preferred — keep these short, just enough
 # to unblock common cases.
 LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
+    "github_copilot": (
+        "github-copilot/gpt-4.1",
+        "github-copilot/gpt-4o",
+        "github-copilot/claude-sonnet-4",
+    ),
     "openai": ("gpt-4o-mini", "gpt-4o", "o4-mini", "gpt-4.1", "gpt-4.1-mini"),
     "anthropic": (
         "claude-sonnet-4-6",
@@ -73,12 +79,6 @@ LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
         "openai/gpt-4o-mini",
         "anthropic/claude-sonnet-4-6",
         "deepseek/deepseek-chat",
-    ),
-    "orcarouter": (
-        "orcarouter/auto",
-        "anthropic/claude-sonnet-4-6",
-        "deepseek/deepseek-v4-pro",
-        "openai/gpt-4o",
     ),
     "ollama": ("llama3.2", "qwen2.5", "mistral"),
 }
@@ -115,7 +115,6 @@ EMBEDDING_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "jina": ("jina-embeddings-v3", "jina-embeddings-v2-base-en"),
     "cohere": ("embed-v4.0", "embed-multilingual-v3.0", "embed-english-v3.0"),
     "openrouter": ("openai/text-embedding-3-large",),
-    "orcarouter": ("openai/text-embedding-3-large",),
     "vllm": ("BAAI/bge-m3",),
     "ollama": ("nomic-embed-text", "mxbai-embed-large", "snowflake-arctic-embed"),
 }
@@ -177,11 +176,25 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="Google SERP · News & Scholar modes · paid",
     ),
     SearchProviderSpec(
+        name="searchapi",
+        label="SearchApi",
+        requires_api_key=True,
+        env_keys=("SEARCHAPI_API_KEY", "SEARCH_API_KEY"),
+        hint="Google SERP · News & Scholar modes · 100 free requests",
+    ),
+    SearchProviderSpec(
         name="perplexity",
         label="Perplexity",
         requires_api_key=True,
         env_keys=("PERPLEXITY_API_KEY", "SEARCH_API_KEY"),
         hint="answer-style search",
+    ),
+    SearchProviderSpec(
+        name="specstream",
+        label="SpecStream",
+        requires_api_key=True,
+        env_keys=("SPECSTREAM_API_KEY", "SEARCH_API_KEY"),
+        hint="answer-style search · paid",
     ),
     SearchProviderSpec(
         name="firecrawl",
@@ -229,10 +242,24 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="China-hosted · reranked results",
     ),
     SearchProviderSpec(
+        name="deepseek",
+        label="DeepSeek (深度求索)",
+        requires_api_key=True,
+        env_keys=("DEEPSEEK_API_KEY", "SEARCH_API_KEY"),
+        hint="own engine · optional page bodies · billed per request",
+    ),
+    SearchProviderSpec(
         name="duckduckgo",
         label="DuckDuckGo",
         requires_api_key=False,
         hint="no API key needed",
+    ),
+    SearchProviderSpec(
+        name="you",
+        label="You.com",
+        requires_api_key=True,
+        env_keys=("YDC_API_KEY", "SEARCH_API_KEY"),
+        hint="You.com Search API key",
     ),
     SearchProviderSpec(
         name="searxng",
@@ -241,6 +268,14 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         requires_base_url=True,
         default_base_url="http://localhost:8888",
         hint="self-hosted · provide your instance URL",
+    ),
+    SearchProviderSpec(
+        name="google_browser_scraper",
+        label="Google Browser Scraper",
+        requires_api_key=False,
+        requires_base_url=True,
+        default_base_url="http://127.0.0.1:8000",
+        hint="self-hosted Google in a real browser · your own proxy",
     ),
     SearchProviderSpec(
         name="none",
@@ -853,8 +888,15 @@ def select_model(
 # --- Connectivity probe --------------------------------------------------------
 
 
+_REASONING_SAFE_PROBE_MAX_TOKENS = 4096
+
+
 def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple[bool, int, str]:
-    """Send a single-token completion to verify credentials.
+    """Send a brief completion to verify credentials.
+
+    Reasoning models spend output budget on hidden tokens before they emit
+    text. A one-token probe makes some of them fail before returning content,
+    which misreports a valid configuration as broken.
 
     Returns ``(ok, elapsed_ms, error_or_empty)``. Network failures, auth
     failures, 4xx, 5xx all surface as ``ok=False`` with a short error string.
@@ -873,7 +915,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                "max_tokens": 1,
+                "max_tokens": _REASONING_SAFE_PROBE_MAX_TOKENS,
                 "messages": [{"role": "user", "content": "ping"}],
             }
         else:
@@ -884,7 +926,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                **get_token_limit_kwargs(model, 1),
+                **get_token_limit_kwargs(model, _REASONING_SAFE_PROBE_MAX_TOKENS),
                 "messages": [{"role": "user", "content": "ping"}],
             }
 

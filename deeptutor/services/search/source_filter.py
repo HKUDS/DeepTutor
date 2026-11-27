@@ -224,18 +224,23 @@ def _moderation_rejections(
     Fail open on transport/API errors so a Moderation outage does not blank
     every web-search turn — heuristics already ran.
     """
-    payloads = list(dict.fromkeys(text.strip()[:4000] for text in texts if text.strip()))
-    if not payloads or not api_key:
+    # Key by each exact submitted text so a caller can look up its own row text.
+    # Re-stripping here (text.strip()[:4000]) silently desynced the key from the
+    # submitted text when the caller's text ended in whitespace — e.g. a long
+    # reference whose own [:4000] cut landed on a space — so the lookup missed
+    # and a flagged reference failed open. Cap only the payload sent to the API.
+    unique_texts = list(dict.fromkeys(text for text in texts if text.strip()))
+    if not unique_texts or not api_key:
         return {}
     requester = request_moderation or _request_openai_moderation
     try:
-        flagged = requester(payloads, api_key=api_key)
-        if not isinstance(flagged, (list, tuple)) or len(flagged) != len(payloads):
+        flagged = requester([text[:4000] for text in unique_texts], api_key=api_key)
+        if not isinstance(flagged, (list, tuple)) or len(flagged) != len(unique_texts):
             raise ValueError("Moderation returned an unexpected result count")
     except Exception as exc:  # noqa: BLE001 — network / JSON / provider quirks
         _logger.warning("OpenAI Moderation skipped after error: %s", exc)
         return {}
-    return {text: bool(decision) for text, decision in zip(payloads, flagged, strict=True)}
+    return {text: bool(decision) for text, decision in zip(unique_texts, flagged, strict=True)}
 
 
 def _request_openai_moderation(texts: list[str], *, api_key: str) -> list[bool]:

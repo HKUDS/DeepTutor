@@ -28,7 +28,7 @@ from deeptutor.services.generation_http import (
     join_api_path,
     raise_for_provider,
 )
-from deeptutor.services.videogen.base import BaseVideogenAdapter, ProgressFn
+from deeptutor.services.videogen.base import BaseVideogenAdapter, ProgressFn, video_poll_budget
 from deeptutor.services.videogen.config import VideogenConfig
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class AsyncTaskVideogenAdapter(BaseVideogenAdapter):
     async def submit_task(self, prompt: str, config: VideogenConfig) -> str:
         if not config.base_url:
             raise GenerationProviderError("No endpoint URL configured for video generation.")
-        submit_url = join_api_path(config.base_url, _SUBMIT_PATH)
+        submit_url = join_api_path(config.base_url, self._submit_path())
         payload = self._build_submit_payload(prompt, config)
         logger.debug("videogen submit url=%s model=%s", submit_url, config.model)
         try:
@@ -97,7 +97,18 @@ class AsyncTaskVideogenAdapter(BaseVideogenAdapter):
         task_id: str,
         progress: ProgressFn | None,
     ) -> str:
-        poll_url = join_api_path(config.base_url, f"{_SUBMIT_PATH}/{task_id}")
+        async with video_poll_budget(config.poll_timeout, task_id):
+            return await self._poll_until_complete(client, config, headers, task_id, progress)
+
+    async def _poll_until_complete(
+        self,
+        client: httpx.AsyncClient,
+        config: VideogenConfig,
+        headers: dict[str, str],
+        task_id: str,
+        progress: ProgressFn | None,
+    ) -> str:
+        poll_url = self._status_url(config, task_id)
         deadline = time.monotonic() + config.poll_timeout
         polls = 0
         while True:
@@ -121,6 +132,19 @@ class AsyncTaskVideogenAdapter(BaseVideogenAdapter):
             await asyncio.sleep(config.poll_interval)
 
     # --- provider-specific shaping -------------------------------------------
+
+    @staticmethod
+    def _submit_path() -> str:
+        """Relative path used to submit a task. Override for vendors whose
+        submit path is not the Seedance ``contents/generations/tasks`` one."""
+        return _SUBMIT_PATH
+
+    @staticmethod
+    def _status_url(config: VideogenConfig, task_id: str) -> str:
+        """Where to poll a submitted task. Providers with a separate status
+        path (xAI uses ``/videos/{id}``, not ``/videos/generations/{id}``)
+        override this without duplicating the polling loop."""
+        return join_api_path(config.base_url, f"{_SUBMIT_PATH}/{task_id}")
 
     @staticmethod
     def _build_submit_payload(prompt: str, config: VideogenConfig) -> dict[str, Any]:

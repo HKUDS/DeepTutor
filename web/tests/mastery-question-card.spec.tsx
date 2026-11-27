@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,23 @@ const question = (overrides: Partial<MasteryQuestion> = {}): MasteryQuestion => 
 });
 
 describe("MasteryQuestionCard", () => {
+  it("shows original evidence and assisted meaning without exposing a reference key", () => {
+    render(<MasteryQuestionCard question={question({ visual: { task: "identification", answerCues: "visible", keyStatus: "unverified", hintsUsed: 1, sources: [{ imageUrl: "/api/knowledge-bases/kb/visual-assets/known", url: "/api/knowledge-bases/kb/files/book.pdf#page=4", sourcePath: "book.pdf", page: 4 }] } })} grade={null} answered={false} submittedAnswer="" onSubmit={() => true} />);
+    expect(screen.getByRole("img", { name: "Original source evidence" })).toHaveAttribute("src", "/api/knowledge-bases/kb/visual-assets/known");
+    expect(screen.getByText("Guided visual practice — this does not demonstrate independent mastery.")).toBeInTheDocument();
+    expect(screen.getByText("The reference key is uncertain. This practice will remain ungraded.")).toBeInTheDocument();
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.getByRole("alert")).toHaveTextContent("The source image is unavailable");
+  });
+  it("keeps uncertain grades neutral and sends a source-review challenge", async () => {
+    const user = userEvent.setup();
+    const onChallenge = vi.fn(() => true);
+    render(<MasteryQuestionCard question={question()} grade={{ questionId: "q-free", isCorrect: false, result: "ungraded", learnerAnswer: "ambiguous", correctLabel: "", correctBody: "", explanation: "Source evidence needs clarification." }} answered submittedAnswer="" onSubmit={() => true} onChallenge={onChallenge} />);
+    expect(screen.getByText("Ungraded — mastery unchanged")).toBeInTheDocument();
+    expect(screen.queryByText("Not quite")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Review or challenge this assessment" }));
+    expect(onChallenge).toHaveBeenCalledWith("q-free");
+  });
   it("enables submit from a free-text-only question", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(() => true);

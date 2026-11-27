@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import importlib
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -655,42 +656,28 @@ def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:
         )
 
 
-def test_supported_file_types_returns_upload_policy() -> None:
+def test_supported_file_types_returns_upload_policy(monkeypatch) -> None:
+    monkeypatch.setattr(
+        knowledge_router_module.FileTypeRouter,
+        "accepted_upload_extensions",
+        classmethod(lambda cls: {".pdf", ".md", ".docx"}),
+    )
     with TestClient(_build_app()) as client:
         response = client.get("/api/knowledge-bases/supported-file-types")
-
     assert response.status_code == 200
     payload = response.json()
-    assert ".pdf" in payload["extensions"]
-    assert ".docx" in payload["extensions"]
-    assert ".xlsx" in payload["extensions"]
-    assert ".pptx" in payload["extensions"]
-    assert ".md" in payload["extensions"]
-    assert ".png" in payload["extensions"]
-    assert ".pages" in payload["extensions"]
-    assert ".mp4" in payload["extensions"]
-    assert ".dclg.xml" in payload["extensions"]
-    assert ".tar.gz" in payload["extensions"]
-    assert ".ipynb" in payload["extensions"]
-    assert ".cbz" in payload["extensions"]
-    assert ".key" in payload["extensions"]
-    assert ".vsdx" in payload["extensions"]
-    assert ".sqlite3" in payload["extensions"]
+    assert payload["extensions"] == [".docx", ".md", ".pdf"]
     assert payload["max_file_size_bytes"] > 0
-    assert "max_pdf_size_bytes" not in payload
     assert ".pdf" in payload["accept"]
-    assert ".docx" in payload["accept"]
-    assert ".png" in payload["accept"]
-    assert ".tar.gz" in payload["accept"]
-    assert "image/png" in payload["accept"]
+    assert ".doc" not in payload["extensions"]
     assert payload["allow_any_extension"] is False
 
 
 def test_supported_file_types_can_delegate_all_extensions(monkeypatch) -> None:
     monkeypatch.setattr(
         knowledge_router_module.FileTypeRouter,
-        "active_parser_accepts_any_format",
-        classmethod(lambda cls: True),
+        "accepted_upload_extensions",
+        classmethod(lambda cls: set()),
     )
 
     with TestClient(_build_app()) as client:
@@ -1920,6 +1907,72 @@ def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Pa
     assert task["error"] == "original indexing failure"
 
 
+def test_reindex_task_surfaces_failed_error_progress_write(
+    monkeypatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing error-progress write must not vanish silently.
+
+    The rebuild's task-level failure stays authoritative; the router logs the
+    degraded progress write instead of swallowing it with ``except: pass``.
+    """
+    base_dir = tmp_path / "knowledge_bases"
+    raw_dir = base_dir / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "fixture.txt").write_text("fixture", encoding="utf-8")
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "lightrag",
+                        "status": "processing",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _FailingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def initialize(self, *_args, **_kwargs) -> bool:
+            raise RuntimeError("original indexing failure")
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _FailingRagService)
+
+    class _ErrorWriteFailsTracker(knowledge_router_module.ProgressTracker):
+        def update(self, stage, *args, **kwargs):
+            if stage is knowledge_router_module.ProgressStage.ERROR:
+                raise OSError("synthetic error progress write failure")
+            return super().update(stage, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_router_module, "ProgressTracker", _ErrorWriteFailsTracker)
+
+    task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "error-progress")
+    with caplog.at_level(logging.WARNING, logger="deeptutor.api.routers.knowledge"):
+        asyncio.run(
+            knowledge_router_module.run_reindex_task(
+                kb_name="kb",
+                base_dir=str(base_dir),
+                task_id=task_id,
+                signature_hash="lightrag",
+            )
+        )
+
+    task = knowledge_router_module.TaskIDManager.get_instance().get_task_metadata(task_id)
+    assert task is not None
+    assert task["status"] == "error"
+    assert task["error"] == "original indexing failure"
+    warnings = [
+        record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+    ]
+    assert any("error progress" in message and "kb" in message for message in warnings), warnings
+
+
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])
 def test_reindex_task_does_not_report_a_published_version_as_failed_when_bookkeeping_fails(
     monkeypatch, tmp_path: Path, failed_sink: str
@@ -3133,6 +3186,32 @@ def test_delete_reports_a_missing_knowledge_base_as_404(monkeypatch, tmp_path: P
     assert response.status_code == 404
 
 
+def test_delete_kb_file_success_and_traversal(monkeypatch, tmp_path: Path) -> None:
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = tmp_path / "kbs" / "chem"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    test_file = raw_dir / "notes.txt"
+    test_file.write_text("chemical reaction formulas")
+    manager.config.setdefault("knowledge_bases", {})["chem"] = {
+        "rag_provider": "llamaindex",
+        "status": "ready",
+    }
+    manager._save_config()
+
+    with TestClient(_build_app()) as client:
+        # Non-existent file
+        res_404 = client.delete("/api/knowledge-bases/chem/files/nonexistent.txt")
+        assert res_404.status_code == 404
+
+        # Successful deletion
+        res_ok = client.delete("/api/knowledge-bases/chem/files/notes.txt")
+        assert res_ok.status_code == 200
+        assert res_ok.json()["status"] == "ok"
+        assert not test_file.exists()
+
+
 @pytest.mark.parametrize("first_upload_fails", [False, True])
 def test_create_empty_llamaindex_kb_then_upload_and_retry(
     monkeypatch, tmp_path, first_upload_fails
@@ -3252,3 +3331,38 @@ async def test_health_counts_registry_without_constructing_index_manager(tmp_pat
     result = await knowledge_router_module.health_check()
     assert result["status"] == "ok"
     assert result["knowledge_bases_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/knowledge-bases/missing-kb"),
+        ("DELETE", "/api/knowledge-bases/missing-kb"),
+        ("PUT", "/api/knowledge-bases/default/missing-kb"),
+        ("GET", "/api/knowledge-bases/missing-kb/progress"),
+        ("POST", "/api/knowledge-bases/missing-kb/progress/clear"),
+        ("POST", "/api/knowledge-bases/missing-kb/reindex"),
+        ("POST", "/api/knowledge-bases/missing-kb/retry"),
+        ("GET", "/api/knowledge-bases/missing-kb/linked-folders"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/linked-folders/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-folder/x"),
+        ("GET", "/api/knowledge-bases/missing-kb/github-sources"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/github-source/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-github"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-sources"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-source-sync"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/web-source/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/web-source/x/cancel"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-source/x/pairings"),
+        ("POST", "/api/knowledge-bases/missing-kb/web-source/x/retry"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-web"),
+    ],
+)
+def test_missing_kb_returns_404_instead_of_500(method: str, path: str) -> None:
+    """The resolver raises ``AccessError``; the routes' re-raise guards must let it
+    reach the app handler instead of their ``except Exception`` turning it into 500."""
+    from deeptutor.api.main import app
+
+    response = TestClient(app, raise_server_exceptions=False).request(method, path, json={})
+
+    assert response.status_code == 404, response.text

@@ -64,11 +64,18 @@ class AsyncSingleFlightTTLCache(Generic[K, V]):
         if pending is None or pending.done():
             pending = asyncio.ensure_future(factory())
             self.inflight[key] = pending
-        try:
-            value = await pending
-        finally:
-            if self.inflight.get(key) is pending:
-                self.inflight.pop(key, None)
+
+            def producer_done(completed: asyncio.Future[V]) -> None:
+                # The producer, rather than a cancelled consumer, owns removal.
+                if self.inflight.get(key) is completed:
+                    self.inflight.pop(key, None)
+                # All consumers may have gone away before a producer fails.
+                # Retrieve its exception without changing what awaiters receive.
+                if not completed.cancelled():
+                    completed.exception()
+
+            pending.add_done_callback(producer_done)
+        value = await asyncio.shield(pending)
 
         if cache_when(value):
             self.remember(key, value)

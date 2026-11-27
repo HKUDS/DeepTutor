@@ -6,29 +6,18 @@ from typing import cast
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.core.capability_protocol import (
-    CapabilityManifest,
     StreamBusProtocol,
     TurnCapability,
 )
 from deeptutor.core.context import UnifiedContext
-from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 
 
 class AskQuestionsCapability(TurnCapability):
     """Start the selected turn with a context-aware question card."""
 
-    manifest = CapabilityManifest(
-        name="ask_questions",
-        description=(
-            "Ask the user high-value questions to fill in missing context, "
-            "then complete the original request with their answers."
-        ),
-        stages=["responding"],
-        tools_used=["ask_user"],
-        cli_aliases=["ask"],
-        request_schema=get_capability_request_schema("chat"),
-    )
+    manifest = builtin_capability_manifest("ask_questions")
 
     async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         context.metadata["ask_questions_mode"] = True

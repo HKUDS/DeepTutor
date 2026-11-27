@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
+import { APP_LANGUAGES } from "../i18n/languages";
 
 const audit = path.resolve("scripts/i18n_audit.mjs");
 
@@ -15,11 +16,22 @@ function runAudit(
   const root = mkdtempSync(path.join(tmpdir(), "deeptutor-i18n-"));
   try {
     for (const [locale, entries] of Object.entries({
+      ...Object.fromEntries(APP_LANGUAGES.map(({ code }) => {
+        const entries = { ...en };
+        for (const [key, value] of Object.entries(en)) {
+          if (!key.endsWith("_other")) continue;
+          for (const category of new Intl.PluralRules(code).resolvedOptions().pluralCategories) {
+            entries[`${key.slice(0, -6)}_${category}`] ??= value;
+          }
+        }
+        return [code, entries];
+      })),
       en,
       zh,
       fr: partial.fr ?? en,
       de: en,
       uk: partial.uk ?? en,
+      tr: en,
     })) {
       mkdirSync(path.join(root, "locales", locale), { recursive: true });
       writeFileSync(path.join(root, "locales", locale, "app.json"), JSON.stringify(entries));

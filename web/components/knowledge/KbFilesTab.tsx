@@ -13,6 +13,7 @@ import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import { useCollapsiblePanel } from "@/hooks/useCollapsiblePanel";
 import KbDocumentList from "./KbDocumentList";
 import KbFilePreview from "./KbFilePreview";
+import KbVisualCoverage from "./KbVisualCoverage";
 
 interface KbFilesTabProps {
   kb: KnowledgeBase;
@@ -69,6 +70,7 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
         onToggleCollapsed={fileListPanel.toggle}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {selectedFile && <KbVisualCoverage key={`${kbRef}/${selectedFile.name}`} kbName={kbRef} sourcePath={selectedFile.name} revision={refreshKey} />}
         <KbFilePreview
           source={previewSource}
           fileListCollapsed={fileListPanel.collapsed}

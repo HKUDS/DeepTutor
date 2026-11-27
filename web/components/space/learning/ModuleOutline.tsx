@@ -99,32 +99,27 @@ export function ModuleOutline({
   const topicName = topicDisplayName(topic, t);
 
   return (
-    // One card per module rather than one card divided into modules. A module
-    // is the unit the learner reasons about — it has its own objective, its own
-    // progress, and it is what `mastery_revise` operates on — and a single
-    // ruled list made a ten-module outline read as one undifferentiated wall.
+    // One block per module rather than one list divided into modules. A
+    // module is the unit the learner reasons about — it has its own objective,
+    // its own progress, and it is what `mastery_revise` operates on. Blocks are
+    // set apart by space and a heading, not by frames: ten framed modules read
+    // as ten boxes before they read as an outline.
     <section
       id="mastery-outline-start"
       aria-label={t("Topic outline")}
-      className="space-y-3"
     >
       {topic.map.modules.map((module, moduleIndex) => (
-        <div
-          key={module.id}
-          className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]"
-        >
+        <div key={module.id} className="dt-outline-module">
           <div>
-            <header className="bg-[var(--secondary)] px-4 py-2.5">
-              <div className="flex items-baseline gap-2.5">
-                <span className="text-[11px] font-semibold tabular-nums text-[var(--muted-foreground)]">
-                  {t("Module {{n}}", { n: moduleIndex + 1 })}
-                </span>
-                {module.name.trim() !== topicName.trim() && (
-                  <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-                    {module.name}
-                  </h2>
+            <header>
+              <div className="dt-outline-module-head">
+                <span>{t("Module {{n}}", { n: moduleIndex + 1 })}</span>
+                {module.name.trim() !== topicName.trim() ? (
+                  <h2>{module.name}</h2>
+                ) : (
+                  <span className="flex-1" />
                 )}
-                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                <span>
                   {module.mastered}/{module.total}
                 </span>
               </div>
@@ -133,7 +128,7 @@ export function ModuleOutline({
                   sentence is also the contract the tutor may revise them
                   against — so it is worth the second line. */}
               {module.objective.trim() && (
-                <p className="mt-1 text-[12px] leading-5 text-[var(--muted-foreground)]">
+                <p className="-mt-1 px-2.5 pb-1.5 text-[12px] leading-5 text-[var(--muted-foreground)]">
                   {module.objective}
                 </p>
               )}
@@ -148,11 +143,7 @@ export function ModuleOutline({
                       type="button"
                       onClick={() => onSelect(selected ? null : point.id)}
                       aria-pressed={selected}
-                      className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
-                        selected
-                          ? "bg-[var(--muted)]"
-                          : "hover:bg-[var(--muted)]/60"
-                      }`}
+                      className="dt-panel-row"
                     >
                       <StatusMark point={point} />
                       <span
@@ -251,7 +242,7 @@ function ObjectiveDrawer({
   };
 
   return (
-    <aside className="border-t border-[var(--border)] bg-[var(--secondary)]/60 py-4 pl-[52px] pr-4">
+    <aside className="dt-outline-drawer">
       {!report ? (
         <div className="flex min-h-32 items-center justify-center text-[var(--muted-foreground)]">
           {error ? error : <Loader2 className="h-5 w-5 animate-spin" />}
@@ -281,7 +272,7 @@ function ObjectiveDrawer({
           <ObjectiveDetail report={report} zh={zh} />
 
           {!report.assessed_mastered && (
-            <div className="mt-5 border-t border-[var(--border)] pt-4">
+            <div className="mt-5 pt-1">
               {report.mastery_source === "learner" ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="text-xs leading-5 text-[var(--muted-foreground)]">

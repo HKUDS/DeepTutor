@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+import time
 
 import pytest
 
 from deeptutor.services import file_io
 from deeptutor.services.file_io import atomic_write_json, atomic_write_text
+
+
+def _failing_fsync(_fd: int) -> None:
+    raise OSError("simulated disk failure")
 
 
 def test_atomic_write_json_creates_parent_and_replaces_content(tmp_path: Path) -> None:
@@ -59,3 +65,109 @@ def test_atomic_write_text_creates_parent_and_replaces_content(tmp_path: Path) -
 
     assert path.read_text(encoding="utf-8") == "second"
     assert list(path.parent.iterdir()) == [path]
+
+
+def test_atomic_write_json_warns_and_still_writes_when_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(file_io.os, "fsync", _failing_fsync)
+    monkeypatch.setattr(file_io, "_last_fsync_warning_at", None)
+    path = tmp_path / "nested" / "settings.json"
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.file_io"):
+        atomic_write_json(path, {"value": 1})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"value": 1}
+    assert [p.name for p in path.parent.iterdir()] == ["settings.json"]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "fsync" in warnings[0].getMessage()
+    assert str(path) in warnings[0].getMessage()
+
+
+def test_atomic_write_text_warns_and_still_writes_when_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(file_io.os, "fsync", _failing_fsync)
+    monkeypatch.setattr(file_io, "_last_fsync_warning_at", None)
+    path = tmp_path / "nested" / "note.md"
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.file_io"):
+        atomic_write_text(path, "content")
+
+    assert path.read_text(encoding="utf-8") == "content"
+    assert [p.name for p in path.parent.iterdir()] == ["note.md"]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "fsync" in warnings[0].getMessage()
+    assert str(path) in warnings[0].getMessage()
+
+
+def test_fsync_warning_is_rate_limited_but_recovers_after_interval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(file_io.os, "fsync", _failing_fsync)
+    monkeypatch.setattr(file_io, "_last_fsync_warning_at", None)
+    path = tmp_path / "nested" / "note.md"
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.file_io"):
+        for attempt in range(3):
+            atomic_write_text(path, f"attempt-{attempt}")
+
+    assert path.read_text(encoding="utf-8") == "attempt-2"
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+    monkeypatch.setattr(
+        file_io,
+        "_last_fsync_warning_at",
+        time.monotonic() - file_io._FSYNC_WARNING_INTERVAL_SECONDS - 1.0,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.file_io"):
+        atomic_write_text(path, "after-interval")
+
+    assert path.read_text(encoding="utf-8") == "after-interval"
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+def test_read_text_retries_transient_permission_error_then_gives_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    atomic_write_json(path, {"title": "Résumé 数学"})
+    original = Path.read_text
+    attempts: list[str | None] = []
+    sleeps: list[float] = []
+
+    def locked_read(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        attempts.append(encoding)
+        if len(attempts) <= failures:
+            raise PermissionError(13, "Permission denied", str(self))
+        return original(self, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", locked_read)
+    monkeypatch.setattr(file_io.time, "sleep", sleeps.append)
+
+    failures = 2
+    assert json.loads(file_io.read_text(path)) == {"title": "Résumé 数学"}
+    assert attempts == ["utf-8"] * 3
+    assert sleeps == [0.2, 0.4]
+
+    attempts.clear()
+    sleeps.clear()
+    failures = 100
+    with pytest.raises(PermissionError):
+        file_io.read_text(path)
+    assert len(attempts) == 5
+    assert sleeps == [0.2, 0.4, 0.8, 1.6]
+
+
+def test_read_text_does_not_retry_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        file_io.read_text(tmp_path / "missing.json")

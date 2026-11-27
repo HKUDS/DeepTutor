@@ -10,7 +10,7 @@ const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 export type BinarySourceState =
   | { kind: "loading" }
-  | { kind: "ready"; buffer: ArrayBuffer }
+  | { kind: "ready"; buffer: ArrayBuffer; objectUrl?: string }
   | { kind: "error"; message: string };
 
 /**
@@ -19,7 +19,7 @@ export type BinarySourceState =
  * header and aborts on unmount / url change. Mirrors {@link useTextSource}
  * but yields raw bytes instead of decoded text.
  */
-export function useBinarySource(url: string | null): BinarySourceState {
+export function useBinarySource(url: string | null, objectMimeType?: string): BinarySourceState {
   const [state, setState] = useState<BinarySourceState>({ kind: "loading" });
   const reqIdRef = useRef(0);
 
@@ -31,6 +31,7 @@ export function useBinarySource(url: string | null): BinarySourceState {
 
     const reqId = ++reqIdRef.current;
     const controller = new AbortController();
+    let objectUrl: string | undefined;
     setState({ kind: "loading" });
 
     (async () => {
@@ -44,8 +45,9 @@ export function useBinarySource(url: string | null): BinarySourceState {
           );
         }
         const buffer = await res.arrayBuffer();
-        if (reqIdRef.current !== reqId) return; // superseded
-        setState({ kind: "ready", buffer });
+        if (controller.signal.aborted || reqIdRef.current !== reqId) return; // superseded
+        if (objectMimeType) objectUrl = URL.createObjectURL(new Blob([buffer], { type: objectMimeType }));
+        setState({ kind: "ready", buffer, ...(objectUrl ? { objectUrl } : {}) });
       } catch (err) {
         if (controller.signal.aborted) return;
         if (reqIdRef.current !== reqId) return;
@@ -57,8 +59,9 @@ export function useBinarySource(url: string | null): BinarySourceState {
 
     return () => {
       controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [url]);
+  }, [url, objectMimeType]);
 
   return state;
 }

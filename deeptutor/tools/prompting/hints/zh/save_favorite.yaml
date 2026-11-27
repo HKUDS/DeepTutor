@@ -1,0 +1,5 @@
+short_description: "原样收藏对话或结果。"
+when_to_use: "用户要收藏原文时用 list_favorites 选择真实收藏夹。"
+input_format: '{"mode": "append", "notebook_id": "id", "title": "标题", "turns_to_include": "3"}'
+guideline: "edit 模式仅修改标题或备注，不能改写存档正文。"
+phase: "synthesis"

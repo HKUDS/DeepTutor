@@ -22,8 +22,8 @@ import {
   isMasteryDraftSendReady,
   type MasteryDraftRouteGuard,
 } from "@/lib/mastery-study-route";
-import { courseSessionConfiguration } from "@/lib/course-session-scope";
 import type { MasteryMode } from "@/lib/mastery-mode";
+import { consumePendingLLMSelection } from "@/lib/pending-llm-selection";
 import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 
 /**
@@ -38,7 +38,6 @@ import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 export function useMasteryStudySession(
   pathId: string,
   routeSessionId?: string,
-  courseId = "",
   /**
    * What a conversation opened on this route is for. Only meaningful for a
    * new one: an existing conversation's kind was decided when it was opened
@@ -70,6 +69,19 @@ export function useMasteryStudySession(
     previousSessionId: string | null;
   } | null>(null);
   const initializedRouteRef = useRef("");
+  // Retain the one-time handoff across StrictMode setup replay, but not route changes.
+  const openingSelectionRef = useRef<{
+    routeKey: string;
+    selection: ReturnType<typeof consumePendingLLMSelection>;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      openingSelectionRef.current !== null &&
+      openingSelectionRef.current.routeKey !== currentRouteKey
+    ) {
+      openingSelectionRef.current = null;
+    }
+  }, [currentRouteKey]);
   const sessionLoadRef = useRef<AbortController | null>(null);
   const draftRouteGuardRef = useRef<MasteryDraftRouteGuard | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
@@ -160,9 +172,23 @@ export function useMasteryStudySession(
         routeKey,
         previousSessionId: state.sessionId,
       };
-      const draftKey = newSession(
-        courseSessionConfiguration(sessionConfiguration, courseId),
-      );
+      let configuration = sessionConfiguration;
+      if (requestedMode === "outline") {
+        if (
+          openingSelectionRef.current === null ||
+          openingSelectionRef.current.routeKey !== routeKey
+        ) {
+          openingSelectionRef.current = {
+            routeKey,
+            selection: consumePendingLLMSelection(`mastery.outline.${pathId}`),
+          };
+        }
+        configuration = {
+          ...sessionConfiguration,
+          llmSelection: openingSelectionRef.current.selection,
+        };
+      }
+      const draftKey = newSession(configuration);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- record the draft created for this route.
       setDraftBinding({
         routeKey,
@@ -193,7 +219,7 @@ export function useMasteryStudySession(
         const cached = showCachedSession(routeSessionId);
         if (cached) {
           configureSession(
-            courseSessionConfiguration(sessionConfiguration, courseId),
+            sessionConfiguration,
             routeSessionId,
           );
         }
@@ -205,7 +231,7 @@ export function useMasteryStudySession(
       .then(() => {
         if (controller.signal.aborted) return;
         configureSession(
-          courseSessionConfiguration(sessionConfiguration, courseId),
+          sessionConfiguration,
           routeSessionId,
         );
         setSessionResolution({ routeKey, error: null });
@@ -221,12 +247,12 @@ export function useMasteryStudySession(
         });
       });
   }, [
-    courseId,
     configureSession,
     currentRouteKey,
     loadSession,
     newSession,
     pathId,
+    requestedMode,
     routeSessionId,
     sessionConfiguration,
     showCachedSession,
@@ -250,14 +276,12 @@ export function useMasteryStudySession(
     )
       return;
     const destination = new URL(existingMasterySessionRoute(pathId, newSessionId), window.location.origin);
-    if (courseId) destination.searchParams.set("course", courseId);
     router.replace(
       `${destination.pathname}${destination.search}`,
       { scroll: false },
     );
   }, [
     currentRouteKey,
-    courseId,
     pathId,
     routeSessionId,
     router,

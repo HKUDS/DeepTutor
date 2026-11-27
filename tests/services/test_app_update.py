@@ -32,7 +32,8 @@ def _release(**overrides: object) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_version_check_caches_success_for_the_ttl() -> None:
+async def test_version_check_caches_success_for_the_ttl(monkeypatch) -> None:
+    monkeypatch.setattr(app_update, "__version__", "1.6.15")
     calls = 0
 
     def handler(_request: httpx.Request) -> httpx.Response:
@@ -166,6 +167,30 @@ def test_detect_installation_keeps_source_and_docker_host_managed(
     installation = app_update.detect_installation()
     assert installation.mode == "pypi"
     assert installation.automatic_update is True
+
+
+def test_detect_installation_manual_command_includes_installed_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.modules import catalog
+
+    monkeypatch.setattr(app_update, "_running_in_container", lambda: False)
+    monkeypatch.setattr(app_update, "_running_from_source_checkout", lambda: False)
+    monkeypatch.setattr(app_update, "_distribution_direct_url", lambda: {})
+    monkeypatch.setattr(app_update, "running_under_systemd_service", lambda: False)
+    monkeypatch.setattr(app_update.sys, "prefix", str(tmp_path / "venv"))
+    monkeypatch.setattr(app_update.sys, "base_prefix", str(tmp_path / "base"))
+    monkeypatch.setattr(
+        catalog,
+        "installed_distributions",
+        lambda: ["deeptutor-server", "deeptutor-reading"],
+    )
+
+    installation = app_update.detect_installation()
+
+    assert installation.automatic_update is True
+    assert installation.command == ("pip install -U deeptutor deeptutor-server deeptutor-reading")
 
 
 def test_systemd_service_cgroup_disables_in_app_update(

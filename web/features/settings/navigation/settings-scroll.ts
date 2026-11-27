@@ -23,6 +23,14 @@ export function scrollToSettingsSection(
   behavior: ScrollBehavior = "smooth",
 ): boolean {
   const target = document.getElementById(key);
+  return scrollToSettingsElement(target, behavior);
+}
+
+/** Reveal a detail pane without scrolling the full-height app or the browser viewport. */
+export function scrollToSettingsElement(
+  target: HTMLElement | null,
+  behavior: ScrollBehavior = "smooth",
+): boolean {
   const scroller = target?.closest<HTMLElement>(SETTINGS_SCROLL_SELECTOR);
   if (!target || !scroller) return false;
 
@@ -35,6 +43,7 @@ export function scrollToSettingsSection(
     scroller.scrollTop +
     targetRect.top -
     scrollerRect.top -
+    scroller.clientTop -
     (Number.isFinite(scrollMargin) ? scrollMargin : 0);
 
   scroller.scrollTo({ top: Math.max(0, top), behavior });

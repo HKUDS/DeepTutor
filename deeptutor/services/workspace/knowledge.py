@@ -8,9 +8,13 @@ from dataclasses import replace
 import json
 from pathlib import Path
 
-from fastapi import HTTPException
+from deeptutor.core.errors import AccessError
 
 library_request: ContextVar[bool] = ContextVar("knowledge_library_request", default=False)
+# The workspace whose library page made a library request. Library requests
+# run unscoped so qualified ids resolve into any store, but the page lists only
+# the knowledge bases stored in the workspace it is opened in.
+library_viewer: ContextVar[str | None] = ContextVar("knowledge_library_viewer", default=None)
 
 
 def qualified_kb_id(name: str, workspace_id: str = "") -> str:
@@ -18,11 +22,19 @@ def qualified_kb_id(name: str, workspace_id: str = "") -> str:
 
 
 def workspace_id_for_kb_base_dir(base_dir: str | Path) -> str | None:
-    """Find the owned storage scope for a KB directory used by a background job."""
+    """Find the owned storage scope for a KB directory used by a background job.
+
+    A registration can outlive its folder (archived leftovers, a directory the
+    user moved or deleted). Entering such a scope raises ``WorkspaceError``;
+    skip it and keep scanning, because this lookup runs on every upload/sync
+    and one dead registration must not break the write path of the workspaces
+    that are healthy.
+    """
     from deeptutor.multi_user.paths import get_account_path_service
     from deeptutor.services.path_service import get_path_service
     from deeptutor.services.workspace import get_content_workspace_service
     from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
 
     root = Path(base_dir).resolve()
     if root == get_account_path_service().get_knowledge_bases_root().resolve():
@@ -30,9 +42,12 @@ def workspace_id_for_kb_base_dir(base_dir: str | Path) -> str | None:
     for row in get_content_workspace_service()._catalog():
         if row.get("kind") != "workspace":
             continue
-        with workspace_context(row["workspace_id"]):
-            if root == get_path_service().get_knowledge_bases_root().resolve():
-                return str(row["workspace_id"])
+        try:
+            with workspace_context(row["workspace_id"]):
+                if root == get_path_service().get_knowledge_bases_root().resolve():
+                    return str(row["workspace_id"])
+        except WorkspaceError:
+            continue
     return None
 
 
@@ -43,7 +58,7 @@ def parse_kb_id(value: str) -> tuple[str, str] | None:
         prefix, separator, name = value.partition(":kb:")
         if separator and prefix[len("workspace:") :]:
             return prefix[len("workspace:") :], name
-        raise HTTPException(status_code=404, detail="Invalid knowledge resource reference")
+        raise AccessError(status_code=404, detail="Invalid knowledge resource reference")
     return None
 
 
@@ -99,7 +114,7 @@ def resolve_qualified(kb_ref: str, *, require_write=False):
         finally:
             library_request.reset(token)
     except WorkspaceError as exc:
-        raise HTTPException(
+        raise AccessError(
             status_code=404, detail="Knowledge resource workspace is unavailable"
         ) from exc
     return replace(resource, id=kb_ref)
@@ -152,6 +167,43 @@ def knowledge_catalog() -> list[dict]:
     return items
 
 
+def inherited_chat_knowledge_bases() -> list[str]:
+    """Ready workspace attachments, or its default KB, for an untouched chat.
+
+    This runs inside the caller's authenticated workspace scope. Qualified IDs
+    preserve origin when a workspace selects same-name resources from elsewhere.
+    Explicit conversation selections (including []) never call this helper.
+    """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("knowledge"):
+        return []
+    from deeptutor.multi_user.knowledge_access import (
+        list_visible_knowledge_bases,
+        manager_for_resource,
+        resolve_kb,
+    )
+    from deeptutor.services.workspace.context import current_workspace_id
+    from deeptutor.services.workspace.resources import current_resources
+
+    attached = current_resources().knowledge_bases is not None
+    candidates = []
+    for entry in list_visible_knowledge_bases():
+        if entry.get("available") is False:
+            continue
+        resource = resolve_kb(entry["id"])
+        info = manager_for_resource(resource).get_info(resource.name, refresh_config=False)
+        if info.get("status") != "ready" or info.get("metadata", {}).get("type") == "subagent":
+            continue
+        if not attached and not info.get("is_default"):
+            continue
+        rid = entry["id"]
+        if not entry.get("assigned") and parse_kb_id(rid) is None:
+            rid = qualified_kb_id(resource.name, current_workspace_id())
+        candidates.append((not bool(info.get("is_default")), rid))
+    return [rid for _, rid in sorted(set(candidates))]
+
+
 def resolve_selected(kb_ref: str, selected: list[str], *, require_write=False):
     from deeptutor.multi_user.knowledge_access import DEFAULT_KB_ALIASES, _strip_resource_prefix
 
@@ -169,7 +221,7 @@ def resolve_selected(kb_ref: str, selected: list[str], *, require_write=False):
         matches = selected[:1]
     if len(matches) == 1 and parse_kb_id(kb_ref) is None and not kb_ref.startswith("admin:kb:"):
         return resolve_qualified(matches[0], require_write=require_write)
-    raise HTTPException(status_code=403, detail="Knowledge base is not assigned to this workspace")
+    raise AccessError(status_code=403, detail="Knowledge base is not assigned to this workspace")
 
 
 # Explicit learning-source choices add read access within the current account;

@@ -85,9 +85,56 @@ def is_assessed_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool
     * MEMORY / PROCEDURE: recency-weighted accuracy ≥ the type's threshold.
     * CONCEPT / DESIGN: a recorded qualitative pass (``mastery_assess``).
     """
+    if not set(kp.required_visual_tasks).issubset(visual_achievements(progress, kp.id)):
+        return False
     if kp.type in QUALITATIVE_TYPES:
         return bool(progress.qualitative_mastery.get(kp.id, False))
     return progress.mastery_levels.get(kp.id, 0.0) >= gate_threshold(kp.type)
+
+
+def visual_achievements(progress: LearningProgress, kp_id: str) -> list[str]:
+    """Independent source-verified visual tasks, separate from generic text scores."""
+    return sorted(
+        {
+            event.visual_context["task"]
+            for event in progress.learning_evidence
+            if event.knowledge_point_id == kp_id
+            and event.result == "correct"
+            and event.visual_context.get("task")
+            and event.visual_context.get("key_status") == "verified"
+            and not event.hints_used
+        }
+    )
+
+
+def learning_stage(progress: LearningProgress, kp_id: str) -> str:
+    attempts = [
+        item
+        for item in progress.quiz_attempts
+        if item.knowledge_point_id == kp_id and not item.voided
+    ]
+    evidence = [item for item in progress.learning_evidence if item.knowledge_point_id == kp_id]
+    if any(item.independent and item.is_correct for item in attempts) or any(
+        item.assessment_type == "qualitative" and item.result == "correct" and not item.hints_used
+        for item in evidence
+    ):
+        return "independently_demonstrated"
+    if any(not item.independent for item in attempts) or any(item.hints_used for item in evidence):
+        return "practiced_with_help"
+    if attempts or evidence:
+        return "practiced_not_demonstrated"
+    explained = progress.explained_objectives.get(kp_id)
+    if not explained:
+        return "not_yet_covered"
+    if (
+        explained.get("coverage") == "partial"
+        and explained.get("explanation_quote")
+        and explained.get("delivery", {}).get("turn_id")
+    ):
+        return "partially_explained"
+    # Keep historical notes, but do not invent proof of published teaching or
+    # imply that a summary covered every part of a composite objective.
+    return "teaching_record_unverified"
 
 
 def mastery_source(progress: LearningProgress, kp: KnowledgePoint) -> str:
@@ -129,13 +176,28 @@ def objective_status(progress: LearningProgress, kp: KnowledgePoint) -> str:
     return "learning" if seen else "new"
 
 
+def reviewable_tasks(progress: LearningProgress) -> list[ReviewTask]:
+    """Scheduled items for objectives that have cleared the mastery gate.
+
+    Failed attempts can also carry retry schedules, but review mode is limited
+    to work the learner has already mastered.
+    """
+    mastered_ids = {
+        kp.id
+        for module in progress.modules
+        for kp in module.knowledge_points
+        if is_mastered(progress, kp)
+    }
+    return [task for task in progress.review_queue if task.knowledge_point_id in mastered_ids]
+
+
 def due_reviews(progress: LearningProgress, *, now: float | None = None) -> list[ReviewTask]:
-    """Spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
+    """Mastered spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
     risk first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
     from deeptutor.learning.scheduler import review_sort_key
 
     moment = time.time() if now is None else now
-    due = [task for task in progress.review_queue if task.due_at <= moment]
+    due = [task for task in reviewable_tasks(progress) if task.due_at <= moment]
     due.sort(key=lambda task: review_sort_key(task, now=moment))
     return due
 
@@ -391,9 +453,9 @@ def _review_report(
     if state is None:
         return None
     task = next((item for item in progress.review_queue if item.knowledge_point_id == kp_id), None)
-    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+    from deeptutor.learning.review_strategy import scheduler_for_progress
 
-    scheduler = SpacedRepetitionScheduler()
+    scheduler = scheduler_for_progress(progress)
     recall = scheduler.retrievability(state, now=now)
     risk = (
         task.forgetting_risk
@@ -444,6 +506,7 @@ def objective_report(
         {
             "question_id": attempt.question_id,
             "is_correct": attempt.is_correct,
+            "independent": attempt.independent,
             "answer": str(attempt.user_answer or ""),
             "error_type": attempt.error_type.value if attempt.error_type else "",
             "at": attempt.timestamp,
@@ -479,6 +542,9 @@ def objective_report(
         "correct_count": sum(1 for attempt in attempts if attempt["is_correct"]),
         # The learner's own words, kept as the evidence behind a qualitative pass.
         "explanation": progress.feynman_explanations.get(kp_id, ""),
+        "explained": progress.explained_objectives.get(kp_id),
+        "required_visual_tasks": kp.required_visual_tasks,
+        "demonstrated_visual_tasks": visual_achievements(progress, kp_id),
         "review": _review_report(progress, kp_id, state, due_at, now=moment),
         "errors": [
             {

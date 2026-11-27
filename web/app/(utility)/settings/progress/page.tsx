@@ -1,5 +1,6 @@
 "use client";
 
+import { FeaturePage, PageHeader } from '@/components/layout/FeaturePage'
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -37,11 +38,8 @@ export default function LearningProgressPage() {
   const hasRecords = progress.length > 0 || activities.length > 0;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-xl font-semibold">{t("Learning progress")}</h1>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-        {t("Review your own reading and learning activity.")}
-      </p>
+    <FeaturePage>
+      <PageHeader title={t("Learning progress")} description={t("Review your own reading and learning activity.")} />
       {error ? (
         <p className="mt-8 text-sm text-red-600">{t("Unable to load learning progress")}</p>
       ) : records === null ? (
@@ -111,6 +109,6 @@ export default function LearningProgressPage() {
           </section>
         </>
       )}
-    </main>
+    </FeaturePage>
   );
 }

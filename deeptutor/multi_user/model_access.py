@@ -53,7 +53,7 @@ def _model_by_id(profile: dict[str, Any], model_id: str) -> dict[str, Any] | Non
 #: a CodeBuddy profile is, and it reads the operator's own IDE-plugin session —
 #: and there is nowhere for such a profile to acquire the flag. Binding is the
 #: durable fact, so it decides too.
-OWNER_BOUND_BINDINGS = frozenset({"openai_codex", "codebuddy"})
+OWNER_BOUND_BINDINGS = frozenset({"openai_codex", "codebuddy", "github_copilot", "claude_code"})
 
 
 def is_owner_bound(profile: dict[str, Any]) -> bool:
@@ -63,7 +63,7 @@ def is_owner_bound(profile: dict[str, Any]) -> bool:
     a billable team key, so those profiles are never lent to other accounts
     through grants — each user signs in for themselves or goes without.
     """
-    binding = str(profile.get("binding") or "").strip().lower()
+    binding = str(profile.get("binding") or "").strip().lower().replace("-", "_")
     if binding in OWNER_BOUND_BINDINGS:
         return True
     return bool(profile.get("owner_bound"))
@@ -166,9 +166,16 @@ def allowed_llm_options() -> dict[str, Any]:
         for item in redacted_model_access(user.id).get("llm", [])
         if item.get("available")
     ]
+    # The administrator's active model is often not one of the models an
+    # account was granted, which used to leave every option unflagged and the
+    # composer showing "Select model" even though the turn path already pins
+    # the first granted model (see request_preparer). Flag that same option so
+    # the picker and the runtime agree on the default (#2438).
+    if options and not any(option["is_active_default"] for option in options):
+        options[0]["is_active_default"] = True
     active = next(
         (
-            {"profile_id": active_profile_id, "model_id": active_model_id}
+            {"profile_id": option["profile_id"], "model_id": option["model_id"]}
             for option in options
             if option["is_active_default"]
         ),

@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+MAX_WORKSPACE_INSTRUCTIONS_CHARS = 10_000
+
 
 class WorkspaceError(ValueError):
     """A workspace path, binding, or operation is not allowed."""

@@ -132,7 +132,7 @@ def _render_sync(data: bytes, suffix: str, cache_dir: Path, key: str, soffice: s
             # `soffice` may launch soffice.bin; kill the whole process group,
             # rather than leaving a converter running after the request ends.
             try:
-                if os.name == "posix" and hasattr(os, "killpg"):
+                if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
                     os.killpg(process.pid, signal.SIGKILL)
                 else:
                     process.kill()

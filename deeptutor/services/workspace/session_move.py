@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 import sqlite3
 
@@ -57,7 +58,7 @@ def migrate_legacy_bindings() -> int:
     would sever learning references. Preserve the original binding for audit
     and normalize once; users can move complete bundles with migration preview.
     """
-    from deeptutor.services.file_io import atomic_write_json
+    from deeptutor.services.file_io import atomic_write_json, read_text
     from deeptutor.services.workspace.activity import data_activity
     from deeptutor.services.workspace.data_migration import _backend
 
@@ -67,7 +68,7 @@ def migrate_legacy_bindings() -> int:
     with data_activity(exclusive=True), workspace_context():
         from deeptutor.services.workspace.data_migration import assert_no_pending_recovery
 
-        assert_no_pending_recovery()
+        assert_no_pending_recovery(reject_unreadable=True)
         if marker.exists():
             return 0
         paths = get_path_service()
@@ -77,7 +78,7 @@ def migrate_legacy_bindings() -> int:
         def save_original(rows):
             # A PocketBase retry must preserve entries already normalized by
             # the previous attempt, including their original preferences.
-            previous = json.loads(backup.read_text()) if backup.exists() else []
+            previous = json.loads(read_text(backup)) if backup.exists() else []
             merged = {row["id"]: row for row in rows}
             merged.update({row["id"]: row for row in previous})
             atomic_write_json(backup, list(merged.values()))
@@ -113,7 +114,7 @@ def migrate_legacy_bindings() -> int:
         else:
             db = paths.get_chat_history_db()
             if db.exists():
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     for sid, raw in conn.execute("SELECT id,preferences_json FROM sessions"):
                         prefs = json.loads(raw or "{}")
                         if prefs.get("workspace_id"):

@@ -45,6 +45,7 @@ class EmbeddingRequest:
             - Cohere: Maps to 'input_type' ("search_document", "search_query", "classification", "clustering")
             - Jina: Maps to 'task' ("retrieval.passage", "retrieval.query", etc.)
             - Gemini Embedding 2: Maps to retrieval-specific text instructions
+            - NVIDIA NIM: Maps to 'input_type' ("passage", "query")
             - OpenAI/Ollama: Ignored
         encoding_format: Output format ("float" or "base64"). ``None`` (the
             default) lets each adapter decide: OpenAI-compatible gateways omit

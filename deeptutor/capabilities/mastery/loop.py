@@ -15,13 +15,14 @@ it is only ever a clarifying question.
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import logging
-import re
 from typing import Any
 
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
+from deeptutor.core.tool_protocol import TOOL_EVENT_PROJECTION, ToolEventProjection
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 from deeptutor.tools.mastery_nav import MASTERY_NAV_TOOL_NAMES
 
@@ -37,138 +38,6 @@ _PATH_BINDING_TOOLS = frozenset({"mastery_switch", "mastery_leave"})
 #: its only reader, so the tutor loop can import one string without this
 #: module having to import the loop engine back.
 NATIVE_LOOP_FLAG = "mastery_native_loop"
-
-
-# Shapes that betray a question written into the reply as prose instead of
-# posed through ``mastery_quiz`` — see ``finish_instruction``.
-_PLAIN_CHOICE_OPTION_RE = re.compile(
-    r"^(?:[-*+]\s*)?(?:\*\*)?([A-D])(?:\*\*)?\s*[.、):：-]\s*(\S.*)$",
-    re.IGNORECASE,
-)
-_PLAIN_QUIZ_PROMPT_RE = re.compile(
-    r"\b(?:which|choose|select|answer)\b|选择|选哪个|请选择|请回答|答案",
-    re.IGNORECASE,
-)
-# A reply that announces a question without posing one. Matched against the
-# tail of the reply only, where an announcement lands, so ordinary discussion
-# of "this question" while reviewing an attempt does not trip it.
-_QUESTION_PROMISE_RE = re.compile(
-    # A bare "这道题" is how a *review* of the attempt just graded reads too,
-    # so the Chinese branch needs a forward-looking verb alongside it.
-    r"(?:来|下面|接下来|先|试试|做|回答)[^。！？\n]{0,12}(?:这道|一道|下一?道)题|"
-    r"出一?道题|考考你|试试这|看看你(?:对|的|是否|能不能)|检验一下你|"
-    # …and the same announcement with the noun left out: "再试一道，把这套
-    # 判别规则用起来" never says 题 at all, which is exactly how two real
-    # turns slipped past this guard and left the learner staring at a colon.
-    r"再(?:试|来|做)一(?:道|个)|来实战|练一?练|上手试|"
-    r"\bhere(?:\u2019s| is|'s) (?:a|the|this) question\b|"
-    r"\btry (?:this|the following|a|another) (?:question|one)\b|"
-    r"\blet(?:\u2019s|'s) (?:see|test|check) (?:if|whether|how|what) you\b",
-    re.IGNORECASE,
-)
-_PROMISE_TAIL_CHARS = 160
-# A reply that stops on a colon promised whatever was meant to follow it. The
-# lead-in for a question is supposed to share its round with the
-# ``mastery_quiz`` call that fills the space underneath, so a colon with
-# nothing after it is the most reliable evidence that the call never happened —
-# more reliable than recognising the wording, which varies every turn.
-_DANGLING_LEAD_IN_CHARS = frozenset(":：")
-
-# A bare instruction to pick from unseen choices is also a promise of a card.
-# #1508 ended with "四个选项，选一个。" after describing the objective, but
-# never called mastery_quiz, so no choices were available to the learner.
-_UNPOSTED_CHOICE_LEAD_IN_RE = re.compile(
-    r"(?:[两三四五六七八九十]|\d+)个选项[，,、:\s]*(?:请|你)?(?:选|挑)(?:一|1)个[。！？.!?]?\s*$|"
-    r"\b(?:three|four|\d+) (?:choices|options)[,:;\s]+(?:choose|pick|select) one[.!?]?\s*$",
-    re.IGNORECASE,
-)
-
-# Delivery claims can precede a long explanation, unlike the vague question
-# announcements above. Check clauses across the reply, but require both a
-# concrete card/question and a delivery verb rather than the word "card" alone.
-_CARD_DELIVERY_RE = re.compile(
-    r"(?:卡片|题卡|(?:这|那|一|下一)道题|题目)[^。！？\n，,；;]{0,24}"
-    r"(?:重开|开出来|(?:放|挂|贴|发)(?:上来|上去|出来|上了|好了)|"
-    r"(?:生成|展示)(?:了|好|出来)|(?:就)?在(?:下面|下方))|"
-    r"先探一题|"
-    r"\bI(?:['’]ve| have)? (?:just |now )?(?:posted|reopened|displayed) "
-    r"(?:the|a|this) (?:(?:question|quiz|answer) )?card\b|"
-    r"\b(?:the|this) (?:(?:question|quiz|answer) )?card "
-    r"(?:is|has been) (?:ready|posted|displayed|reopened|below)\b",
-    re.IGNORECASE,
-)
-_NON_DELIVERY_CLAUSE_RE = re.compile(
-    r"没有|没能|未能|尚未|还没|不会|不再|不要|不能|并未|无法|失败|"
-    r"上次|上一轮|刚才|之前|如果|假如|是否|你说|[吗？?]|^\s*等|"
-    r"\b(?:not|never|if|earlier|previously|yesterday)\b",
-    re.IGNORECASE,
-)
-_QUOTED_CARD_TEXT_RE = re.compile(
-    r"```.*?```|~~~.*?~~~|`[^`\n]*`|“[^”]*”|「[^」]*」|\"[^\"\n]*\"|^\s*>[^\n]*",
-    re.DOTALL | re.MULTILINE,
-)
-_CONDITIONAL_DELIVERY_RE = re.compile(
-    r"^\s*(?:等|如果|假如|(?:学|讲|看)完.{0,12}(?:以后|之后)|稍后|下一轮|"
-    r"if\b|when\b|after\b)",
-    re.IGNORECASE,
-)
-
-
-def _claims_card_delivery(text: str) -> bool:
-    """Recognise current delivery claims without treating quoted reports as actions."""
-    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
-    for sentence in re.split(r"[。！\n]|(?<=[.!?])\s+", prose):
-        if _CONDITIONAL_DELIVERY_RE.search(sentence):
-            continue
-        for clause in re.split(r"[，,；;]", sentence):
-            if _CARD_DELIVERY_RE.search(clause) and not _NON_DELIVERY_CLAUSE_RE.search(clause):
-                return True
-    return False
-
-
-def _looks_like_plain_choice_quiz(text: str) -> bool:
-    """Recognise a rendered A-D option list with high precision.
-
-    The model may discuss labelled options while teaching. Requiring both an
-    assessment prompt and at least three distinct labelled answer bodies keeps
-    ordinary prose, headings, and option-like vocabulary examples out of this
-    protocol guard.
-    """
-    labels: set[str] = set()
-    prompt_lines: list[str] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        match = _PLAIN_CHOICE_OPTION_RE.match(line)
-        if match:
-            labels.add(match.group(1).upper())
-        else:
-            prompt_lines.append(line)
-    return len(labels) >= 3 and any(_PLAIN_QUIZ_PROMPT_RE.search(line) for line in prompt_lines)
-
-
-def _turn_has_graded(context: UnifiedContext) -> bool:
-    """Whether a ruling was made this turn, by the model or by the runtime.
-
-    Two things can grade: the tutor calling ``mastery_grade``, and the runtime
-    ruling on a card answer before the turn starts. Only the first passes
-    through ``augment_kwargs``, so reading the extension alone made the
-    guard treat post-grade feedback — option-by-option prose, which is what
-    reviewing an attempt looks like — as a question written out in text, and
-    a rejected finish is discarded rather than shown.
-    """
-    if context.extension("mastery").get("quiz_graded"):
-        return True
-    return bool(context.metadata.get("mastery_card_grade"))
-
-
-def _announces_an_unposed_question(text: str) -> bool:
-    """Whether a reply promises a question it never put on a card."""
-    body = (text or "").strip()
-    if not body:
-        return False
-    if body[-1] in _DANGLING_LEAD_IN_CHARS:
-        return True
-    return bool(_QUESTION_PROMISE_RE.search(body[-_PROMISE_TAIL_CHARS:]))
 
 
 class MasteryLoopCapability:
@@ -246,6 +115,38 @@ class MasteryLoopCapability:
             return kwargs
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
         state = context.extension("mastery")
+        if tool_name == "rag":
+            import asyncio
+
+            from deeptutor.learning.service import LearningService
+
+            session_id = str(context.session_id or "").strip()
+            turn_id = str(context.metadata.get("turn_id") or "").strip()
+
+            async def present_sources(sources, purpose):
+                if (
+                    context.metadata.get("mastery_path_id") != path_id
+                    or context.session_id != session_id
+                    or str(context.metadata.get("turn_id") or "").strip() != turn_id
+                ):
+                    raise ValueError("The mastery source presentation context changed.")
+                return await asyncio.to_thread(
+                    LearningService().present_sources,
+                    path_id,
+                    sources,
+                    purpose,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+
+            return {
+                **kwargs,
+                "_mastery_source_context": True,
+                TOOL_EVENT_PROJECTION: ToolEventProjection(
+                    arguments={"presentation": kwargs.get("presentation") or "inspect"}
+                ),
+                "_present_mastery_sources": present_sources,
+            }
         # ``ask_user`` is deliberately untouched here. It carries clarifying
         # questions only; the graded ones are posed by ``mastery_quiz``.
         if tool_name == "read_source":
@@ -254,17 +155,26 @@ class MasteryLoopCapability:
             # The tutor calls this tool on its own schedule instead.
             updated = dict(kwargs)
             updated["source_index"] = context.metadata.get("mastery_topic_source_index") or {}
+            updated["_mastery_source_context"] = True
+            updated[TOOL_EVENT_PROJECTION] = ToolEventProjection()
             return updated
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
                 state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
+                # Only preparation after the latest failed attempt can earn a
+                # final delivery round; an old packet must not reopen the loop.
+                state.pop("quiz_recovery_receipt", None)
                 updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
                 state["quiz_awaiting_grade"] = False
                 state["quiz_graded"] = True
             updated["_mastery_path_id"] = path_id
+            updated["_attached_kb_names"] = list(context.knowledge_bases)
+            updated["_inspected_image_hashes"] = list(
+                context.extension("source_visual_evidence").get("image_hashes", [])
+            )
             # Raw, not normalised: "this conversation never recorded a mode"
             # has to survive down to the tools, or every pre-modes conversation
             # (and every CLI / SDK turn, which pass none) would be enforced as
@@ -272,6 +182,86 @@ class MasteryLoopCapability:
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            if tool_name == "mastery_profile":
+                updated["_learner_message"] = context.user_message or ""
+                selection = int(state.get("profile_selection", 0)) + 1
+                state["profile_selection"] = selection
+                state["profile_write_pending"] = True
+
+                def profile_recorded(receipt):
+                    if (
+                        state.get("profile_selection") == selection
+                        and context.metadata.get("mastery_path_id") == path_id
+                    ):
+                        state["profile_write_pending"] = False
+                        state["profile_receipt"] = receipt
+
+                updated["_profile_recorded"] = profile_recorded
+
+            if tool_name == "mastery_note_explained":
+                session_id = str(context.session_id or "").strip()
+                turn_id = str(context.metadata.get("turn_id") or "").strip()
+
+                def teaching_delivery():
+                    # A rebind must not let an earlier tool record teaching on
+                    # the new path or under another session/turn's provenance.
+                    if (
+                        str(context.metadata.get("mastery_path_id") or "").strip() != path_id
+                        or str(context.session_id or "").strip() != session_id
+                        or str(context.metadata.get("turn_id") or "").strip() != turn_id
+                    ):
+                        return None
+                    snapshot = context.extension("published_assistant_content").get("snapshot")
+                    return {
+                        "path_id": path_id,
+                        "session_id": session_id,
+                        "turn_id": turn_id,
+                        "segments": snapshot() if callable(snapshot) else (),
+                    }
+
+                # Always override model-supplied private kwargs.
+                updated["_teaching_delivery"] = teaching_delivery
+
+            if tool_name == "mastery_revise":
+                updated["_revision_request_id"] = str(
+                    context.extension("agent_loop").get("model_call_id") or ""
+                )
+
+            if tool_name in {
+                "mastery_quiz",
+                "mastery_grade",
+                "mastery_assess",
+                "mastery_prepare_lesson",
+            }:
+                # A replacement needs a quote from the actual current learner
+                # request, not a model-supplied claim about their intention.
+                updated["_learner_message"] = context.user_message or ""
+            if tool_name == "mastery_prepare_lesson":
+                updated["_language"] = context.language
+                from deeptutor.learning.policy import next_objective
+                from deeptutor.learning.storage import LearningStore
+
+                def bind_lesson(kp_id):
+                    progress = LearningStore().load(path_id)
+                    context.metadata["mastery_lesson_objective"] = {
+                        "path_id": path_id,
+                        "kp_id": kp_id,
+                        "policy_id": next_objective(progress).knowledge_point_id
+                        if progress
+                        else "",
+                    }
+                    if (
+                        progress is not None
+                        and context.metadata.get("mastery_path_id") == path_id
+                        and state.get("quiz_requested")
+                        and not state.get("card_posted")
+                    ):
+                        state["quiz_recovery_receipt"] = {
+                            **context.metadata["mastery_lesson_objective"],
+                            "revision": progress.version,
+                        }
+
+                updated["_bind_lesson_objective"] = bind_lesson
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``
@@ -296,36 +286,65 @@ class MasteryLoopCapability:
             return updated
         return kwargs
 
+    def settlement_recovery(self, context: UnifiedContext) -> tuple[str, tuple[str, ...]] | None:
+        """Spend one final card-only round when a failed quiz's source was repaired."""
+        if not self.is_active(context):
+            return None
+        state = context.extension("mastery")
+        receipt = state.pop("quiz_recovery_receipt", None)
+        if (
+            not receipt
+            or not state.get("quiz_requested")
+            or state.get("card_posted")
+            or state.get("quiz_recovery_used")
+        ):
+            return None
+        from deeptutor.learning.policy import next_objective
+        from deeptutor.learning.storage import LearningStore
+
+        path_id = context.metadata.get("mastery_path_id")
+        binding = context.metadata.get("mastery_lesson_objective") or {}
+        if receipt["path_id"] != path_id or any(
+            receipt[key] != binding.get(key) for key in ("path_id", "kp_id", "policy_id")
+        ):
+            return None
+        progress = LearningStore().load(path_id)
+        if (
+            progress is None
+            or progress.version != receipt["revision"]
+            or next_objective(progress).knowledge_point_id != receipt["policy_id"]
+        ):
+            return None
+        state["quiz_recovery_used"] = True
+        return (
+            "Source preparation for the quiz selected in this turn has now succeeded. "
+            "Use this single final delivery round to call mastery_quiz with a supported question "
+            "contract from the prepared evidence. Preserve the current pending question and "
+            "replacement rules. Do not search, prepare again, grade, or claim a card was delivered "
+            "in prose. If verification still fails, this turn cannot complete the delivery.",
+            ("mastery_quiz",),
+        )
+
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
-        """Catch a finish that leaves the learner with nothing to answer.
+        """Retry failed tool operations without classifying the learner-facing prose.
 
-        A quiz selected in this turn must reach its success callback before
-        the turn can finish, regardless of reply wording or later grading.
-        Text heuristics are only a fallback for replies that never selected
-        the tool. Two other states are not an outstanding delivery:
-
-        A pending question from an earlier turn does not mean it went
-        unasked — it was already posed on its own card — so a learner
-        who types a question instead of answering leaves the interaction open
-        on purpose, and the tutor answering them is the right reply, not a
-        skipped step.
-
-        And once ``mastery_grade`` has run, reviewing the options one by one —
-        "you picked C; A fails because…" — matches the plain-text-quiz
-        heuristic exactly while being the whole point of the turn. Blocking
-        that discarded the explanation and left the learner with a graded card
-        and no reason for the verdict.
-
-        That second exemption used to sit at the top of this method and so
-        waived *every* check on a grading turn — including the unposed-question
-        one. Grading turns are precisely where the tutor teaches the gap and
-        then reaches for the next question, so the one turn shape most likely
-        to end on an unkept promise was the one shape never examined. It now
-        guards only the heuristic it was written for.
+        Discussing options, questioning a grade or quoting a question is ordinary
+        tutoring. Only an actual failed operation can require follow-up work;
+        answer wording is never evidence that the model must pose another quiz.
         """
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        if state.get("profile_write_pending") and not state.get("profile_repair_requested"):
+            state["profile_repair_requested"] = True
+            return (
+                "The selected mastery_profile update has no successful storage receipt. "
+                "If repairable, retry once with the current revision and only the requested "
+                "changed fields. Blank optional fields keep existing values. Otherwise continue "
+                "the useful teaching, apply the request for this turn, and explain that it was "
+                "not saved for future sessions. Do not claim durable persistence without a "
+                "successful receipt. Do not delay teaching with repeated optional profile retries."
+            )
         if state.get("quiz_requested") and not state.get("card_posted"):
             return (
                 "This turn selected mastery_quiz, but no question card was successfully "
@@ -334,44 +353,7 @@ class MasteryLoopCapability:
                 "question delivery. If delivery remains unsuccessful, this turn must "
                 "fail rather than report successful completion."
             )
-        if not state.get("card_posted") and (
-            _announces_an_unposed_question(final_text)
-            or _claims_card_delivery(final_text)
-            or (
-                not state.get("quiz_awaiting_grade")
-                and _UNPOSTED_CHOICE_LEAD_IN_RE.search(final_text)
-            )
-        ):
-            # Argument binding sets quiz_awaiting_grade even when registration
-            # fails. Only the tool's success callback marks a card as posted.
-            # "Let us see what you already know:" and then nothing. The learner
-            # is left reading a promise with no card under it, and the turn is
-            # over — this reply announced the question instead of posing it.
-            return (
-                "That reply announced a question but never posed one, so the "
-                "learner is looking at a promise and an empty space. Write the "
-                "lead-in and call mastery_quiz in the SAME round — the call is "
-                "what puts the question on their card, and it ends the turn. If "
-                "you did not mean to quiz them yet, say what you meant to say "
-                "without announcing a question."
-            )
-        if _turn_has_graded(context) or not _looks_like_plain_choice_quiz(final_text):
-            return None
-        if state.get("quiz_awaiting_grade"):
-            return (
-                "That question is already on the learner's answer card — do not "
-                "write it out again in prose. Either end the turn on what you "
-                "have taught and let their answer arrive as the next message, or "
-                "call mastery_grade with the answer they already gave you (the "
-                "engine grades the question it is holding open)."
-            )
-        return (
-            "The previous reply posed a mastery assessment as plain text. Do not "
-            "write the question or its choices in prose: call mastery_quiz "
-            "instead — that one call registers the expected answer and puts the "
-            "question on its own answer card, and the turn stops there for the "
-            "learner to answer."
-        )
+        return None
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
         """End the turn on the card once a question has been posed.
@@ -397,14 +379,86 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        notice = ""
+        if state.get("profile_write_pending"):
+            if not final_text.strip() and not state.get("card_posted"):
+                # This hook also runs after every tool batch. An optional
+                # storage notice cannot end work still in progress; append it
+                # only to a real final answer or an accepted question card.
+                return None
+            # Optional memory failure must not deadlock otherwise valid tutoring.
+            # The native status corrects any unsupported persistence promise;
+            # it does not classify or discard the learner-facing explanation.
+            state["profile_write_pending"] = False
+            state["profile_receipt"] = {"status": "not_saved"}
+            from deeptutor.services.prompt import get_prompt_manager
+            from deeptutor.services.prompt.lookup import prompt_text
+
+            pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", context.language)
+            notice = prompt_text(pack, ("notices", "profile_not_saved"))
+
+        def with_notice(override):
+            if not notice:
+                return override
+            content = final_text if override is None else override
+            return notice + ("\n\n" + content if content.strip() else "")
+
         if not state.get("card_posted"):
-            return None
+            return with_notice(None)
         if final_text.strip():
             # A tool-less finish round already wrote the answer; the card was
             # posed earlier in the turn and has nothing to override.
-            return None
+            return with_notice(None)
         state["card_posted"] = False
-        return ""
+        return with_notice("")
+
+    async def pre_loop(
+        self, context: UnifiedContext, stream: Any, *, usage: Any = None
+    ) -> PromptBlock | None:
+        """Read current state once before the first model call, without an LLM.
+
+        This is a fresh read for this turn, never a session cache. Reuse the
+        status tool so objective gates and pending answers have one authority.
+        The loop's pre-pass wrapper falls back to the tool on read failure.
+        """
+        context.extension("mastery").pop("status_snapshot", None)
+        if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
+            return None
+        from deeptutor.capabilities.mastery.mode import normalize_mode
+        from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+        binding = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        result = await MasteryStatusTool().execute(
+            **self.augment_kwargs("mastery_status", {}, context),
+            _working_brief=normalize_mode(context.metadata.get("mastery_session_mode"))
+            != "outline",
+        )
+        if not result.success:
+            return None
+        # A rebind during the read must not seed the new path with old state.
+        current = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        if (
+            binding != current
+            or json.loads(result.content).get("path_id") != str(binding[0]).strip()
+        ):
+            return None
+        block = PromptBlock(
+            "mastery_status_snapshot",
+            "[Current-turn mastery_status snapshot]\n"
+            "The runtime has already read mastery_status for this turn and active path. "
+            "Use this result directly; do not call mastery_status again just to begin. "
+            "Refresh with mastery_status after changing the path, mode, outline, or progress "
+            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+            + result.content,
+        )
+        context.extension("mastery")["status_snapshot"] = block.content
+        return block
 
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         """Hand over whatever this turn already settled on the open card.
@@ -421,6 +475,9 @@ class MasteryLoopCapability:
         """
         if not self.is_active(context):
             return ""
+        rejected = self._stale_card_seed(context)
+        if rejected:
+            return rejected
         skipped = self._skip_seed(context)
         graded = self._grade_seed(context)
         return "\n\n".join(part for part in (skipped, graded) if part)
@@ -465,22 +522,97 @@ class MasteryLoopCapability:
             "to ask one."
         )
 
+    def _stale_card_seed(self, context: UnifiedContext) -> str:
+        """Explain a runtime rejection without attributing a historical grade.
+
+        Read ``mastery_card_rejection`` metadata containing ``question_id`` and
+        ``reason='stale_card'``. Explain that this reply was not assessed, keep
+        the earlier attempt intact, and never use this reply to answer another
+        pending question. Return an empty string without a stale rejection.
+        """
+        rejection = context.metadata.get("mastery_card_rejection")
+        if not isinstance(rejection, dict) or rejection.get("reason") != "stale_card":
+            return ""
+        return (
+            "[Mastery] The learner replied to a card that was already completed. "
+            "This reply was rejected, NOT graded. Explain that the card is stale, "
+            "not that this answer is incorrect. Preserve the earlier attempt. "
+            "Do not call mastery_grade or mastery_assess for this reply, apply it "
+            "to another pending question, or treat it as new evidence. Offer a "
+            "new practice question through the normal mastery_quiz workflow "
+            "if the learner wants another attempt; never overwrite the old one."
+        )
+
     def _grade_seed(self, context: UnifiedContext) -> str:
         grade = context.metadata.get("mastery_card_grade")
         if not isinstance(grade, dict) or not grade:
             return ""
         result = grade.get("result") if isinstance(grade.get("result"), dict) else {}
-        verdict = "correct" if grade.get("is_correct") else "incorrect"
+
+        def verdict(item):
+            typed = item.get("result")
+            return (
+                typed
+                if isinstance(typed, str)
+                and typed in {"correct", "partial", "incorrect", "ungraded"}
+                else (
+                    "ungraded"
+                    if item.get("is_correct") is None
+                    else "correct"
+                    if item.get("is_correct")
+                    else "incorrect"
+                )
+            )
+
+        results = result.get("results")
+        if isinstance(results, list) and results:
+            parts = [
+                f"{item.get('question_id', '')}: "
+                f"{verdict(item)}; final={item.get('final', True)}; "
+                f"objective {item.get('knowledge_point_id', '')}; "
+                f"mastered={bool(item.get('mastered'))}; feedback={item.get('feedback', '')}"
+                for item in results
+                if isinstance(item, dict)
+            ]
+            complete = result.get("complete", grade.get("complete", True)) is not False
+            status = (
+                "The question group was already graded by the engine. "
+                if complete
+                else "Only the submitted group replies were graded by the engine. "
+                "These children still need an answer or clarification: "
+                + ", ".join(result.get("remaining_question_ids", []))
+                + ". "
+                "Preserve final siblings. Clarify nonfinal replies and then assess the learner's explicit revision. "
+                "Explain reported gaps, but never infer confusion from an unanswered "
+                "item or invent its reply. "
+            )
+            return (
+                "[Mastery] "
+                + status
+                + "Do not regrade final replies or repeat their answer keys. Each result belongs "
+                "only to its own objective; the parent group gives no extra credit. "
+                "Address the specific gap, then use the fresh status for the next step.\n"
+                + "\n".join(parts)
+            )
+        outcome = verdict(
+            {**result, "is_correct": result.get("is_correct", grade.get("is_correct"))}
+        )
         learner_answer = str(result.get("learner_answer") or "").strip()
+        learner_body = str(result.get("learner_body") or "").strip()
+        picked = f"{learner_answer}: {learner_body}" if learner_body else learner_answer
         lines = [
             "[Mastery] The learner answered the open question on its card and the "
-            f"engine has already graded it: {verdict}"
-            + (f' (they answered "{learner_answer}")' if learner_answer else "")
-            + ".",
-            "Their card already shows the verdict, the correct option and the "
-            "explanation the question was registered with, so do not restate the "
-            "answer key and do not call mastery_grade for it again.",
+            f"engine reports: {outcome}" + (f' (they answered "{picked}")' if picked else "") + ".",
+            str(result.get("feedback") or ""),
         ]
+        if result.get("final") is False or outcome == "ungraded":
+            lines.append(
+                "This is not a final grade and created no mastery penalty. Ask for the needed clarification, preserve the same question, and assess an explicit revised learner answer. Do not infer a wrong answer or replace this question automatically."
+            )
+            return "\n".join(line for line in lines if line)
+        lines.append(
+            "The engine already graded this reply; do not call mastery_grade. The card shows the saved final result. Do not repeat the answer key or grade this reply again."
+        )
         if grade.get("mastered"):
             lines.append(
                 "This cleared the objective's gate. Say what the attempt showed, "

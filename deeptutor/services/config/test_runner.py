@@ -142,7 +142,11 @@ class ConfigTestRunner:
                 raise ValueError(f"Unsupported service: {service}")
             if not run.cancelled and run.status == "running":
                 run.status = "completed"
-                run.emit("completed", f"{service.upper()} test completed successfully.")
+                message = {
+                    "stt": "Speech endpoint responded to a silent connection probe. Recognition quality was not tested.",
+                    "videogen": "Video task submitted. Generation and playback were not verified.",
+                }.get(service, f"{service.upper()} test completed successfully.")
+                run.emit("completed", message)
         except Exception as exc:
             run.status = "failed"
             run.emit("failed", str(exc))

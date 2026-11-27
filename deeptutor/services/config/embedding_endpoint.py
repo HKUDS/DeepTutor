@@ -98,10 +98,12 @@ EMBEDDING_PROVIDER_ALIASES = {
 }
 
 EMBEDDING_PROVIDER_LABELS = {
+    "nvidia_nim": "NVIDIA NIM",
     "openai": "OpenAI",
+    "mistral": "Mistral",
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
-    "orcarouter": "OrcaRouter",
+    "opper": "Opper",
     "jina": "Jina",
     "vllm": "vLLM / LM Studio",
     "lemonade": "Lemonade Server",
@@ -111,10 +113,12 @@ EMBEDDING_PROVIDER_LABELS = {
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
+    "nvidia_nim": "https://integrate.api.nvidia.com/v1/embeddings",
     "openai": "https://api.openai.com/v1/embeddings",
+    "mistral": "https://api.mistral.ai/v1/embeddings",
     "gemini": gemini_embedding_endpoint(GEMINI_DEFAULT_EMBEDDING_MODEL),
     "openrouter": "https://openrouter.ai/api/v1/embeddings",
-    "orcarouter": "https://api.orcarouter.ai/v1/embeddings",
+    "opper": "https://api.opper.ai/v3/compat/embeddings",
     "cohere": "https://api.cohere.com/v2/embed",
     "jina": "https://api.jina.ai/v1/embeddings",
     "ollama": "http://localhost:11434/api/embed",
@@ -128,9 +132,11 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
+    "nvidia_nim",
     "openai",
+    "mistral",
     "openrouter",
-    "orcarouter",
+    "opper",
     "jina",
     "vllm",
     "lemonade",
@@ -226,6 +232,10 @@ def normalize_embedding_endpoint_for_display(
             return trimmed
         if trimmed.endswith("/v1"):
             return f"{trimmed}/embeddings"
+        if provider_name == "lemonade":
+            parsed = urlparse(trimmed if "://" in trimmed else f"http://{trimmed}")
+            if parsed.scheme and parsed.netloc and parsed.path.rstrip("/") in {"", "/"}:
+                return _same_origin_url(trimmed, "/v1/embeddings")
     if provider_name == "ollama":
         if trimmed.endswith("/api/embed"):
             return trimmed

@@ -42,6 +42,7 @@ it('shows errors and retries instead of presenting failure as zero usage', async
   mocks.fetch.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(data)
   render(<UsageSettingsSection />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load usage statistics.')
+  expect(screen.getByRole('alert')).toHaveTextContent('offline')
   expect(screen.queryByText('No recorded model usage for this year.')).toBeNull()
   fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
   expect(await screen.findByText('glm-test')).toBeVisible()

@@ -20,7 +20,7 @@ SEARCH_API_KEY_ENV = "SEARCH_API_KEY"
 class BaseSearchProvider(ABC):
     """Abstract base class for search providers.
 
-    Providers use the active Search profile from Settings > Catalog.
+    Providers use the active Search profile from Settings > Search.
     Each provider has its own BASE_URL defined as a class constant.
     """
 
@@ -54,7 +54,7 @@ class BaseSearchProvider(ABC):
         """
         key, _ = search_provider_credentials(self.name)
         if self.requires_api_key and not key:
-            raise ValueError(f"{self.name} requires an api_key in Settings > Catalog > Search.")
+            raise ValueError(f"{self.name} requires an api_key in Settings > Search.")
         return key
 
     @abstractmethod

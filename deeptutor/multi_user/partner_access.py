@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException
+from deeptutor.core.errors import AccessError
 
 from .context import get_current_user
 from .grants import load_grant
@@ -88,7 +88,7 @@ def assert_partner_allowed(partner_id: str, user_id: str | None = None) -> None:
         return
     if str(partner_id or "").strip() in assigned_partner_ids(user_id or user.id):
         return
-    raise HTTPException(status_code=403, detail="Partner is not assigned to you")
+    raise AccessError(status_code=403, detail="Partner is not assigned to you")
 
 
 def assert_partner_manageable(partner_id: str) -> None:
@@ -98,7 +98,7 @@ def assert_partner_manageable(partner_id: str) -> None:
     talk to a partner learns nothing new about who owns it.
     """
     if not can_manage_partner(partner_id):
-        raise HTTPException(status_code=403, detail="You cannot manage this partner")
+        raise AccessError(status_code=403, detail="You cannot manage this partner")
 
 
 # Identity-only card fields a consumer needs (partner list page, connect modal).
@@ -133,6 +133,10 @@ def visible_partners() -> list[dict[str, Any]]:
     so it doesn't have to re-derive ownership.
     """
     user = get_current_user()
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("partners"):
+        return []
     out: list[dict[str, Any]] = []
     for partner in _manager().list_partners():
         pid = str(partner.get("partner_id") or "")

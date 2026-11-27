@@ -34,6 +34,7 @@ PICKER_LANGUAGES = [
     "ru",
     "pt",
     "it",
+    "vi",
 ]
 
 
@@ -66,6 +67,12 @@ def test_a_regional_tag_resolves_to_its_base_language() -> None:
 def test_an_unknown_language_falls_back_to_english_rather_than_breaking() -> None:
     for unknown in ("ja", "kl", "", None, "   "):
         assert overview_copy(unknown) is _COPY["en"]
+
+
+def test_vietnamese_has_its_own_overview_copy_and_regional_tags_resolve_to_it() -> None:
+    assert overview_copy("vi") is _COPY["vi"]
+    assert overview_copy("vi-VN") is _COPY["vi"]
+    assert _COPY["vi"] is not _COPY["en"]
 
 
 def test_the_translation_gap_is_reported_honestly() -> None:

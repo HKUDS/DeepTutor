@@ -7,6 +7,13 @@ The chat pipeline calls it via the thin ``WebFetchTool`` wrapper in
 ``deeptutor/tools/builtin/__init__.py``; no internal global state, no
 hidden side-effects — easy to test by passing a mock httpx client.
 
+Since issue #2448 the HTTP+extract step is pluggable: ``backend="local"``
+(the default, unchanged in-process path) or a registered remote backend
+such as ``deepseek`` from ``deeptutor/services/fetch/providers``. The
+safety gate below always runs first, retryable backend failures fall back
+to local, and the crawler stays on the local path — see
+:mod:`deeptutor.services.fetch`.
+
 Security stance (kept tight on purpose because the model decides
 arguments, not a human):
 
@@ -23,6 +30,7 @@ arguments, not a human):
 
 from __future__ import annotations
 
+import codecs
 from dataclasses import dataclass
 import ipaddress
 import logging
@@ -78,8 +86,23 @@ async def fetch_url_as_markdown(
     user_agent: str = DEFAULT_USER_AGENT,
     client_factory: Any = None,
     host_validator: Any = None,
+    backend: str | None = None,
 ) -> FetchOutcome:
     """Fetch ``url`` and extract readable text.
+
+    ``backend`` selects the fetch backend (issue #2448): ``"local"`` (the
+    default in-process httpx + extractor path) or a registered remote backend
+    such as ``"deepseek"``. ``None`` means "whatever the deployment default
+    says" — ``DEEPTUTOR_FETCH_BACKEND``, else the persisted
+    ``web_fetch_backend`` system setting (``web_fetch.backend`` in the
+    settings spec), else local — so existing installs behave exactly as
+    before. A remote backend replaces
+    only the HTTP+extract step — the scheme/SSRF gate below runs *first*,
+    so a private/loopback URL is never handed to a third party. Retryable
+    backend failures (auth, balance, throttle, network) fall back to the
+    local extractor; 400/404/413 and an empty body are a hard failure. The
+    site crawler (``services/web_source/crawler.py``) never routes through
+    this dispatcher's remote backends.
 
     ``client_factory`` accepts a no-arg callable returning an
     ``httpx.AsyncClient``-compatible context manager. ``host_validator``
@@ -99,6 +122,38 @@ async def fetch_url_as_markdown(
     if not host:
         return FetchOutcome(ok=False, error="URL is missing a host.")
     validator = host_validator or _is_disallowed_host
+
+    backend_name = _resolve_backend_name(backend)
+    if backend_name is None:
+        from deeptutor.services.config import supported_fetch_providers_hint
+
+        return FetchOutcome(
+            ok=False,
+            error=(
+                f"Unknown fetch backend: {backend!r}. "
+                f"Available: {supported_fetch_providers_hint()}."
+            ),
+        )
+    if backend_name != "local":
+        # The SSRF gate must stay in front of any remote backend: a backend
+        # replaces the HTTP+extract step, never the decision of whether the
+        # URL is safe to contact — otherwise a private URL would be handed
+        # to a third party.
+        if validator(host):
+            return FetchOutcome(
+                ok=False,
+                error=f"Refusing to fetch private/loopback host: {host}.",
+            )
+        remote = await _fetch_via_backend(
+            backend_name,
+            url_clean,
+            max_chars=max_chars,
+            timeout_s=timeout_s,
+            user_agent=user_agent,
+        )
+        if remote is not None:
+            return remote
+        # Retryable backend failure — fall through to the local extractor.
 
     factory = client_factory or _default_client_factory
     current_url = url_clean
@@ -166,6 +221,95 @@ async def fetch_url_as_markdown(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_backend_name(backend: str | None) -> str | None:
+    """Map the ``backend`` argument to a registered fetch-backend name.
+
+    ``None`` means "whatever the deployment default says"
+    (``DEEPTUTOR_FETCH_BACKEND``, else the persisted system setting, else
+    local). Unknown names return ``None`` so the caller can surface a hard
+    error — an explicit per-call override naming a backend that doesn't
+    exist must not silently become local.
+    """
+    from deeptutor.services.config import SUPPORTED_FETCH_PROVIDERS
+
+    if backend is None:
+        from deeptutor.services.fetch import resolve_fetch_backend
+
+        return resolve_fetch_backend()
+    name = backend.strip().lower()
+    return name if name in SUPPORTED_FETCH_PROVIDERS else None
+
+
+async def _fetch_via_backend(
+    backend_name: str,
+    url: str,
+    *,
+    max_chars: int,
+    timeout_s: float,
+    user_agent: str,
+) -> FetchOutcome | None:
+    """Run a remote fetch backend; ``None`` means "fall back to local".
+
+    Failure semantics split by what can be retried: a retryable backend
+    error (auth, balance, throttle, network — see
+    :class:`~deeptutor.services.fetch.base.FetchProviderError`) answers
+    ``None`` so the local extractor still serves the call, while hard
+    failures (400/404/413, an empty body, or a non-retryable provider
+    error) come back as a failing outcome — the same meaning as today's
+    ``HTTP >= 400`` branch. A crashing adapter is treated as retryable so
+    a broken backend never takes ``web_fetch`` down.
+    """
+    from deeptutor.services.fetch import get_fetch_provider
+    from deeptutor.services.fetch.base import FetchProviderError, redact_fetch_error
+
+    try:
+        provider = get_fetch_provider(backend_name)
+        outcome = await provider.fetch(
+            url, max_chars=max_chars, timeout_s=timeout_s, user_agent=user_agent
+        )
+    except FetchProviderError as exc:
+        if not exc.retryable:
+            return FetchOutcome(ok=False, url=url, error=exc.message)
+        # Exception text can echo Authorization headers / API keys back, so
+        # only the redacted form is ever logged.
+        logger.warning(
+            "Fetch backend %r unavailable (%s); falling back to local extraction.",
+            backend_name,
+            redact_fetch_error(exc),
+        )
+        return None
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning(
+            "Fetch backend %r raised (%s); falling back to local extraction.",
+            backend_name,
+            redact_fetch_error(exc),
+        )
+        return None
+
+    if not outcome.ok:
+        return outcome
+    markdown = outcome.markdown or ""
+    if not markdown.strip():
+        return FetchOutcome(
+            ok=False,
+            url=url,
+            error=f"Fetch backend {backend_name!r} returned no content.",
+        )
+    truncated = False
+    if len(markdown) > max_chars:
+        markdown = markdown[:max_chars].rstrip() + "\n…[truncated]"
+        truncated = True
+    # Remote backends can't report the post-redirect final URL, so the
+    # requested URL is what citations get (documented trade-off).
+    return FetchOutcome(
+        ok=True,
+        markdown=markdown,
+        url=outcome.url or url,
+        title=outcome.title,
+        truncated=truncated,
+    )
+
+
 def _default_client_factory(*, timeout: float, user_agent: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=timeout,
@@ -224,19 +368,89 @@ async def _bounded_read(response: httpx.Response, limit: int) -> str:
     """Stream-read at most ``limit`` bytes from ``response`` then stop.
 
     Avoids holding hundreds of MB if a server (or an LLM-supplied URL)
-    points at a huge resource. Encoding falls back from response.encoding
-    → utf-8 with replacement.
+    points at a huge resource. The charset comes from
+    :py:func:`_detect_encoding`; undecodable bytes are replaced.
     """
     buf = bytearray()
     async for chunk in response.aiter_bytes():
         buf.extend(chunk)
         if len(buf) >= limit:
             break
-    encoding = response.encoding or "utf-8"
+    encoding = _detect_encoding(bytes(buf), response.headers.get("content-type", ""))
     try:
         return buf.decode(encoding, errors="replace")
     except (LookupError, TypeError):
         return buf.decode("utf-8", errors="replace")
+
+
+# Byte-order marks take precedence over every declared charset (WHATWG
+# "decode"). ``utf-8-sig`` also drops the mark from the decoded text.
+_BOMS = (
+    (b"\xef\xbb\xbf", "utf-8-sig"),
+    (b"\xff\xfe", "utf-16"),
+    (b"\xfe\xff", "utf-16"),
+)
+_HEADER_CHARSET_RE = re.compile(r"""charset\s*=\s*["']?([\w.:-]+)""", re.IGNORECASE)
+# ``<meta charset="gbk">`` and ``<meta http-equiv="Content-Type"
+# content="text/html; charset=gbk">``; browsers look for either in the
+# first 1024 bytes when the HTTP header names no charset.
+_META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+?charset\s*=\s*["']?\s*([\w.:-]+)""",
+    re.IGNORECASE,
+)
+_META_PRESCAN_BYTES = 1024
+# Labels pages commonly declare for a superset encoding. Browsers decode them
+# as the superset (WHATWG Encoding), so a page labelled ``gb2312`` that uses
+# GBK-only characters still renders; Python's strict codecs would not.
+_CHARSET_SUPERSETS = {
+    "gb2312": "gb18030",
+    "gbk": "gb18030",
+    "x-gbk": "gb18030",
+    "iso-8859-1": "cp1252",
+    "latin1": "cp1252",
+    "latin-1": "cp1252",
+    "us-ascii": "cp1252",
+    "ascii": "cp1252",
+}
+
+
+def _usable_charset(label: str | bytes | None) -> str | None:
+    if not label:
+        return None
+    if isinstance(label, bytes):
+        label = label.decode("ascii", errors="ignore")
+    name = label.strip().lower()
+    name = _CHARSET_SUPERSETS.get(name, name)
+    try:
+        codecs.lookup(name)
+    except LookupError:
+        return None
+    return name
+
+
+def _detect_encoding(body: bytes, content_type: str) -> str:
+    """Pick the charset for ``body`` the way a browser would.
+
+    Order: byte-order mark, the ``charset`` parameter of the HTTP
+    ``Content-Type``, a ``<meta>`` charset declaration near the top of the
+    document, then UTF-8. Without the ``<meta>`` step every page that only
+    declares its charset in the markup (common for GBK / Shift_JIS / EUC-KR
+    sites) is decoded as UTF-8 and comes back as replacement characters.
+    """
+    for bom, encoding in _BOMS:
+        if body.startswith(bom):
+            return encoding
+    header_match = _HEADER_CHARSET_RE.search(content_type or "")
+    declared = _usable_charset(header_match.group(1) if header_match else None)
+    if declared:
+        return declared
+    meta_match = _META_CHARSET_RE.search(body[:_META_PRESCAN_BYTES])
+    sniffed = _usable_charset(meta_match.group(1) if meta_match else None)
+    # A UTF-16 label in ASCII-compatible markup is a mislabel; browsers
+    # treat it as UTF-8, and decoding it as UTF-16 would garble everything.
+    if sniffed and not sniffed.startswith("utf-16"):
+        return sniffed
+    return "utf-8"
 
 
 def _extract_readable(html_or_text: str, base_url: str = "") -> tuple[str, str]:

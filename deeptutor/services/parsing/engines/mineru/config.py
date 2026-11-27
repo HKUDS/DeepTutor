@@ -18,6 +18,7 @@ from deeptutor.services.config.runtime_settings import (
     MINERU_MODE_LOCAL,
     load_mineru_settings,
 )
+from deeptutor.services.parsing.types import ParserError
 
 # The MinerU cloud API rejects any single file above 200 pages, so the PDF
 # auto-slicer must never emit a part larger than that even if a setting asks
@@ -26,10 +27,11 @@ MAX_PAGES_PER_PART_CEILING = 200
 DEFAULT_MAX_PAGES_PER_PART = 180
 
 
-class MinerUError(RuntimeError):
+class MinerUError(ParserError):
     """Raised when a MinerU parse fails (local CLI missing, cloud API error,
     misconfiguration). Carries a user-facing message; the capability layer
-    surfaces it as a stream error."""
+    surfaces it as a stream error. The shared ParserError boundary lets batch
+    consumers isolate this document instead of aborting the whole KB (#1982)."""
 
     def __init__(self, message: str, *, code: str | None = None, detail: str = "") -> None:
         super().__init__(message)

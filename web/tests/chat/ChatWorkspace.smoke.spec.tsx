@@ -1,0 +1,640 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { initI18n } from '@/i18n/init'
+import type { ChatState, MessageItem } from '@/features/chat/ChatStateAdapter'
+import type { StreamEvent } from '@/features/chat/model/protocol'
+import { updateSessionOrganization } from '@/lib/session-api'
+import type { SessionSummary } from '@/lib/session-api'
+
+initI18n('en')
+
+/**
+ * Smoke coverage for the chat home surface (DT-21 top-15 gap #2).
+ *
+ * The page has never been imported by any vitest file, so its streaming
+ * state machine and the submission-failure banner had no regression
+ * protection. These tests mount the real ChatWorkspace with the
+ * ChatStateAdapter mocked at its boundary: state transitions are injected
+ * the way the adapter's provider would deliver them (rerender with the
+ * next state), while heavy leaf surfaces (composer, message list,
+ * pickers via next/dynamic) stay as capturing stubs so the file under
+ * test is ChatWorkspace's own wiring.
+ */
+
+const fixture = vi.hoisted(() => ({
+  adapter: {
+    state: null as unknown as ChatState,
+    setTools: vi.fn(),
+    setCapability: vi.fn(),
+    configureSession: vi.fn(),
+    setKBs: vi.fn(),
+    initializeKBs: vi.fn(),
+    setLLMSelection: vi.fn(),
+    setPersonaSelection: vi.fn(),
+    setAnswerBy: vi.fn(),
+    setResourceSelection: vi.fn(),
+    setReplyLanguageOverride: vi.fn(() => Promise.resolve()),
+    sendMessage: vi.fn(),
+    queueMessage: vi.fn(),
+    withdrawQueuedMessage: vi.fn(),
+    cancelStreamingTurn: vi.fn(),
+    submitUserReply: vi.fn(async () => true),
+    regenerateLastMessage: vi.fn(),
+    resendLastMessage: vi.fn(),
+    deleteTurn: vi.fn(async () => ({
+      detachedThreadIds: [] as string[],
+      deletedMessageIds: [] as number[],
+    })),
+    editMessage: vi.fn(),
+    switchBranch: vi.fn(),
+    newSession: vi.fn(() => 'draft:general'),
+    loadSession: vi.fn(async () => []),
+    showCachedSession: vi.fn(() => false),
+    loadMessageTrace: vi.fn(async () => undefined),
+    releaseMessageTrace: vi.fn(),
+    renameSessionTitle: vi.fn(async () => undefined),
+  },
+  routeSessionId: null as string | null,
+  listKnowledgeBases: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
+  composerProps: null as Record<string, unknown> | null,
+  listProps: null as {
+    messages: MessageItem[]
+    isStreaming: boolean
+    canResendLastTurn: boolean
+    onDetachThread?: (thread: SessionSummary) => Promise<void>
+    onDeleteTurn?: (messageId: number) => void | Promise<void>
+  } | null,
+  setActiveSessionId: vi.fn(),
+  viewer: {
+    openFileTab: vi.fn(),
+    openWebTab: vi.fn(),
+    openMarkdownNoteTab: vi.fn(),
+    openQuizFollowupTab: vi.fn(),
+    openSideChatTab: vi.fn(),
+    openSideChatThread: vi.fn(),
+    closeSideChatThread: vi.fn(),
+    clearSideChatSource: vi.fn(),
+    openGeogebraTab: vi.fn(),
+    openSubagentTab: vi.fn(),
+    focusActivityHome: vi.fn(),
+  },
+}))
+
+vi.mock('@/features/chat/ChatStateAdapter', () => ({
+  useChatStateAdapter: () => fixture.adapter,
+}))
+
+vi.mock('@/features/chat/controllers/useChatRouteSession', () => ({
+  useChatRouteSession: () => ({
+    sessionId: fixture.routeSessionId,
+    router: { push: vi.fn(), replace: vi.fn() },
+  }),
+}))
+
+vi.mock('next/navigation', async importOriginal => {
+  const actual = await importOriginal<typeof import('next/navigation')>()
+  return {
+    ...actual,
+    useSearchParams: () => new URLSearchParams(''),
+  }
+})
+
+vi.mock('next/dynamic', () => ({
+  // ChatWorkspace mounts pickers/modals off-screen via next/dynamic; a null
+  // stub keeps their trees out of the smoke run without touching the shell.
+  default: () => () => null,
+}))
+
+// The viewer is a separate surface with its own suite; here its imperative
+// handle is a spy so ChatWorkspace's calls into it stay observable.
+vi.mock('@/components/chat/home/LazySessionViewerPanel', async () => {
+  const { forwardRef, useImperativeHandle } = await import('react')
+  return {
+    default: forwardRef(function StubViewer(_props: unknown, ref) {
+      useImperativeHandle(ref, () => fixture.viewer as never, [])
+      return null
+    }),
+  }
+})
+
+vi.mock('@/features/capabilities/useCapabilityCatalog', () => ({
+  useCapabilityCatalog: () => ({
+    capabilities: [
+      {
+        value: '',
+        label: 'Chat',
+        description: '',
+        allowedTools: ['web_search', 'reason'],
+        defaultTools: [],
+      },
+    ],
+    visibleCapabilities: [{ value: '', label: 'Chat', description: '', allowedTools: [] }],
+    isLoading: false,
+  }),
+}))
+
+vi.mock('@/context/AppShellContext', () => ({
+  useAppShell: () => ({
+    setActiveSessionId: fixture.setActiveSessionId,
+    language: 'en',
+  }),
+}))
+
+vi.mock('@/hooks/useChatWorkspaces', () => ({
+  useChatWorkspaces: () => ({ workspaces: [], error: '' }),
+}))
+
+vi.mock('@/hooks/useWorkspaceBinding', () => ({
+  useWorkspaceBinding: () => ({
+    selectWorkspace: vi.fn(),
+    error: '',
+    pending: false,
+  }),
+}))
+
+vi.mock('@/hooks/useComposerResources', () => ({
+  useComposerResources: () => ({ skills: [], mcp: [] }),
+}))
+
+vi.mock('@/hooks/useLLMOptions', () => ({
+  useLLMOptions: () => ({
+    options: [],
+    activeDefault: null,
+    loading: false,
+    error: '',
+    refresh: vi.fn(),
+  }),
+}))
+
+vi.mock('@/hooks/useContextBudget', () => ({
+  useContextBudget: () => null,
+}))
+
+
+vi.mock('@/lib/session-api', () => ({
+  fetchSessionAskHint: vi.fn(async () => ''),
+  updateSessionOrganization: vi.fn(async () => ({})),
+  getSessionOrganization: vi.fn(async (sessionId: string) => ({
+    session_id: sessionId,
+    title: '',
+    preferences: {},
+  })),
+  deleteSession: vi.fn(async () => undefined),
+  listSessionThreads: vi.fn(async () => []),
+}))
+
+vi.mock('@/features/knowledge/api/catalog', () => ({
+  listKnowledgeBases: fixture.listKnowledgeBases,
+}))
+
+vi.mock('@/lib/subagents-api', () => ({
+  getSubagentSettings: vi.fn(async () => ({ consult_budget: 3 })),
+}))
+
+vi.mock('@/lib/tools-settings', () => ({
+  getEnabledOptionalTools: vi.fn(async () => []),
+  invalidateEnabledOptionalToolsCache: vi.fn(),
+}))
+
+vi.mock('@/lib/notifications', () => ({
+  notify: vi.fn(),
+}))
+
+vi.mock('@/lib/chat-export', () => ({
+  downloadChatMarkdown: vi.fn(),
+}))
+
+vi.mock('@/components/chat/home/ChatComposer', () => ({
+  default: (
+    props: Record<string, unknown> & {
+      isStreaming?: boolean
+      onSend?: (content: string) => void
+    }
+  ) => {
+    fixture.composerProps = props
+    return (
+      <div data-testid="composer" data-streaming={props.isStreaming ? 'true' : 'false'}>
+        <button type="button" onClick={() => props.onSend?.('Explain photosynthesis')}>
+          Send
+        </button>
+      </div>
+    )
+  },
+}))
+
+vi.mock('@/features/chat/messages', () => ({
+  ChatMessageList: (props: {
+    messages: MessageItem[]
+    isStreaming: boolean
+    canResendLastTurn: boolean
+    onDeleteTurn?: (messageId: number) => void | Promise<void>
+  }) => {
+    fixture.listProps = props
+    return (
+      <div data-testid="message-list" data-streaming={props.isStreaming ? 'true' : 'false'}>
+        {props.messages.map((message, index) => (
+          <div key={message.id ?? index} data-role={message.role}>
+            {message.content}
+          </div>
+        ))}
+      </div>
+    )
+  },
+}))
+
+vi.mock('@/components/chat/home/StarterSuggestions', () => ({
+  default: () => <div data-testid="starter-suggestions" />,
+}))
+
+vi.mock('@/components/chat/home/TurnNavigator', () => ({
+  TurnNavigator: () => null,
+}))
+
+vi.mock('@/components/chat/preview/FilePreviewDrawer', () => ({
+  default: () => null,
+}))
+
+vi.mock('@/components/watching/WatchingWorkspace', () => ({
+  WatchingSessionBridge: () => null,
+  WatchingSurface: () => null,
+}))
+
+vi.mock('@/components/watching/WatchingPane', () => ({
+  WatchingPane: () => null,
+  WATCHING_ASK_EVENT: 'dt:watching-ask',
+}))
+
+const { default: ChatWorkspace } = await import('@/features/chat/components/ChatWorkspace')
+
+function emptyChatState(): ChatState {
+  return {
+    sessionKey: 'draft:general',
+    sessionId: null,
+    sessionTitle: '',
+    enabledTools: [],
+    activeCapability: '',
+    workspaceMode: null,
+    knowledgeBases: [],
+    knowledgeBasesInitialized: true,
+    llmSelection: null,
+    masteryPathId: null,
+    masterySessionMode: null,
+    noteDocumentId: null,
+    createTarget: null,
+    workspaceId: null,
+    personaSelection: '',
+    answerBy: null,
+    resourceSelection: { skills: [], mcp: [] },
+    messages: [],
+    isStreaming: false,
+    currentStage: '',
+    language: 'en',
+    replyLanguageOverride: null,
+    selectedBranches: {},
+    lastTurnFailed: false,
+    submissionFailed: false,
+    submissionErrorMessage: '',
+    submissionNoLlmAccess: false,
+    submissionNeedsReview: false,
+    submissionNotSaved: false,
+    queuedMessages: [],
+  }
+}
+
+function streamEvent(
+  type: StreamEvent['type'],
+  content: string,
+  extra: Partial<StreamEvent> = {}
+): StreamEvent {
+  return {
+    type,
+    source: 'chat',
+    stage: 'responding',
+    content,
+    timestamp: Date.now() / 1000,
+    ...extra,
+  } as StreamEvent
+}
+
+function renderWorkspace() {
+  return render(<ChatWorkspace />)
+}
+
+/** Move the mocked adapter to its next state the way its provider would. */
+function applyState(patch: Partial<ChatState>) {
+  fixture.adapter.state = { ...fixture.adapter.state, ...patch }
+}
+
+describe('ChatWorkspace smoke', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fixture.routeSessionId = null
+    fixture.listKnowledgeBases.mockResolvedValue([])
+    fixture.composerProps = null
+    fixture.listProps = null
+    fixture.adapter.state = emptyChatState()
+  })
+
+  it('initializes an untouched draft from its only ready default KB', async () => {
+    applyState({ knowledgeBasesInitialized: false })
+    fixture.listKnowledgeBases.mockResolvedValue([
+      { id: 'workspace:kb:physics', name: 'physics', is_default: true, status: 'ready' },
+    ])
+    renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.initializeKBs).toHaveBeenCalledWith(
+      'draft:general', null, ['workspace:kb:physics'],
+    ))
+  })
+
+  it('does not replace an explicit empty selection', async () => {
+    fixture.listKnowledgeBases.mockResolvedValue([
+      { id: 'workspace:kb:physics', name: 'physics', is_default: true, status: 'ready' },
+    ])
+    renderWorkspace()
+    await waitFor(() => expect(fixture.listKnowledgeBases).toHaveBeenCalled())
+    expect(fixture.adapter.initializeKBs).not.toHaveBeenCalled()
+  })
+
+  it('does not invent a selection for multiple KBs', async () => {
+    applyState({ knowledgeBasesInitialized: false })
+    fixture.listKnowledgeBases.mockResolvedValue([
+      { name: 'physics', is_default: true, status: 'ready' },
+      { name: 'chemistry', is_default: false, status: 'ready' },
+    ])
+    renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.initializeKBs).toHaveBeenCalledWith(
+      'draft:general', null, [],
+    ))
+  })
+
+  it('does not select an unavailable default', async () => {
+    applyState({ knowledgeBasesInitialized: false })
+    fixture.listKnowledgeBases.mockResolvedValue([
+      { name: 'physics', is_default: true, status: 'unavailable', available: false },
+    ])
+    renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.initializeKBs).toHaveBeenCalledWith(
+      'draft:general', null, [],
+    ))
+  })
+
+  it('does not send an unresolved untouched draft', async () => {
+    applyState({ knowledgeBasesInitialized: false })
+    fixture.listKnowledgeBases.mockImplementation(() => new Promise(() => {}))
+    renderWorkspace()
+    fireEvent.click(screen.getByText('Send'))
+    await waitFor(() => expect(fixture.listKnowledgeBases).toHaveBeenCalled())
+    expect(fixture.adapter.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('resumes a saved conversation whose capability is no longer registered as chat', async () => {
+    fixture.routeSessionId = 'old-chat'
+    applyState({ sessionId: 'old-chat', activeCapability: 'removed-capability', isStreaming: true })
+    const view = renderWorkspace()
+    expect(fixture.adapter.setCapability).not.toHaveBeenCalled()
+
+    applyState({ isStreaming: false })
+    view.rerender(<ChatWorkspace />)
+    await waitFor(() => expect(fixture.adapter.setCapability).toHaveBeenCalledWith(null))
+  })
+
+  it('renders the empty draft home and bootstraps a new session', async () => {
+    const view = renderWorkspace()
+
+    // The draft session is created once on mount (no session id in the URL).
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalledTimes(1))
+    expect(fixture.adapter.newSession).toHaveBeenCalledWith({
+      workspaceId: null,
+    })
+
+    // Empty home: greeting heading, starter suggestions, idle composer.
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(heading.textContent).toMatch(
+      /What would you like to learn|Good morning|Good afternoon|Good evening|It's late|Morning —|Afternoon —|Evening —|Burning the midnight/
+    )
+    expect(screen.getByTestId('starter-suggestions')).toBeInTheDocument()
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-streaming', 'false')
+    expect(screen.queryByTestId('message-list')).toBeNull()
+
+    // Header affordances exist; the conversation's own menu (save, export,
+    // organize) waits for there to be a conversation.
+    expect(screen.getByRole('button', { name: 'Conversation actions' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Activity' })).toBeEnabled()
+
+    // The active session is published to the app shell for the sidebar.
+    expect(fixture.setActiveSessionId).toHaveBeenCalledWith(null)
+
+    // A first send goes through the adapter's sendMessage.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    })
+    expect(fixture.adapter.sendMessage).toHaveBeenCalledWith(
+      'Explain photosynthesis',
+      [],
+      expect.objectContaining({ _resource_reuse: expect.any(Object) }),
+      [],
+      [],
+      expect.anything(),
+      [],
+      undefined,
+      []
+    )
+    view.unmount()
+  })
+
+  it('walks the streaming turn: sent → streaming → done', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    // The adapter applies the optimistic user row once the turn starts.
+    applyState({
+      sessionId: 's-1',
+      isStreaming: true,
+      messages: [
+        { id: 1, role: 'user', content: 'Explain photosynthesis' },
+        { id: 2, role: 'assistant', content: '', events: [] },
+      ],
+    })
+    view.rerender(<ChatWorkspace />)
+
+    expect(screen.getByTestId('message-list')).toHaveAttribute('data-streaming', 'true')
+    expect(
+      within(screen.getByTestId('message-list')).getByText('Explain photosynthesis')
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-streaming', 'true')
+
+    // Stream deltas land on the assistant row's event log.
+    applyState({
+      messages: [
+        { id: 1, role: 'user', content: 'Explain photosynthesis' },
+        {
+          id: 2,
+          role: 'assistant',
+          content: 'Plants convert',
+          events: [streamEvent('content', 'Plants convert')],
+        },
+      ],
+    })
+    view.rerender(<ChatWorkspace />)
+    expect(
+      within(screen.getByTestId('message-list')).getByText('Plants convert')
+    ).toBeInTheDocument()
+    expect(fixture.listProps?.messages[1].events).toHaveLength(1)
+
+    // The turn settles: streaming flags drop on both surfaces.
+    applyState({
+      isStreaming: false,
+      messages: [
+        { id: 1, role: 'user', content: 'Explain photosynthesis' },
+        {
+          id: 2,
+          role: 'assistant',
+          content: 'Plants convert sunlight into sugar.',
+          events: [
+            streamEvent('content', 'Plants convert'),
+            streamEvent('done', '', { metadata: { status: 'completed' } }),
+          ],
+        },
+      ],
+    })
+    view.rerender(<ChatWorkspace />)
+    expect(screen.getByTestId('message-list')).toHaveAttribute('data-streaming', 'false')
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-streaming', 'false')
+    // No error banner while the turn is healthy.
+    expect(screen.queryByRole('alert')).toBeNull()
+    view.unmount()
+  })
+
+  it('shows the submission-failure banner and resends from it', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    applyState({
+      sessionId: 's-1',
+      submissionFailed: true,
+      lastTurnFailed: true,
+      messages: [
+        { id: 1, role: 'user', content: 'Explain photosynthesis' },
+        {
+          id: 2,
+          role: 'user',
+          content: 'Hello offline',
+          failedSubmission: true,
+        },
+      ],
+    })
+    view.rerender(<ChatWorkspace />)
+
+    const banner = screen.getByRole('alert')
+    expect(banner).toHaveAttribute('data-submission-error', 'true')
+    expect(banner).toHaveTextContent(
+      "Couldn't reach the server. Please check your connection and retry."
+    )
+    // The unsent row renders as part of the transcript, marked by its flag.
+    expect(fixture.listProps?.messages.at(-1)?.failedSubmission).toBe(true)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resend' }))
+    })
+    expect(fixture.adapter.resendLastMessage).toHaveBeenCalledTimes(1)
+
+    applyState({ submissionNoLlmAccess: true })
+    view.rerender(<ChatWorkspace />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Please contact your administrator')
+    expect(screen.getByRole('button', { name: 'Resend' })).toBeEnabled()
+
+    // The degraded variant (recovered text, lost context) explains itself
+    // and offers no resend that would drop the missing context.
+    applyState({ submissionNoLlmAccess: false, submissionNeedsReview: true })
+    view.rerender(<ChatWorkspace />)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Message text was saved, but its attachments or settings could not be restored. Copy it and send again.'
+    )
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull()
+    view.unmount()
+  })
+
+  it('surfaces a retryable failure when the URL session cannot be loaded', async () => {
+    fixture.routeSessionId = 's-404'
+    fixture.adapter.loadSession.mockRejectedValue(new Error('gone'))
+    const view = renderWorkspace()
+
+    // Loading overlay first, then the terminal, retryable failure state.
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(fixture.adapter.loadSession).toHaveBeenCalledWith(
+      's-404',
+      expect.objectContaining({ revalidate: false })
+    )
+
+    fixture.adapter.loadSession.mockResolvedValue([])
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    })
+    await waitFor(() => expect(fixture.adapter.loadSession).toHaveBeenCalledTimes(2))
+    view.unmount()
+  })
+
+  it('clears an open side chat when its thread is detached from a message', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    applyState({
+      sessionId: 's-1',
+      messages: [{ id: 1, role: 'user', content: 'Explain photosynthesis' }],
+    })
+    view.rerender(<ChatWorkspace />)
+    await waitFor(() => expect(fixture.listProps?.onDetachThread).toBeTypeOf('function'))
+
+    const thread = {
+      id: 'thread-1',
+      session_id: 'thread-1',
+      title: 'Why fork returns twice',
+      created_at: 1,
+      updated_at: 1,
+      message_count: 2,
+      last_message: '',
+      preferences: { tutor_source_message_id: 7 },
+    } satisfies SessionSummary
+
+    await act(async () => {
+      await fixture.listProps!.onDetachThread!(thread)
+    })
+
+    expect(updateSessionOrganization).toHaveBeenCalledWith(
+      'thread-1',
+      { tutor_source_message_id: null },
+      undefined
+    )
+    // The tab must forget the anchor too, or its next send would file the
+    // thread back under the message the learner just detached.
+    expect(fixture.viewer.clearSideChatSource).toHaveBeenCalledWith('thread-1', 7)
+    view.unmount()
+  })
+
+  it('clears deleted-source tabs after deleting a turn', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    fixture.adapter.deleteTurn.mockResolvedValue({
+      detachedThreadIds: ['thread-1'],
+      deletedMessageIds: [1],
+    })
+    applyState({
+      sessionId: 's-1',
+      messages: [{ id: 1, role: 'user', content: 'Explain photosynthesis' }],
+    })
+    view.rerender(<ChatWorkspace />)
+    await waitFor(() => expect(fixture.listProps?.onDeleteTurn).toBeTypeOf('function'))
+
+    await act(async () => {
+      await fixture.listProps!.onDeleteTurn!(1)
+    })
+
+    expect(fixture.adapter.deleteTurn).toHaveBeenCalledWith(1)
+    // The open tab only forgets the deleted message's anchor; a newer pending
+    // selection is preserved by the id comparison inside the panel.
+    expect(fixture.viewer.clearSideChatSource).toHaveBeenCalledWith('thread-1', 1)
+    view.unmount()
+  })
+})

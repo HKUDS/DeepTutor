@@ -1,6 +1,5 @@
 'use client'
 
-import { WorkspaceLabel } from '@/components/learning/LibraryWorkspace'
 import { masteryTopicRoute } from '@/lib/learning-routes'
 
 import Link from 'next/link'
@@ -30,7 +29,6 @@ export function TopicMapCard({ topic }: { topic: MasteryTopic }) {
       })}
       className="mastery-map-card group block overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
-      <div className="px-4 pt-3"><WorkspaceLabel row={topic} /></div>
       <div className="flex items-center gap-3 p-4">
         <LearningCardContent
           title={displayName}

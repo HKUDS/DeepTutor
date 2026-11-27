@@ -1,6 +1,7 @@
 "use client";
 
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -10,7 +11,7 @@ import { useOutsideClick } from "@/hooks/use-outside-click";
 /**
  * Knowledge-base scope selector (composer toolbar).
  *
- * Mirrors PersonaSelector's collapse-to-icon chip + dropdown, because a
+ * A collapse-to-icon chip + dropdown, because a
  * KB selection is the same KIND of state: a SESSION-level retrieval
  * scope that persists across turns (stored in session.preferences),
  * NOT a one-shot reference like an attachment. Surfacing it as a
@@ -117,7 +118,7 @@ export default function KnowledgeSelector({
               : `dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
           }
         >
-          {embedded && (
+          {embedded && knowledgeBases.length > 0 && (
             <div className="border-b border-[var(--border)] px-3 py-2">
               <input
                 aria-label={t("Search")}
@@ -130,8 +131,14 @@ export default function KnowledgeSelector({
           )}
 
           {knowledgeBases.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[12px] text-[var(--muted-foreground)]">
-              {t("No knowledge bases available")}
+            <div className="px-3 py-6 text-center text-[12px] text-[var(--muted-foreground)]">
+              <p>{t("No knowledge bases available")}</p>
+              <Link
+                href="/knowledge-bases"
+                className="mt-2 inline-flex items-center text-xs text-[var(--primary)] hover:underline"
+              >
+                {t("Create your first knowledge base")}
+              </Link>
             </div>
           ) : (
             <div className="max-h-[280px] overflow-y-auto py-1">

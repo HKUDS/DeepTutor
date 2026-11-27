@@ -37,7 +37,7 @@ export interface ThinkSegment {
 
 export type ContentSegment = TextSegment | ThinkSegment;
 
-const FENCED_CODE_REGEX = /```[\s\S]*?```/g;
+const FENCE_LINE_REGEX = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/gm;
 const FENCED_PLACEHOLDER_REGEX = /\u0000FENCED_(\d+)\u0000/g;
 
 // `?<\s*think(?:ing)?\b[^>]*>`?
@@ -52,10 +52,37 @@ function closeTagRegex(tag: string): RegExp {
 
 function maskFencedCode(input: string): { masked: string; blocks: string[] } {
   const blocks: string[] = [];
-  const masked = input.replace(FENCED_CODE_REGEX, (match) => {
-    blocks.push(match);
-    return `\u0000FENCED_${blocks.length - 1}\u0000`;
-  });
+  let masked = "";
+  let cursor = 0;
+  let start = -1;
+  let opening = "";
+  const appendBlock = (end: number) => {
+    masked += input.slice(cursor, start);
+    blocks.push(input.slice(start, end));
+    masked += `\u0000FENCED_${blocks.length - 1}\u0000`;
+    cursor = end;
+    start = -1;
+    opening = "";
+  };
+
+  for (const match of input.matchAll(FENCE_LINE_REGEX)) {
+    const marker = match[1];
+    if (start >= 0) {
+      if (
+        marker[0] === opening[0] &&
+        marker.length >= opening.length &&
+        match[2].trim() === ""
+      ) {
+        appendBlock(match.index + match[0].length);
+      }
+    } else if (marker[0] !== "`" || !match[2].includes("`")) {
+      start = match.index;
+      opening = marker;
+    }
+  }
+  // A streaming code block remains code until its matching fence arrives.
+  if (start >= 0) appendBlock(input.length);
+  masked += input.slice(cursor);
   return { masked, blocks };
 }
 

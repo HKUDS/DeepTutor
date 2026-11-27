@@ -11,39 +11,77 @@ description: Configure, manage, and use DeepTutor through its CLI, including cap
 
 Use this skill when the user wants to:
 - Set up or configure DeepTutor
+- Diagnose problems in an existing DeepTutor installation
 - Chat with DeepTutor or run a capability (deep solve, quiz generation, deep research, visualize, math animation, mastery path)
 - Create, manage, or search knowledge bases
 - Create, manage, or run Partners (IM-connected companions)
-- Search, install, or manage skills from a hub (ClawHub)
+- Search, install, or manage skills from a hub (EduHub or ClawHub)
 - Inspect or maintain interactive Books
 - View or manage learning memory, sessions, or notebooks
 - Start the DeepTutor API server or the full Web app
 
 ## Prerequisites
 
-- Python 3.11+
-- DeepTutor installed: `pip install deeptutor` for the full Web app, `pip install deeptutor-cli` for CLI-only, or `pip install -e .` from a source checkout
+- Python 3.11–3.14
+- For the 1.7.0 modular release, `pip install "deeptutor[full]"` installs the packaged Web app; bare `deeptutor` (or the `deeptutor-cli` compatibility alias) installs core CLI/SDK only. For development, use source or local wheels. Source installs require `pip install -r requirements/full.txt` followed by `pip install -e . --no-deps`; add Node.js 22 LTS and `npm ci --legacy-peer-deps` in `web/` for the Web UI. See the setup guide for upgrading from 1.6.15 without changing the runtime home.
 - Run `deeptutor init` for first-time interactive setup. It walks a guided wizard (ports → LLM → embedding → search → review) and writes the same settings as the Web Settings page under `data/user/settings`. Add `--cli` to skip the ports step for CLI-only use, or `--home <path>` to target a specific workspace.
 
+## Agent Setup
+
+Start with the [developer and agent handbook](docs-for-dev/README.md) to find
+the relevant setup, architecture, development, testing, or feature guide.
+When the user asks you to install, configure, or troubleshoot DeepTutor, follow
+[docs-for-dev/AGENT_SETUP.md](docs-for-dev/AGENT_SETUP.md). It covers cloning,
+environment preparation, credential sources, optional RAG/search, startup,
+and verification, plus a [troubleshooting approach](docs-for-dev/AGENT_SETUP.md#6-troubleshooting)
+for existing installations. Read it before changing settings; reuse existing checkouts
+and preserve the user's files. Keep `DEEPTUTOR_HOME` consistent for all commands.
+
+```bash
+deeptutor init --non-interactive          # Create missing defaults; no model selected
+deeptutor config providers               # Discover supported providers as JSON
+deeptutor config apply setup.json --check # Validate without settings writes/network
+deeptutor config apply setup.json         # Apply complete setup profiles from JSON
+deeptutor config show                    # Inspect configuration with credentials redacted
+deeptutor doctor --format json           # Check local readiness
+deeptutor doctor --online --format json  # Small live LLM request (provider usage)
+```
+
+Use the guide's setup JSON schema, with `api_key_env` referencing a credential
+in the CLI process's environment. Never print keys or place literal keys in
+the setup JSON. For missing credentials/model choices, ask the user for the
+source/selection; continue independent preparation. Use the installed CLI's
+`--help` to confirm commands when working with an older release. Saving settings
+is not proof of readiness: report actual verification and any unfinished step.
+
 ## Commands
+
+Examples below cover the full installation and optional add-ons. Core provides
+`chat` and `ask_questions`; other capabilities and resource commands require
+their owning modules. Check `deeptutor module list` for installed/enabled/ready
+states and `deeptutor plugin list` for registered capabilities and tools. Stop
+DeepTutor before changing modules. Source checkouts use `module enable/disable`
+and `python scripts/install_extras.py <extra>` for optional dependencies;
+wheel installations also support `module install/uninstall`. For local builds,
+pass `--wheelhouse /path/to/wheels` to `module install` (see [Modules](docs-for-dev/MODULES.md)).
 
 ### Chat & Capabilities
 
 ```bash
 # Interactive REPL
 deeptutor chat
-deeptutor chat --capability deep_solve --kb my-kb --tool rag --tool web_search
+deeptutor chat --capability deep_solve --kb my-kb --tool web_search
 
 # One-shot capability execution
 deeptutor run chat "Explain Fourier transform"
-deeptutor run deep_solve "Solve x^2 = 4" --tool rag --kb textbook
+deeptutor run deep_solve "Solve x^2 = 4" --kb textbook
 deeptutor run deep_question "Linear algebra" --config num_questions=5
 deeptutor run deep_research "Attention mechanisms" --kb papers --config mode=report --config depth=standard
 deeptutor run visualize "Plot the unit circle"
 deeptutor run math_animator "Visualize a Fourier series"
 
 # Capabilities accepted by `run` / `chat -c`:
-#   chat, deep_solve, deep_question, deep_research, visualize, math_animator, mastery_path
+# Discover current capabilities and tool availability with `deeptutor plugin list`.
 
 # Options for `run`:
 #   --session <id>         Resume existing session
@@ -59,7 +97,7 @@ deeptutor run math_animator "Visualize a Fourier series"
 
 `deeptutor chat` accepts the same `--session / --tool / --kb / --notebook-ref / --history-ref / --language / --config / --config-json` options, plus `--capability/-c <name>` to set the initial capability.
 
-**Tools** for `--tool` / `-t`: user-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, `geogebra_analysis`, `imagegen`, and `videogen`. Context-gated tools (`rag`, `exec`, `read_source`, `web_fetch`, `github`, `ask_user`, …) auto-mount when their context is present, but can also be force-enabled with `--tool`. Run `deeptutor plugin list` for the full registered set.
+**Tools** for `--tool` / `-t`: user-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason`, `geogebra_analysis`, `imagegen`, and `videogen`. Context-gated tools (`rag`, `exec`, memory, notebook, …) mount according to context/capability rules; `--tool` does not bypass those rules. Mount a knowledge base with `--kb` for RAG; Knowledge Frontier also needs the research module. Run `deeptutor plugin list` for the registered set.
 
 ### Knowledge Bases
 
@@ -93,8 +131,8 @@ deeptutor partner stop <id>                         # Stop a running partner
 
 ### Skills
 
-Install and manage skills, including packages from external hubs (ClawHub).
-Hub refs use `<hub>:<slug>[@version]` (the hub prefix defaults to `clawhub`).
+Install and manage skills, including packages from EduHub and ClawHub.
+Hub refs use `<hub>:<slug>[@version]` (the hub prefix defaults to `eduhub`).
 
 ```bash
 deeptutor skill search "flashcards" [--hub clawhub] [--limit 10]
@@ -146,18 +184,24 @@ deeptutor notebook remove-record <notebook_id> <record_id>
 
 ```bash
 deeptutor provider login openai-codex               # OAuth login for OpenAI Codex
-deeptutor provider login github-copilot             # Validate an existing Copilot auth session
+deeptutor provider login github-copilot             # Sign in through GitHub device flow
+deeptutor provider login codebuddy                  # Validate CodeBuddy SDK login / open login
 ```
 
 ### System
 
 ```bash
-deeptutor config show                               # Print resolved configuration
+deeptutor config show [--home <path>]               # Print resolved configuration (redacted)
+deeptutor config providers                          # Supported setup providers as JSON
+deeptutor config apply <file.json> [--check] [--home <path>] # Apply/validate setup JSON
 deeptutor plugin list                               # List registered tools and capabilities
 deeptutor plugin info <name>                         # Show a tool/capability's schema + availability
+deeptutor module list                               # Inspect installed / enabled / ready states
 deeptutor serve [--host 0.0.0.0] [--port 8001] [--reload]   # Start the API server
-deeptutor start [--home <path>]                     # Launch backend + frontend together
-deeptutor init [--cli] [--home <path>]              # Create/update workspace settings
+deeptutor start [--home <path>] [--detach] [--no-browser] # Launch backend + frontend
+deeptutor stop [--home <path>]                      # Stop a detached launcher
+deeptutor init [--cli] [--home <path>] [--non-interactive] # Wizard or missing defaults
+deeptutor doctor [--online] [--format json]         # Local readiness / optional live LLM probe
 ```
 
 ## REPL Slash Commands
@@ -182,22 +226,29 @@ Inside `deeptutor chat`, use these:
 
 ## Typical Workflows
 
-**First-time setup:**
+**First-time source setup (after preparing the environment in the setup guide):**
 ```bash
 cd DeepTutor
-pip install -e .
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
+python -m pip check
+deeptutor module list
 deeptutor init        # Interactive guided setup (add --cli for CLI-only)
 ```
 
+For the Web UI, install Node.js 22 LTS and run `npm ci --legacy-peer-deps`
+in `web/` before starting. CLI-only users can skip frontend setup. Follow the
+setup guide's readiness checks; initialization alone does not verify the model.
+
 **Daily learning:**
 ```bash
-deeptutor chat --kb textbook --tool rag --tool web_search
+deeptutor chat --kb textbook --tool web_search
 ```
 
 **Build a knowledge base from documents:**
 ```bash
 deeptutor kb create physics --doc ch1.pdf --doc ch2.pdf
-deeptutor run chat "Explain Newton's third law" --kb physics --tool rag
+deeptutor run chat "Explain Newton's third law" --kb physics
 ```
 
 **Generate quiz questions:**

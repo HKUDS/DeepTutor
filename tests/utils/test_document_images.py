@@ -17,13 +17,24 @@ from pptx.util import Inches as PptxInches
 import pytest
 
 from deeptutor.utils.document_images import (
+    MAX_INLINE_IMAGE_EDGE,
     ImageBudget,
     build_marker,
     extract_docx_rich,
     extract_pdf_images,
     extract_pptx_rich,
     find_markers,
+    fit_inline_image,
     image_index_from_name,
+    reading_image_budget,
+)
+from tests.docx_math_fixture import (
+    EXPECTED_CHAIN_PARAGRAPHS,
+    EXPECTED_EQUATION_PARAGRAPHS,
+    _fraction,
+    equation_chain_docx_bytes,
+    native_equation_docx_bytes,
+    unsupported_equation_docx_bytes,
 )
 
 
@@ -132,6 +143,46 @@ def test_docx_rich_repeats_marker_for_reused_target(png: bytes) -> None:
     assert len(markers) == 2
 
 
+def test_docx_rich_preserves_native_word_equation_structure() -> None:
+    rich = extract_docx_rich(native_equation_docx_bytes())
+
+    assert rich.paragraphs == EXPECTED_EQUATION_PARAGRAPHS
+
+
+def test_docx_rich_marks_unsupported_word_equation_instead_of_flattening() -> None:
+    rich = extract_docx_rich(unsupported_equation_docx_bytes())
+
+    assert rich.paragraphs == ("Unsupported: [unsupported equation: 12]",)
+
+
+def test_docx_rich_preserves_inline_display_delimiter_and_table_math() -> None:
+    rich = extract_docx_rich(equation_chain_docx_bytes())
+
+    assert rich.paragraphs == EXPECTED_CHAIN_PARAGRAPHS
+
+
+def test_docx_rich_keeps_text_equation_and_image_marker_order(png: bytes) -> None:
+    from docx.oxml import OxmlElement
+
+    doc = DocxDocument()
+    doc.add_paragraph("Before")
+    equation_paragraph = doc.add_paragraph("Equation: ")
+    math = OxmlElement("m:oMath")
+    math.append(_fraction("1", "2"))
+    equation_paragraph._p.append(math)
+    doc.add_picture(io.BytesIO(png), width=Inches(2))
+    doc.add_paragraph("After")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+
+    rich = extract_docx_rich(buffer.getvalue())
+    text = "\n".join(rich.paragraphs)
+    marker = build_marker(rich.collection.images[0])
+
+    assert text.index("Before") < text.index("Equation: 1/2")
+    assert text.index("Equation: 1/2") < text.index(marker) < text.index("After")
+
+
 # ---------------------------------------------------------------------------
 # PPTX
 # ---------------------------------------------------------------------------
@@ -236,3 +287,160 @@ def test_pdf_images_default_budget_caps_at_twelve(tmp_path) -> None:
     assert len(result.collection.images) == 12
     assert result.collection.skipped_budget == 2
     assert result.collection.skipped_page_budget == 0
+
+
+# ---------------------------------------------------------------------------
+# Inline transport bound
+# ---------------------------------------------------------------------------
+
+
+def _noise_jpeg(size: tuple[int, int], quality: int = 95, seed: int = 7) -> bytes:
+    """A large noisy JPEG: inside every byte budget, past the long-edge bound."""
+    from PIL import Image as PILImage
+
+    raw = random.Random(seed).randbytes(size[0] * size[1] * 3)
+    image = PILImage.frombytes("RGB", size, raw)
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
+def test_inline_budget_fits_a_page_sized_raster() -> None:
+    """A scan past the long edge is fitted before admission, aspect preserved."""
+    from PIL import Image as PILImage
+
+    source = _noise_jpeg((2000, 1200))
+    budget = ImageBudget()
+    admitted = budget.try_admit(".jpg", source)
+
+    assert admitted is not None
+    assert admitted.name.endswith(".jpg")
+    assert admitted.mime_type == "image/jpeg"
+    assert len(admitted.data) < len(source)
+    with PILImage.open(io.BytesIO(admitted.data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+        assert fitted.size == (1600, 960)
+    # The budget accounts the bytes that will actually ship, not the source.
+    assert budget.total_bytes == len(admitted.data)
+
+
+def test_reading_budget_keeps_source_resolution() -> None:
+    """Images stored for the reader pane are written as-is, never refitted."""
+    source = _noise_jpeg((2000, 1200))
+    admitted = reading_image_budget().try_admit(".jpg", source)
+
+    assert admitted is not None
+    assert admitted.data == source
+    assert admitted.mime_type == "image/jpeg"
+
+
+def test_inline_budget_leaves_small_images_untouched() -> None:
+    """Under the bound, the original bytes and format survive unchanged."""
+    source = _png_bytes((400, 300))
+    admitted = ImageBudget().try_admit(".png", source)
+
+    assert admitted is not None
+    assert admitted.data == source
+    assert admitted.mime_type == "image/png"
+
+
+def test_inline_budget_bounds_office_pictures_too() -> None:
+    """DOCX/PPTX pictures reach the same admission seam as PDF page rasters."""
+    from PIL import Image as PILImage
+
+    rich = extract_docx_rich(_docx_with_image(["A picture follows"], _noise_jpeg((2000, 1200))))
+
+    assert rich.collection.images, "the embedded picture should be extracted"
+    with PILImage.open(io.BytesIO(rich.collection.images[0].data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+
+
+def test_fit_returns_undecodable_bytes_unchanged() -> None:
+    """A size optimisation must never be why an attachment becomes unreadable."""
+    payload = b"\x89PNG\r\n\x1a\n" + b"not really a png" * 64
+
+    assert fit_inline_image(".png", payload, max_edge=MAX_INLINE_IMAGE_EDGE) == (".png", payload)
+
+
+def test_fit_composites_transparency_onto_white() -> None:
+    """JPEG has no alpha channel; transparent areas must not turn black."""
+    from PIL import Image as PILImage
+    from PIL import ImageDraw as PILImageDraw
+
+    raw = random.Random(5).randbytes(2000 * 1200 * 3)
+    image = PILImage.frombytes("RGB", (2000, 1200), raw).convert("RGBA")
+    image.putalpha(0)
+    PILImageDraw.Draw(image).rectangle([0, 0, 300, 300], fill=(255, 0, 0, 255))
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+
+    ext, data = fit_inline_image(".png", buf.getvalue(), max_edge=MAX_INLINE_IMAGE_EDGE)
+
+    assert ext == ".jpg"
+    with PILImage.open(io.BytesIO(data)) as fitted:
+        assert fitted.mode == "RGB"
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+        # A transparent corner composites onto white, not onto black.
+        assert fitted.getpixel((fitted.size[0] - 4, fitted.size[1] - 4)) == (255, 255, 255)
+        opaque = fitted.getpixel((20, 20))
+        assert opaque[0] > 200 and opaque[1] < 80 and opaque[2] < 80
+
+
+def test_scanned_page_rides_bounded_but_reads_whole(tmp_path) -> None:
+    """The reported case: a whole-page scan, inline vs on-disk resolution."""
+    pymupdf = pytest.importorskip("pymupdf")
+    from PIL import Image as PILImage
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=612, height=792)
+    page.insert_image(pymupdf.Rect(0, 0, 612, 792), stream=_noise_jpeg((2000, 1200)))
+    pdf_path = tmp_path / "scan.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+    data = pdf_path.read_bytes()
+
+    inline = extract_pdf_images(data).collection.images
+    stored = extract_pdf_images(data, budget=reading_image_budget()).collection.images
+
+    assert inline and stored
+    with PILImage.open(io.BytesIO(inline[0].data)) as fitted:
+        assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
+    with PILImage.open(io.BytesIO(stored[0].data)) as whole:
+        assert max(whole.size) > MAX_INLINE_IMAGE_EDGE
+
+
+def test_nested_math_scripts_preserve_grouping():
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    inner = "<sSup><e><r><t>x</t></r></e><sup><r><t>a</t></r></sup></sSup>"
+    root = ET.fromstring(f'<sSup xmlns="{MATH_NS}"><e>{inner}</e><sup><r><t>b</t></r></sup></sSup>')
+    assert render_docx_text(root) == "(x^a)^b"
+
+
+def test_empty_math_delimiter_is_not_replaced_with_a_default():
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    root = ET.fromstring(
+        f'<d xmlns="{MATH_NS}" xmlns:m="{MATH_NS}"><dPr><begChr m:val="["/><endChr m:val=""/></dPr><e><r><t>x</t></r></e></d>'
+    )
+    assert render_docx_text(root) == "[x"
+
+
+@pytest.mark.parametrize("operand", ["sqrt(x) + sqrt(y)", "[x] + [y]"])
+def test_math_compound_delimited_operands_remain_grouped(operand):
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    node = ET.fromstring(
+        f'<f xmlns="{MATH_NS}"><num><r><t>1</t></r></num><den><r><t>{operand}</t></r></den></f>'
+    )
+    assert render_docx_text(node) == f"1/({operand})"
+    node = ET.fromstring(
+        f'<sSup xmlns="{MATH_NS}"><e><r><t>z</t></r></e><sup><r><t>{operand}</t></r></sup></sSup>'
+    )
+    assert render_docx_text(node) == f"z^({operand})"

@@ -49,3 +49,17 @@ def test_partner_scope_resolves_to_its_owner(mu_isolated_root) -> None:
 
 def test_no_active_scope_falls_back_to_the_current_path_service(mu_isolated_root) -> None:
     assert get_owner_path_service().get_user_root() == (get_current_path_service().get_user_root())
+
+
+def test_copilot_partner_uses_owner_secret_not_workspace(mu_isolated_root, monkeypatch):
+    from deeptutor.services.github_copilot_storage import get_github_copilot_storage
+
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(mu_isolated_root))
+    owner_path = get_github_copilot_storage().credentials_path
+    token = set_current_user(partner_user("ada"))
+    try:
+        assert get_github_copilot_storage().credentials_path == owner_path
+        assert owner_path.is_relative_to(mu_isolated_root / "data" / "system")
+        assert not owner_path.is_relative_to(get_current_path_service().get_user_root())
+    finally:
+        reset_current_user(token)

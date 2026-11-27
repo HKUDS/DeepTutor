@@ -1,3 +1,4 @@
+import { sourceModuleInventory } from "./fixtures/modules";
 import { expect, test } from "@playwright/test";
 
 test("learning progress uses the account reading records contract", async ({
@@ -8,6 +9,7 @@ test("learning progress uses the account reading records contract", async ({
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
     requestedPaths.push(path);
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });

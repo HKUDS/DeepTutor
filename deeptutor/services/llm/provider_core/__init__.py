@@ -10,6 +10,7 @@ from .base import GenerationSettings, LLMProvider, LLMResponse, ToolCallRequest
 if TYPE_CHECKING:
     from .anthropic_provider import AnthropicProvider
     from .azure_openai_provider import AzureOpenAIProvider
+    from .claude_code_provider import ClaudeCodeProvider
     from .codebuddy_http_provider import CodeBuddyHTTPProvider
     from .codebuddy_provider import CodeBuddyProvider
     from .github_copilot_provider import GitHubCopilotProvider
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AnthropicProvider",
     "AzureOpenAIProvider",
+    "ClaudeCodeProvider",
     "CodeBuddyHTTPProvider",
     "CodeBuddyProvider",
     "GenerationSettings",
@@ -34,6 +36,7 @@ __all__ = [
 _LAZY_TYPES = {
     "AnthropicProvider": ("anthropic_provider", "AnthropicProvider"),
     "AzureOpenAIProvider": ("azure_openai_provider", "AzureOpenAIProvider"),
+    "ClaudeCodeProvider": ("claude_code_provider", "ClaudeCodeProvider"),
     "CodeBuddyHTTPProvider": ("codebuddy_http_provider", "CodeBuddyHTTPProvider"),
     "CodeBuddyProvider": ("codebuddy_provider", "CodeBuddyProvider"),
     "GitHubCopilotProvider": ("github_copilot_provider", "GitHubCopilotProvider"),

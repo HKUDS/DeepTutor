@@ -157,3 +157,148 @@ def test_every_extra_the_project_declares_resolves() -> None:
     _, unknown = install_extras.resolve(extras, ["math-animator", "partners"])
 
     assert unknown == []
+
+
+@pytest.mark.parametrize("engine", ["docling", "markitdown", "pymupdf4llm", "liteparse"])
+def test_parser_extra_resolves_source_requirements_without_feature_wheels(engine) -> None:
+    from deeptutor.modules.catalog import manifests
+    from deeptutor.services.parsing.engines._install import ENGINE_PIP_SPECS
+
+    root = Path(__file__).resolve().parents[2]
+    extras = install_extras.load_extras(root / "pyproject.toml")
+    requirements, unknown = install_extras.resolve(extras, [f"parse-{engine}"])
+
+    assert unknown == []
+    assert set(ENGINE_PIP_SPECS[engine]).issubset(requirements)
+    assert set(manifests()["parsing"]["requirements"]).issubset(requirements)
+    assert not any(requirement.startswith("deeptutor") for requirement in requirements)
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "ascii"])
+def test_unknown_unicode_extra_survives_a_strict_narrow_subprocess(encoding, tmp_path) -> None:
+    """Regression (#2354): the real CLI must not crash on a strict narrow stdout."""
+    import os
+    import subprocess
+
+    pyproject = tmp_path / "目录.toml"
+    pyproject.write_text(
+        "[project.optional-dependencies]\ndemo = []\n",
+        encoding="utf-8",
+    )
+    script = Path(__file__).resolve().parents[2] / "scripts" / "install_extras.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script), "未知", "--pyproject", str(pyproject)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=dict(os.environ, PYTHONIOENCODING=f"{encoding}:strict"),
+    )
+
+    assert result.returncode == 0
+    assert "UnicodeEncodeError" not in result.stdout + result.stderr
+    assert "Unknown extra" in result.stdout
+    assert result.stdout.endswith("\n")
+    assert not result.stdout.endswith("\n\n")
+    assert "Installing" not in result.stdout
+
+
+def test_utf8_captured_output_keeps_unknown_unicode_extra_readable(tmp_path, capsys) -> None:
+    """A stdout that can represent the name must print it, emoji included."""
+    pyproject = tmp_path / "目录.toml"
+    pyproject.write_text(
+        "[project.optional-dependencies]\ndemo = []\n",
+        encoding="utf-8",
+    )
+
+    code = install_extras.main(["未知", "--pyproject", str(pyproject)])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "Unknown extra" in out
+    assert "未知" in out
+    assert "⚠️" in out
+    assert out.endswith("\n")
+    assert not out.endswith("\n\n")
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "ascii"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "unknown-extra",
+        "unreadable-project",
+        "all-satisfied",
+        "dry-run",
+        "pip-success",
+        "pip-failure",
+    ],
+)
+def test_strict_narrow_stdout_reports_every_status(encoding, case, monkeypatch) -> None:
+    """Regression (#2354): every status path survives a strict narrow stdout.
+
+    The fixtures are non-ASCII well beyond emoji — extra names, a filename,
+    an error message and dependency strings — so a fix that only special-cased
+    emoji would still fail here.
+    """
+    import io
+    from types import SimpleNamespace
+
+    missing = ["déjà-vù>=1.0", "费米子<2"]
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=0 if case == "pip-success" else 1)
+
+    def fake_load(pyproject):
+        if case == "unreadable-project":
+            raise OSError("无法读取 « déta »")
+        return {"mäté-ω": list(missing)}
+
+    monkeypatch.setattr(
+        sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding=encoding, errors="strict")
+    )
+    monkeypatch.setattr(install_extras, "load_extras", fake_load)
+    monkeypatch.setattr(
+        install_extras,
+        "missing_requirements",
+        lambda reqs: [] if case == "all-satisfied" else list(reqs),
+    )
+    monkeypatch.setattr(install_extras.subprocess, "run", fake_run)
+
+    argv = ["未知-ω"] if case == "unknown-extra" else ["mäté-ω"]
+    if case == "unreadable-project":
+        argv += ["--pyproject", "目录-déta.toml"]
+    if case == "dry-run":
+        argv.append("--dry-run")
+
+    code = install_extras.main(argv)
+    sys.stdout.flush()
+    out = sys.stdout.buffer.getvalue().decode(encoding)
+
+    def survived(fragment: str) -> bool:
+        return fragment.encode(encoding, "backslashreplace").decode(encoding) in out
+
+    fragments = {
+        "unknown-extra": ["Unknown extra '未知-ω'", "Available: mäté-ω"],
+        "unreadable-project": ["Could not read 目录-déta.toml", "无法读取 « déta »"],
+        "all-satisfied": ["Extras already satisfied: mäté-ω"],
+        "dry-run": ["Would install 2 package(s) for mäté-ω:", "déjà-vù>=1.0", "费米子<2"],
+        "pip-success": ["Installing 2 package(s) for: mäté-ω"],
+        "pip-failure": ["Installing 2 package(s) for: mäté-ω", "pip exited 1"],
+    }
+
+    assert code == 0
+    assert out.endswith("\n")
+    assert "\n\n" not in out
+    for fragment in fragments[case]:
+        assert survived(fragment)
+    if case in {"unknown-extra", "unreadable-project", "all-satisfied", "dry-run"}:
+        assert calls == []
+    if case in {"pip-success", "pip-failure"}:
+        assert calls == [
+            ([sys.executable, "-m", "pip", "install", "--no-input", *missing], {"check": False})
+        ]
+    if case == "pip-success":
+        assert "pip exited" not in out

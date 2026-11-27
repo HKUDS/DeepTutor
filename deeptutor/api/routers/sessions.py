@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
-from deeptutor.learning.storage import LearningStore
-from deeptutor.reading.catalog_store import ReadingCatalogStore
+from deeptutor.core.turn_request import TurnRequest
+from deeptutor.modules.catalog import module_enabled
 from deeptutor.response_languages import validate_reply_language_override
 from deeptutor.services.session import get_session_store, get_sqlite_session_store
 from deeptutor.services.session.organization import (
@@ -23,17 +24,59 @@ from deeptutor.services.session.provider_response_state import (
     redact_private_message_metadata as _redact_provider_state_metadata,
 )
 from deeptutor.services.session.search import MAX_SEARCH_QUERY_CHARS
+from deeptutor.services.session.thread_attribution import (
+    BACKFILL_ATTEMPTED_KEY,
+    parent_message_role,
+)
 from deeptutor.services.storage.attachment_store import get_attachment_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_LEGACY_TIMED_MEDIA_ID = re.compile(r"^[0-9a-f]{16,64}$")
 
 
 def _turn_application_service():
     from deeptutor.app.container import get_application_container
 
     return get_application_container().turns
+
+
+class SessionStoreCapabilities(BaseModel):
+    submission_replacement: bool
+
+
+@router.get("/capabilities", response_model=SessionStoreCapabilities)
+async def session_store_capabilities():
+    """Expose operations the configured store can perform atomically."""
+    return SessionStoreCapabilities(
+        submission_replacement=callable(getattr(get_session_store(), "replace_submission", None))
+    )
+
+
+class SubmissionReplacementRequest(BaseModel):
+    original_submission_id: str = Field(min_length=1, max_length=100)
+    request: TurnRequest
+
+
+class SubmissionReplacementResponse(BaseModel):
+    status: Literal["started"]
+    session_id: str
+    submission_id: str
+    turn: dict[str, Any]
+
+
+@router.post("/submission-replacement", response_model=SubmissionReplacementResponse)
+async def replace_submission(body: SubmissionReplacementRequest):
+    """Resolve admission atomically before an edited retry is sent."""
+    try:
+        return await _turn_application_service().replace_submission(
+            body.original_submission_id, body.request, start=True
+        )
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 class SessionRenameRequest(BaseModel):
@@ -53,12 +96,14 @@ class BranchSelectionRequest(BaseModel):
 class SessionOrganizationRequest(BaseModel):
     """User-controlled organization metadata stored with the conversation."""
 
-    course_id: str | None = None
     workspace_id: str | None = None
     parent_session_id: str | None = None
     session_kind: Literal["chat", "selection_tutor", "immersive_reading"] | None = None
     pinned: bool | None = None
     archived: bool | None = None
+    # Which message a Little Tutor thread is filed under; null detaches it from
+    # its message without deleting the thread.
+    tutor_source_message_id: int | str | None = None
 
 
 class SessionReplyLanguageRequest(BaseModel):
@@ -115,6 +160,94 @@ def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
     return "\n".join(lines)
 
 
+def _legacy_watching_media_id(preferences: dict[str, Any]) -> str:
+    watching = (
+        preferences.get("workspace_mode") == "immersive_watching"
+        or preferences.get("capability") == "immersive_watching"
+        or preferences.get("session_kind") == "immersive_watching"
+    )
+    if not watching:
+        return ""
+    candidate = str(preferences.get("timed_media_id") or "").strip().lower()
+    return candidate if _LEGACY_TIMED_MEDIA_ID.fullmatch(candidate) else ""
+
+
+async def _normalize_legacy_watching_session(
+    store: Any,
+    session: dict[str, Any],
+    *,
+    persist: bool,
+) -> bool:
+    preferences = session.get("preferences") if isinstance(session.get("preferences"), dict) else {}
+    from deeptutor.video_learning.service import TimedMediaNotFound
+
+    timed_media_id = _legacy_watching_media_id(preferences)
+    if not timed_media_id:
+        for message in reversed(session.get("messages") or []):
+            metadata = message.get("metadata") or {}
+            snapshot = metadata.get("request_snapshot") or metadata.get("requestSnapshot") or {}
+            recovered = snapshot.get("timedMediaId") or snapshot.get("timed_media_id")
+            candidate = _legacy_watching_media_id({**preferences, "timed_media_id": recovered})
+            if candidate:
+                timed_media_id = candidate
+                break
+    if not timed_media_id:
+        normalized = {
+            **preferences,
+            "capability": "chat",
+            "workspace_mode": "",
+            "session_kind": "chat",
+            "legacy_watching_unavailable": True,
+        }
+        session["preferences"] = normalized
+        if persist:
+            await store.update_session_preferences(str(session.get("id")), normalized)
+        return True
+    try:
+        from deeptutor.video_learning.reading_migration import WatchingToReadingMigration
+
+        migrated = await WatchingToReadingMigration().migrate(
+            timed_media_id,
+            session_id=str(session.get("id") or ""),
+            session_title=str(session.get("title") or "Imported video conversation"),
+        )
+    except TimedMediaNotFound:
+        normalized = {
+            **preferences,
+            "capability": "chat",
+            "workspace_mode": "",
+            "session_kind": "chat",
+            "legacy_watching_unavailable": True,
+        }
+        normalized.pop("timed_media_viewport", None)
+        session["preferences"] = normalized
+        if persist:
+            await store.update_session_preferences(str(session.get("id")), normalized)
+        return True
+    except Exception:
+        logger.warning(
+            "Could not migrate legacy Watching session %s to Reading",
+            session.get("id"),
+            exc_info=True,
+        )
+        return False
+    normalized = {
+        **preferences,
+        "capability": "chat",
+        "workspace_mode": "immersive_reading",
+        "session_kind": "immersive_reading",
+        "reading_workspace_id": migrated.reading_workspace_id,
+        "reading_material_id": migrated.reading_material_id,
+        # Kept as provenance and a provider-cache pointer; it is no longer routing state.
+        "timed_media_id": timed_media_id,
+    }
+    normalized.pop("timed_media_viewport", None)
+    session["preferences"] = normalized
+    if persist:
+        await store.update_session_preferences(str(session.get("id")), normalized)
+    return True
+
+
 @router.get("")
 async def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
@@ -123,6 +256,8 @@ async def list_sessions(
     all_workspaces: bool = False,
 ):
     if all_workspaces:
+        # Account management (Settings › Archive) only; every navigation
+        # surface lists the request's own workspace.
         from deeptutor.services.workspace.navigation import session_index
 
         return await session_index(limit, offset)
@@ -132,7 +267,15 @@ async def list_sessions(
         offset=offset,
         **({"workspace_id": workspace_id} if workspace_id is not None else {}),
     )
-    return {"sessions": sessions}
+    return {"sessions": _with_source_workspace(sessions)}
+
+
+def _with_source_workspace(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Name the store a row was read from; a legacy preference may disagree."""
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    workspace_id = current_workspace_id()
+    return [{**row, "content_workspace_id": workspace_id} for row in rows]
 
 
 @router.get("/search")
@@ -140,18 +283,13 @@ async def search_sessions(
     q: str = Query(..., min_length=1, max_length=MAX_SEARCH_QUERY_CHARS),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    all_workspaces: bool = False,
 ):
     """Search titles and persisted user/assistant messages for a literal term."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
-    if all_workspaces:
-        from deeptutor.services.workspace.navigation import session_index
-
-        return await session_index(limit, offset, q)
     result = await get_session_store().search_sessions(q, limit=limit, offset=offset)
     return {
-        "sessions": result["sessions"],
+        "sessions": _with_source_workspace(result["sessions"]),
         "total": result["total"],
         "limit": limit,
         "offset": offset,
@@ -290,6 +428,31 @@ async def list_recycle_bin(
     return {"sessions": sessions}
 
 
+@router.post("/{session_id}/migrate-watching")
+async def migrate_watching_session(session_id: str):
+    from deeptutor.services.workspace.activity import workspace_writer
+
+    @workspace_writer
+    async def migrate():
+        store = get_session_store()
+        session = await store.get_session_with_messages(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        preferences = session.get("preferences") or {}
+        if any(
+            preferences.get(key) == "immersive_watching"
+            for key in ("capability", "workspace_mode", "session_kind")
+        ):
+            if not await _normalize_legacy_watching_session(store, session, persist=True):
+                raise HTTPException(
+                    status_code=409,
+                    detail="The legacy video could not be opened in Reading. The original conversation is preserved.",
+                )
+        return await get_session(session_id)
+
+    return await migrate()
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str):
     store = get_session_store()
@@ -302,6 +465,51 @@ async def get_session(session_id: str):
     _redact_private_message_metadata(session.get("messages", []))
     _truncate_oversized_events(session.get("messages", []))
     return session
+
+
+@router.get("/{session_id}/organization")
+async def get_session_organization(session_id: str):
+    """Title, status and preferences without the transcript.
+
+    The chat header reads this to show the conversation's own menu (pinned,
+    archived, filed under) — refetching the full message list for that would
+    cost a long conversation its whole history on every sidebar change.
+    """
+    store = get_session_store()
+    session = await store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session": session}
+
+
+@router.get("/{session_id}/threads")
+async def list_session_threads(session_id: str):
+    """Little Tutor threads opened from this conversation, newest first.
+
+    Threads from before the source message was recorded are attributed here
+    once, when their passage can be found unambiguously in the parent
+    transcript (see ``thread_attribution``).
+    """
+    store = get_session_store()
+    if await store.get_session(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    candidates = await list_all_sessions_snapshot(store)
+    threads = [
+        row
+        for row in candidates
+        if str((row.get("preferences") or {}).get("parent_session_id") or "") == session_id
+        and (row.get("preferences") or {}).get("session_kind") == "selection_tutor"
+    ]
+    try:
+        from deeptutor.services.session.thread_attribution import backfill_thread_sources
+
+        threads = await backfill_thread_sources(store, session_id, threads)
+    except Exception:
+        # Attribution is an enhancement; a conversation whose threads cannot be
+        # recovered still lists exactly as it did before.
+        logger.warning("Little Tutor thread attribution failed", exc_info=True)
+    threads.sort(key=lambda row: float(row.get("updated_at") or 0), reverse=True)
+    return {"threads": _with_source_workspace(threads)}
 
 
 @router.get("/{session_id}/messages/{message_id}/events")
@@ -335,7 +543,12 @@ async def rename_session(session_id: str, payload: SessionRenameRequest):
     # The reader keeps its own list of a collection's conversations; the
     # sidebar is where they are renamed, so the list has to hear about it.
     try:
-        await asyncio.to_thread(ReadingCatalogStore().retitle_session, session_id, payload.title)
+        if module_enabled("reading"):
+            from deeptutor.reading.catalog_store import ReadingCatalogStore
+
+            await asyncio.to_thread(
+                ReadingCatalogStore().retitle_session, session_id, payload.title
+            )
     except Exception:
         logger.exception("failed to retitle reading conversation %s", session_id)
     session = await store.get_session(session_id)
@@ -414,16 +627,6 @@ async def update_session_organization(
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"session": moved}
         updates["workspace_id"] = workspace_id or None
-    if "course_id" in fields:
-        course_id = str(payload.course_id or "").strip()
-        if course_id:
-            from deeptutor.services.courses import CourseNotFoundError, get_course_service
-
-            try:
-                get_course_service().get(course_id)
-            except CourseNotFoundError as exc:
-                raise HTTPException(status_code=404, detail="Course not found") from exc
-        updates["course_id"] = course_id
     if "parent_session_id" in fields:
         parent_id = str(payload.parent_session_id or "").strip()
         if parent_id == session_id:
@@ -446,11 +649,39 @@ async def update_session_organization(
         updates["pinned"] = bool(payload.pinned)
     if "archived" in fields:
         updates["archived"] = bool(payload.archived)
+    if "tutor_source_message_id" in fields:
+        if (session.get("preferences") or {}).get("session_kind") != "selection_tutor":
+            raise HTTPException(
+                status_code=400,
+                detail="Only a Little Tutor thread has a source message",
+            )
+        source = payload.tutor_source_message_id
+        normalized_source: int | str | None = None
+        if isinstance(source, int) and not isinstance(source, bool) and source > 0:
+            normalized_source = source
+        elif isinstance(source, str) and source.strip():
+            normalized_source = source.strip()
+        if normalized_source is not None:
+            parent_id = str(
+                (session.get("preferences") or {}).get("parent_session_id") or ""
+            ).strip()
+            role = await parent_message_role(store, parent_id, normalized_source)
+            if role is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="The source message does not belong to this thread's conversation",
+                )
+            updates["tutor_source_message_id"] = normalized_source
+        else:
+            # Detach from the message without deleting the thread, and keep the
+            # legacy backfill from attaching it again on the next read.
+            updates["tutor_source_message_id"] = ""
+            updates[BACKFILL_ATTEMPTED_KEY] = True
 
     if updates:
         await store.update_session_preferences(session_id, updates)
         cascade_updates = {
-            key: updates[key] for key in ("course_id", "archived", "workspace_id") if key in updates
+            key: updates[key] for key in ("archived", "workspace_id") if key in updates
         }
         if cascade_updates:
             # Selected-text tutor threads stay with their source conversation.
@@ -503,7 +734,10 @@ async def delete_session(session_id: str):
 
 async def _cleanup_deleted_session(session_id: str) -> None:
     try:
-        await asyncio.to_thread(LearningStore().detach_session, session_id)
+        if module_enabled("mastery"):
+            from deeptutor.learning.storage import LearningStore
+
+            await asyncio.to_thread(LearningStore().detach_session, session_id)
     except Exception:
         logger.exception("failed to detach mastery paths for session %s", session_id)
     try:
@@ -511,7 +745,10 @@ async def _cleanup_deleted_session(session_id: str) -> None:
     except Exception:
         logger.exception("failed to clean up attachments for session %s", session_id)
     try:
-        await asyncio.to_thread(ReadingCatalogStore().forget_session, session_id)
+        if module_enabled("reading"):
+            from deeptutor.reading.catalog_store import ReadingCatalogStore
+
+            await asyncio.to_thread(ReadingCatalogStore().forget_session, session_id)
     except Exception:
         logger.exception("failed to detach reading collections for session %s", session_id)
 
@@ -533,6 +770,14 @@ async def purge_session(session_id: str):
     if not purged:
         raise HTTPException(status_code=404, detail="Session not found in recycle bin")
     await _cleanup_deleted_session(session_id)
+    from deeptutor.services.task_board import get_task_board_store
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    await asyncio.to_thread(
+        get_task_board_store(migrate_legacy=False).remove_session,
+        current_workspace_id(),
+        session_id,
+    )
     return {"purged": True, "session_id": session_id}
 
 
@@ -554,9 +799,10 @@ async def update_branch_selection(session_id: str, payload: BranchSelectionReque
 async def delete_turn_by_message(session_id: str, message_id: int):
     store = get_sqlite_session_store()
     result = await store.delete_turn_by_message(session_id, message_id)
-    if result["was_running"]:
+    if result["was_active"]:
         raise HTTPException(
-            status_code=409, detail="Cannot delete a message while its turn is running"
+            status_code=409,
+            detail="Cannot delete a message while its turn is running or waiting for input",
         )
     if not result["deleted"]:
         raise HTTPException(status_code=404, detail="Message not found")

@@ -6,6 +6,8 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+import logging
+import math
 import os
 from pathlib import Path
 import shutil
@@ -18,12 +20,15 @@ from uuid import uuid4
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.parsing.cache import load_ir
 
+from ._process import ProcessTreeNotSettled, cli_process
 from .formats import MINERU_SUPPORTED_FORMATS
 
 # Minimum seconds between on_output callbacks. MinerU's CLI emits tqdm-style
 # progress that universal-newline decoding turns into many lines per second;
 # without a floor the trace panel gets flooded during model downloads.
 _ON_OUTPUT_MIN_INTERVAL = 0.5
+_LOCAL_PARSE_IDLE_TIMEOUT_SECONDS = 600
+_LOCAL_PARSE_TIMEOUT_SECONDS = 7200
 
 #: Upper bound on the failure excerpt carried back to callers: long enough for
 #: a useful stderr tail, short enough to fit inside an error message.
@@ -35,7 +40,11 @@ def _bounded_detail(text: str) -> str:
     clean = str(text or "").strip()
     if len(clean) <= _FAILURE_DETAIL_MAX_CHARS:
         return clean
-    return clean[:_FAILURE_DETAIL_MAX_CHARS].rstrip() + "…"
+    # Keep the exception/exit-code prefix and the terminal cause. Progress
+    # bars can otherwise consume the whole excerpt before the real error (#1982).
+    head = clean[:80].rstrip()
+    tail_size = _FAILURE_DETAIL_MAX_CHARS - len(head) - 3
+    return head + "\n…\n" + clean[-tail_size:].lstrip()
 
 
 class LocalParseReason(StrEnum):
@@ -49,9 +58,17 @@ class LocalParseReason(StrEnum):
     INPUT_MISSING = "input_missing"
     UNSUPPORTED_INPUT = "unsupported_input"
     LEGACY_CLI_INPUT = "legacy_cli_input"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
     NONZERO_EXIT = "nonzero_exit"
     NO_ARTIFACTS = "no_artifacts"
     EXCEPTION = "exception"
+    #: The parse produced artifacts but its process tree did not settle within
+    #: the deadline, so the attempt is not safe to treat as finished (#2426).
+    #: Kept apart from ``EXCEPTION`` because a caller deciding whether to retry
+    #: needs to tell a wedged teardown apart from a parser crash: the work may
+    #: already be good and only the cleanup in doubt.
+    CLEANUP_FAILED = "cleanup_failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,48 +219,114 @@ def parse_document_with_mineru_result(
     temp_output.mkdir()
     state_path = attempt / "state.json"
     atomic_write_json(state_path, {"source": source_file.name, "state": "running"})
-    process = None
-    process_finished = False
+    interrupted: list[LocalParseReason] = []
+    interruption_detail = ""
     result = LocalParseResult.failure(LocalParseReason.EXCEPTION, "parse interrupted")
     try:
         cmd = [mineru_cmd, "-p", str(source_file), "-o", str(temp_output)]
 
         print(f"🔧 Executing command: {' '.join(cmd)}")
 
-        # Stream combined stdout/stderr line by line. text=True enables
-        # universal newlines, so tqdm's \r-rewritten progress bars arrive as
-        # individual lines rather than one giant buffered blob at exit.
-        process = subprocess.Popen(  # nosec B603 — fixed argv, shell=False
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            shell=False,
-            env={**os.environ, **extra_env} if extra_env else None,
-        )
         tail: deque[str] = deque(maxlen=40)
         last_emit = 0.0
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            line = raw_line.strip()
-            if not line:
-                continue
-            tail.append(line)
-            if on_output is not None:
-                now = time.monotonic()
-                if now - last_emit >= _ON_OUTPUT_MIN_INTERVAL:
-                    last_emit = now
-                    try:
-                        on_output(line[:300])
-                    except Exception:
-                        # A broken callback must not kill the parse; stop
-                        # reporting and keep going.
-                        on_output = None
-        returncode = process.wait()
-        process_finished = True
+        from deeptutor.services.parsing.progress import IndexingCancelled, current_run
 
+        run = current_run()
+        started = activity = time.monotonic()
+        quiet_reported = False
+        total_timeout: float = _LOCAL_PARSE_TIMEOUT_SECONDS
+        try:
+            configured_timeout = float(
+                (extra_env or {}).get(
+                    "MINERU_TASK_RESULT_TIMEOUT_SECONDS",
+                    os.environ.get("MINERU_TASK_RESULT_TIMEOUT_SECONDS", str(total_timeout)),
+                )
+            )
+            if math.isfinite(configured_timeout) and configured_timeout >= 1:
+                total_timeout = configured_timeout
+        except (TypeError, ValueError):
+            pass
+        env = {
+            **os.environ,
+            **(extra_env or {}),
+            "PYTHONUTF8": "1",
+            # MinerU's nested API client otherwise times out at 3600 seconds,
+            # before our default deadline. Both owners use the resolved value.
+            "MINERU_TASK_RESULT_TIMEOUT_SECONDS": f"{total_timeout:g}",
+        }
+        log_path = attempt / "cli.log"
+        # File reads do not block on a pipe inherited by a surviving worker.
+        # Settle the owned process tree before validating/publishing artifacts.
+        with cli_process(cmd, log_path, env) as process:
+            with log_path.open("r", encoding="utf-8", errors="replace") as output:
+                while True:
+                    if run is not None:
+                        try:
+                            run.check()
+                        except IndexingCancelled:
+                            interrupted.append(LocalParseReason.CANCELLED)
+                            interruption_detail = "Task cancellation requested."
+                            break
+                        except OSError as exc:
+                            interrupted.append(LocalParseReason.EXCEPTION)
+                            interruption_detail = f"Indexing state check failed: {exc}"
+                            break
+                    for _ in range(32):
+                        raw_line = output.readline(4096)
+                        if not raw_line:
+                            break
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        activity = time.monotonic()
+                        quiet_reported = False
+                        tail.append(line)
+                        if (
+                            on_output is not None
+                            and activity - last_emit >= _ON_OUTPUT_MIN_INTERVAL
+                        ):
+                            last_emit = activity
+                            try:
+                                on_output(line[:300])
+                            except Exception:
+                                on_output = None
+                    returncode = process.poll()
+                    if returncode is not None:
+                        break
+                    now = time.monotonic()
+                    if now - started >= total_timeout:
+                        interrupted.append(LocalParseReason.TIMEOUT)
+                        interruption_detail = (
+                            f"Total parse runtime exceeded {total_timeout:g} seconds."
+                        )
+                        break
+                    if now - activity >= _LOCAL_PARSE_IDLE_TIMEOUT_SECONDS and not quiet_reported:
+                        logging.getLogger(__name__).warning(
+                            "MinerU output is quiet; progress is unknown, not a proven stall. "
+                            "The %s-second total deadline and task cancellation remain active.",
+                            total_timeout,
+                        )
+                        quiet_reported = True
+                    time.sleep(0.1)
+
+        # Cleanup has settled the owned tree. Read only a bounded diagnostic
+        # tail now; draining a still-writing descendant before cleanup could
+        # otherwise postpone cancellation/exit indefinitely.
+        with log_path.open("rb") as output:
+            output.seek(0, os.SEEK_END)
+            start = max(0, output.tell() - 16384)
+            output.seek(start)
+            lines = output.read(16384).decode("utf-8", errors="replace").splitlines()
+            if start:
+                lines = lines[1:]
+            tail.extend(line.strip()[:4096] for line in lines if line.strip())
+
+        if interrupted:
+            result = LocalParseResult.failure(
+                interrupted[0],
+                interruption_detail + " Completed checkpoints remain reusable.",
+            )
+            return result
         if returncode != 0:
             print("✗ MinerU parsing failed:")
             print("\n".join(tail))
@@ -298,6 +381,17 @@ def parse_document_with_mineru_result(
         result = LocalParseResult.success()
         return result
 
+    except ProcessTreeNotSettled as e:
+        # The tree outlived the deadline, so whatever it wrote may still be
+        # changing. Publication is withheld either way — the rename sits above
+        # this handler — but the outcome is reported as its own reason rather
+        # than folded into the generic exception bucket (#2426).
+        print(f"✗ MinerU process tree did not settle: {e!s}")
+        result = LocalParseResult.failure(
+            LocalParseReason.CLEANUP_FAILED,
+            f"{type(e).__name__}: {e}",
+        )
+        return result
     except Exception as e:
         print(f"✗ Error occurred during parsing: {e!s}")
         import traceback
@@ -309,14 +403,6 @@ def parse_document_with_mineru_result(
         )
         return result
     finally:
-        # Stop an interrupted child before another attempt can publish output.
-        if process is not None and not process_finished:
-            try:
-                process.terminate()
-                process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
         if result.ok:
             shutil.rmtree(attempt, ignore_errors=True)
         else:

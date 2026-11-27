@@ -13,15 +13,21 @@ across refreshes.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
 import logging
+from pathlib import Path
 import sqlite3
+from typing import Any
 
+from deeptutor.multi_user.paths import get_account_path_service
 from deeptutor.services.memory.paths import Surface
 from deeptutor.services.memory.snapshot.entity import Entity, EntityStamp
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.workspace.context import WorkspacePathService, WorkspaceScope
+from deeptutor.services.workspace.models import WorkspaceError
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +64,49 @@ def _iso(ts: float | int | str | None) -> str:
     return ""
 
 
+def _iter_chat_dbs() -> list[tuple[str, Path]]:
+    """``(qualifier, chat-history db)`` pairs across the account's workspaces.
+
+    The default workspace comes first with an empty qualifier so existing
+    snapshots keep their bare session ids — renumbering them would churn every
+    account-level snapshot (#1799). Each additional registered workspace
+    contributes its own chat db under a ``ws:<workspace_id>:`` qualifier, which
+    is what makes custom-workspace conversations visible to account-level
+    Memory without id collisions against the default workspace.
+
+    The account's own data root supplies the default entry; binding data roots
+    are derived the same way :class:`WorkspacePathService` derives them
+    (``<content_root>/.deeptutor/data``), with the same symlink refusal — a
+    redirected store is skipped rather than raised, so one broken binding
+    cannot blank an account-wide scan.
+    """
+    account = get_account_path_service()
+    pairs: list[tuple[str, Path]] = [("", account.get_chat_history_db())]
+    try:
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        bindings = get_content_workspace_service().registered_bindings()
+    except Exception:
+        logger.warning(
+            "workspace binding enumeration failed; default workspace only", exc_info=True
+        )
+        return pairs
+    for binding in bindings:
+        try:
+            paths = WorkspacePathService(
+                account,
+                WorkspaceScope(binding.workspace_id, account.workspace_root, binding.root),
+            )
+        except WorkspaceError:
+            logger.warning(
+                "workspace %s skipped from memory aggregation: redirected data store",
+                binding.workspace_id,
+            )
+            continue
+        pairs.append((f"ws:{binding.workspace_id}:", paths.get_chat_history_db()))
+    return pairs
+
+
 # ── Adapters ─────────────────────────────────────────────────────────
 
 
@@ -84,7 +133,8 @@ def read_notebook_entities() -> list[Entity]:
             continue
         try:
             nb_data = json.loads(nb_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("notebook snapshot skipped corrupt file: %s (%s)", nb_file, exc)
             continue
         for r in nb_data.get("records") or []:
             if not isinstance(r, dict):
@@ -135,7 +185,8 @@ def read_cowriter_entities() -> list[Entity]:
             continue
         try:
             m = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("cowriter snapshot skipped corrupt manifest: %s (%s)", manifest, exc)
             continue
         doc_id = m.get("id")
         if not doc_id:
@@ -168,7 +219,8 @@ def read_book_entities() -> list[Entity]:
             continue
         try:
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("book snapshot skipped corrupt manifest: %s (%s)", manifest_path, exc)
             continue
         book_id = m.get("id")
         if not book_id:
@@ -237,7 +289,9 @@ def _partner_display_name(partner_dir, partner_id: str) -> str:
     return partner_id
 
 
-def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity | None:
+def _partner_session_entity(
+    path, partner_id: str, partner_name: str, *, archived: bool = False
+) -> Entity | None:
     """Build one Entity from a partner session JSONL file.
 
     The conversation is inlined as ``user / assistant`` blocks (mirroring
@@ -248,7 +302,7 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
     records: list[dict] = []
     try:
         with path.open("r", encoding="utf-8") as fh:
-            for raw in fh:
+            for line_number, raw in enumerate(fh, 1):
                 raw = raw.strip()
                 if not raw:
                     continue
@@ -256,8 +310,18 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
                     obj = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                if isinstance(obj, dict):
-                    records.append(obj)
+                if not isinstance(obj, dict):
+                    continue
+                content = obj.get("content")
+                if not isinstance(content, str):
+                    if content is not None:
+                        logger.warning(
+                            "partner snapshot skipped non-text message in %s at line %d",
+                            path,
+                            line_number,
+                        )
+                    continue
+                records.append(obj)
     except OSError:
         return None
 
@@ -272,7 +336,7 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
         return None
 
     session_key = path.stem
-    archived = session_key.startswith("_archived_")
+    archived = archived or session_key.startswith("_archived_")
     last = records[-1]
     last_ts = last.get("timestamp", "")
     last_content = last.get("content", "")
@@ -288,8 +352,23 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
             "archived": archived,
             "message_count": len(blocks),
         },
-        fingerprint=_sha1(len(blocks), last_ts, last_content),
+        # Preserve existing active-session fingerprints; archive/restore must
+        # still count as a change when the JSONL history itself is unchanged.
+        fingerprint=_sha1(len(blocks), last_ts, last_content, True if archived else None),
     )
+
+
+def _partner_archived_sessions(sessions_dir: Path) -> set[str]:
+    """Read soft archive flags once per directory without creating any files."""
+    try:
+        index = json.loads((sessions_dir / "_index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(index, dict):
+        return set()
+    return {
+        key for key, entry in index.items() if isinstance(entry, dict) and entry.get("archived")
+    }
 
 
 def read_partner_entities() -> list[Entity]:
@@ -338,8 +417,11 @@ def read_partner_entities() -> list[Entity]:
         if not sessions_dir.is_dir():
             continue
         partner_name = _partner_display_name(partner_dir, partner_id)
+        archived_sessions = _partner_archived_sessions(sessions_dir)
         for sess_file in sorted(sessions_dir.glob("*.jsonl")):
-            entity = _partner_session_entity(sess_file, partner_id, partner_name)
+            entity = _partner_session_entity(
+                sess_file, partner_id, partner_name, archived=sess_file.stem in archived_sessions
+            )
             if entity is not None:
                 out.append(entity)
     return out
@@ -406,109 +488,122 @@ def read_kb_entities() -> list[Entity]:
 
 
 def read_chat_entities() -> list[Entity]:
-    """One Entity per chat session. ``content`` inlines all turns as
-    ``user / assistant`` blocks so L2 sees the actual conversation."""
-    db_path = get_path_service().get_chat_history_db()
-    if not db_path.exists():
-        return []
+    """One Entity per chat session across the account's workspaces.
+
+    ``content`` inlines all turns as ``user / assistant`` blocks so L2 sees the
+    actual conversation. Sessions from the default workspace keep their bare
+    session id; sessions from additional workspaces carry a ``ws:<id>:``
+    qualifier plus a ``workspace_id`` in metadata, so account-level Memory
+    sees every conversation with provenance and no id collisions (#1799).
+    """
     out: list[Entity] = []
-    try:
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-            conn.row_factory = sqlite3.Row
-            sessions = conn.execute(
-                "SELECT id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
-            ).fetchall()
-            for sess in sessions:
-                sid = sess["id"]
-                msgs = conn.execute(
-                    "SELECT id, role, content, capability, created_at "
-                    "FROM messages WHERE session_id = ? "
-                    "ORDER BY created_at ASC, id ASC",
-                    (sid,),
+    for qualifier, db_path in _iter_chat_dbs():
+        if not db_path.exists():
+            continue
+        try:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+                conn.row_factory = sqlite3.Row
+                sessions = conn.execute(
+                    "SELECT id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
                 ).fetchall()
-                blocks: list[str] = []
-                for m in msgs:
-                    role = m["role"]
-                    body = (m["content"] or "").strip()
-                    if not body:
-                        continue
-                    blocks.append(f"### {role}\n{body}")
-                content = "\n\n".join(blocks)
-                last_msg_id = msgs[-1]["id"] if msgs else 0
-                out.append(
-                    Entity(
-                        id=sid,
-                        label=sess["title"] or sid,
-                        ts=_iso(sess["updated_at"]),
-                        content=content,
-                        metadata={
-                            "session_id": sid,
-                            "message_count": len(msgs),
-                        },
-                        fingerprint=_sha1(last_msg_id, sess["updated_at"]),
+                for sess in sessions:
+                    sid = sess["id"]
+                    msgs = conn.execute(
+                        "SELECT id, role, content, capability, created_at "
+                        "FROM messages WHERE session_id = ? "
+                        "ORDER BY created_at ASC, id ASC",
+                        (sid,),
+                    ).fetchall()
+                    blocks: list[str] = []
+                    for m in msgs:
+                        role = m["role"]
+                        body = (m["content"] or "").strip()
+                        if not body:
+                            continue
+                        blocks.append(f"### {role}\n{body}")
+                    content = "\n\n".join(blocks)
+                    last_msg_id = msgs[-1]["id"] if msgs else 0
+                    metadata: dict[str, Any] = {
+                        "session_id": sid,
+                        "message_count": len(msgs),
+                    }
+                    if qualifier:
+                        metadata["workspace_id"] = qualifier.removeprefix("ws:").removesuffix(":")
+                    out.append(
+                        Entity(
+                            id=f"{qualifier}{sid}",
+                            label=sess["title"] or sid,
+                            ts=_iso(sess["updated_at"]),
+                            content=content,
+                            metadata=metadata,
+                            fingerprint=_sha1(last_msg_id, sess["updated_at"]),
+                        )
                     )
-                )
-    except sqlite3.Error as exc:
-        logger.warning("chat snapshot scan failed: %s", exc)
-        return []
+        except sqlite3.Error as exc:
+            logger.warning("chat snapshot scan failed for %s: %s", db_path, exc)
+            continue
     return out
 
 
 def read_quiz_entities() -> list[Entity]:
-    """One Entity per recorded quiz attempt (notebook_entries row)."""
-    db_path = get_path_service().get_chat_history_db()
-    if not db_path.exists():
-        return []
+    """One Entity per recorded quiz attempt (notebook_entries row), across
+    the account's workspaces with the same qualifier scheme as chat (#1799)."""
     out: list[Entity] = []
-    try:
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT id, session_id, turn_id, question_id, question, "
-                "question_type, options_json, correct_answer, explanation, "
-                "difficulty, user_answer, is_correct, bookmarked, "
-                "created_at FROM notebook_entries "
-                "ORDER BY created_at DESC"
-            ).fetchall()
-            for r in rows:
-                qid = r["question_id"] or f"row_{r['id']}"
-                entity_id = f"{r['session_id']}:{qid}"
-                question = (r["question"] or "").strip()
-                user_answer = (r["user_answer"] or "").strip()
-                correct = (r["correct_answer"] or "").strip()
-                explanation = (r["explanation"] or "").strip()
-                is_correct = bool(int(r["is_correct"] or 0))
-                content = "\n\n".join(
-                    part
-                    for part in (
-                        f"**Question**: {question}" if question else "",
-                        f"**User answer**: {user_answer}" if user_answer else "",
-                        f"**Correct answer**: {correct}" if correct else "",
-                        f"**Explanation**: {explanation}" if explanation else "",
+    for qualifier, db_path in _iter_chat_dbs():
+        if not db_path.exists():
+            continue
+        try:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT id, session_id, turn_id, question_id, question, "
+                    "question_type, options_json, correct_answer, explanation, "
+                    "difficulty, user_answer, is_correct, bookmarked, "
+                    "created_at FROM notebook_entries "
+                    "ORDER BY created_at DESC"
+                ).fetchall()
+                for r in rows:
+                    qid = r["question_id"] or f"row_{r['id']}"
+                    entity_id = f"{qualifier}{r['session_id']}:{qid}"
+                    question = (r["question"] or "").strip()
+                    user_answer = (r["user_answer"] or "").strip()
+                    correct = (r["correct_answer"] or "").strip()
+                    explanation = (r["explanation"] or "").strip()
+                    is_correct = bool(int(r["is_correct"] or 0))
+                    content = "\n\n".join(
+                        part
+                        for part in (
+                            f"**Question**: {question}" if question else "",
+                            f"**User answer**: {user_answer}" if user_answer else "",
+                            f"**Correct answer**: {correct}" if correct else "",
+                            f"**Explanation**: {explanation}" if explanation else "",
+                        )
+                        if part
                     )
-                    if part
-                )
-                out.append(
-                    Entity(
-                        id=entity_id,
-                        label=question[:80] or qid,
-                        ts=_iso(r["created_at"]),
-                        content=content,
-                        metadata={
-                            "session_id": r["session_id"],
-                            "turn_id": r["turn_id"],
-                            "question_id": qid,
-                            "question_type": r["question_type"],
-                            "difficulty": r["difficulty"],
-                            "is_correct": is_correct,
-                            "bookmarked": bool(int(r["bookmarked"] or 0)),
-                        },
-                        fingerprint=_sha1(question, user_answer, correct, is_correct),
+                    metadata: dict[str, Any] = {
+                        "session_id": r["session_id"],
+                        "turn_id": r["turn_id"],
+                        "question_id": qid,
+                        "question_type": r["question_type"],
+                        "difficulty": r["difficulty"],
+                        "is_correct": is_correct,
+                        "bookmarked": bool(int(r["bookmarked"] or 0)),
+                    }
+                    if qualifier:
+                        metadata["workspace_id"] = qualifier.removeprefix("ws:").removesuffix(":")
+                    out.append(
+                        Entity(
+                            id=entity_id,
+                            label=question[:80] or qid,
+                            ts=_iso(r["created_at"]),
+                            content=content,
+                            metadata=metadata,
+                            fingerprint=_sha1(question, user_answer, correct, is_correct),
+                        )
                     )
-                )
-    except sqlite3.Error as exc:
-        logger.warning("quiz snapshot scan failed: %s", exc)
-        return []
+        except sqlite3.Error as exc:
+            logger.warning("quiz snapshot scan failed for %s: %s", db_path, exc)
+            continue
     return out
 
 
@@ -529,39 +624,42 @@ def probe_chat_entities() -> list[EntityStamp]:
     Skipping ``content`` is the whole point: the full read concatenates every
     message of every session, which is the wrong price to pay for a caller that
     only wants to know what the sessions are called.
+
+    Iterates the same workspace-qualified chat dbs as :func:`read_chat_entities`
+    (#1799) — the qualifier expression must stay mirrored exactly.
     """
-    db_path = get_path_service().get_chat_history_db()
-    if not db_path.exists():
-        return []
     out: list[EntityStamp] = []
-    try:
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-            conn.row_factory = sqlite3.Row
-            last_msg_id: dict[str, int] = {
-                row["session_id"]: row["id"]
-                for row in conn.execute(
-                    "SELECT session_id, id FROM ("
-                    "  SELECT session_id, id, ROW_NUMBER() OVER ("
-                    "    PARTITION BY session_id ORDER BY created_at DESC, id DESC"
-                    "  ) AS rn FROM messages"
-                    ") WHERE rn = 1"
-                )
-            }
-            for sess in conn.execute(
-                "SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC"
-            ):
-                sid = sess["id"]
-                out.append(
-                    EntityStamp(
-                        id=sid,
-                        label=sess["title"] or sid,
-                        fingerprint=_sha1(last_msg_id.get(sid, 0), sess["updated_at"]),
-                        ts=_iso(sess["updated_at"]),
+    for qualifier, db_path in _iter_chat_dbs():
+        if not db_path.exists():
+            continue
+        try:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+                conn.row_factory = sqlite3.Row
+                last_msg_id: dict[str, int] = {
+                    row["session_id"]: row["id"]
+                    for row in conn.execute(
+                        "SELECT session_id, id FROM ("
+                        "  SELECT session_id, id, ROW_NUMBER() OVER ("
+                        "    PARTITION BY session_id ORDER BY created_at DESC, id DESC"
+                        "  ) AS rn FROM messages"
+                        ") WHERE rn = 1"
                     )
-                )
-    except sqlite3.Error as exc:
-        logger.warning("chat snapshot probe failed: %s", exc)
-        return []
+                }
+                for sess in conn.execute(
+                    "SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC"
+                ):
+                    sid = sess["id"]
+                    out.append(
+                        EntityStamp(
+                            id=f"{qualifier}{sid}",
+                            label=sess["title"] or sid,
+                            fingerprint=_sha1(last_msg_id.get(sid, 0), sess["updated_at"]),
+                            ts=_iso(sess["updated_at"]),
+                        )
+                    )
+        except sqlite3.Error as exc:
+            logger.warning("chat snapshot probe failed for %s: %s", db_path, exc)
+            continue
     return out
 
 

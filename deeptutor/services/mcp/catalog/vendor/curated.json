@@ -40,6 +40,36 @@
       "docs_url": "https://airtable.com/developers/web/api/introduction"
     },
     {
+      "id": "alphaxiv",
+      "display_name": "alphaXiv Research",
+      "category": "science",
+      "tier": "curated",
+      "trust": "unverified",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search primary papers, read full text and page evidence, and inspect paper code repositories.",
+        "zh": "检索论文、读取原文与页面证据，并核对论文代码仓库。"
+      },
+      "requires": {
+        "en": "Authorize alphaXiv with OAuth when connecting.",
+        "zh": "连接时通过 OAuth 授权 alphaXiv。"
+      },
+      "server": {
+        "url": "https://api.alphaxiv.org/mcp/v1",
+        "auth": "oauth",
+        "tool_timeout": 120,
+        "enabled_tools": [
+          "discover_papers",
+          "get_paper_content",
+          "answer_pdf_queries",
+          "read_files_from_github_repository"
+        ]
+      },
+      "fields": [],
+      "homepage": "https://www.alphaxiv.org",
+      "docs_url": "https://www.alphaxiv.org/docs/mcp"
+    },
+    {
       "id": "amap",
       "display_name": "Amap",
       "category": "maps",

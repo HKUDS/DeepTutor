@@ -22,18 +22,15 @@ export function useWorkspaceChatActions(
 ) {
   const { pinnedCapability } = options;
   const { state, setCapability, setTools } = useChatStateAdapter();
-  const { capabilities: catalogCapabilities } = useCapabilityCatalog();
+  const { capabilities: catalogCapabilities, isLoading: catalogLoading } =
+    useCapabilityCatalog();
   const workspaceCapabilities = useMemo(
     () =>
       pinnedCapability
         ? catalogCapabilities.filter(
             (capability) => capability.value === pinnedCapability,
           )
-        : catalogCapabilities.filter(
-            (capability) =>
-              capability.value !== "course_study" &&
-              capability.value !== "immersive_watching",
-          ),
+        : catalogCapabilities,
     [catalogCapabilities, pinnedCapability],
   );
   const [enabledOptionalTools, setEnabledOptionalTools] = useState<
@@ -56,6 +53,21 @@ export function useWorkspaceChatActions(
     if (state.activeCapability === pinnedCapability) return;
     setCapability(pinnedCapability);
   }, [pinnedCapability, setCapability, state.activeCapability]);
+  // The same holds for an unpinned workspace: an action the menu does not
+  // offer (Course Study, carried in by a course hand-off) is displayed as
+  // Chat, so send Chat. Wait for the catalog, or a plugin action that only the
+  // server lists would be reset before it is known.
+  useEffect(() => {
+    if (pinnedCapability || catalogLoading) return;
+    if ((state.activeCapability || "") === activeValue) return;
+    setCapability(activeValue || null);
+  }, [
+    activeValue,
+    catalogLoading,
+    pinnedCapability,
+    setCapability,
+    state.activeCapability,
+  ]);
   const activeCapability = useMemo(
     () =>
       workspaceCapabilities.find(

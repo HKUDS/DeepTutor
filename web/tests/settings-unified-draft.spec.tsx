@@ -20,19 +20,29 @@ import Appearance from "@/features/settings/sections/AppearanceSettingsSection";
 import { UiSettingsProvider } from "@/features/settings/store/UiSettingsProvider";
 import { stageRegistryAction } from "@/lib/provider-registry";
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), theme: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  theme: vi.fn(),
+  push: vi.fn(),
+}));
 vi.mock("@/lib/api", () => ({
   apiUrl: (s: string) => s,
   apiFetch: (...args: unknown[]) => mocks.fetch(...args),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-const t = (key: string) => key;
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mocks.push }),
+}));
+const t = (key: string, values?: Record<string, unknown>) => key.replace(/{{(.*?)}}/g, (_, name) => String(values?.[name] ?? name));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t, i18n: { language: "en" } }),
 }));
-vi.mock("@/lib/theme", () => ({
-  setTheme: (...args: unknown[]) => mocks.theme(...args),
-}));
+vi.mock("@/lib/theme", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/theme")>("@/lib/theme");
+  return {
+    ...actual,
+    setTheme: (...args: unknown[]) => mocks.theme(...args),
+  };
+});
 vi.mock("@/context/AppShellContext", () => ({
   useAppShell: () => ({
     codeBlockTheme: "github",
@@ -56,6 +66,7 @@ const reply = (value: unknown, ok = true) => ({
 beforeEach(() => {
   live = defaultCatalog();
   stored = null;
+  mocks.push.mockReset();
   resources = {
     workspace: { path: "/original" },
     "video-learning": { provider: "youtube" },
@@ -197,6 +208,27 @@ it("keeps failed changes pending and allows retry", async () => {
   mocks.fetch.mockImplementation(implementation);
   await act(() => settings.applyCatalog());
   expect(settings.draftState).toBe("clean");
+});
+
+it.each(["/api/settings/draft", "/api/settings/apply"])("shows a denied %s write without losing the editable draft", async endpoint => {
+  live.services.llm.profiles.push({ id: "saved", name: "Saved profile", binding: "custom", base_url: "", api_key: "", api_version: "", models: [] });
+  render(<App page="" />);
+  await ready();
+  await act(async () => settings.mutateCatalog(next => {
+    next.services.llm.profiles[0].name = "Retained draft";
+  }));
+  const original = mocks.fetch.getMockImplementation()!;
+  mocks.fetch.mockImplementation((url, init) => url === endpoint && init?.method !== "GET"
+    ? { ...reply({ detail: "Check the service account write permissions; your draft was retained." }, false), status: 503 }
+    : original(url, init));
+  await act(() => settings.applyCatalog());
+  expect(settings.toast).toContain("service account write permissions");
+  expect(settings.draft.services.llm.profiles[0].name).toBe("Retained draft");
+  expect(live.services.llm.profiles[0].name).not.toBe("Retained draft");
+  mocks.fetch.mockImplementation(original);
+  await act(() => settings.applyCatalog());
+  expect(settings.draftState).toBe("clean");
+  expect(live.services.llm.profiles[0].name).toBe("Retained draft");
 });
 
 it("stages language and appearance without changing browser preferences until Apply", async () => {
@@ -385,6 +417,54 @@ it("stages MinerU credentials and restores them when revisiting the page", async
   expect(screen.getByPlaceholderText("Paste API token")).toHaveValue("");
 });
 
+it("applies MinerU credentials and clears dirty state cleanly", async () => {
+  resources.mineru = {
+    settings: { mode: "cloud", api_base_url: "http://mineru" },
+    api_token_set: false,
+  };
+  render(<App page="mineru" />);
+  await ready();
+  fireEvent.change(await screen.findByPlaceholderText("Paste API token"), {
+    target: { value: "applied-token" },
+  });
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(writes("/api/settings/mineru")).toHaveLength(1);
+  expect(resources.mineru.api_token).toBe("applied-token");
+  expect(settings.draftState).toBe("clean");
+  expect(settings.hasUnsavedChanges).toBe(false);
+});
+
+it("applies MinerU credentials from within document-parsing page without leaving unsaved state", async () => {
+  resources["document-parsing"] = {
+    engine: "mineru",
+    engines: {
+      mineru: { mode: "local", api_base_url: "https://mineru.net" },
+    },
+    available_engines: [
+      { id: "mineru", name: "MinerU", available: true },
+    ],
+    readiness: { mineru: { ready: true } },
+    installable: [],
+    mineru: { api_token_set: false },
+  };
+  resources.mineru = {
+    settings: { mode: "local", api_base_url: "https://mineru.net" },
+    api_token_set: false,
+  };
+  render(<App page="document-parsing" />);
+  await ready();
+  fireEvent.click(await screen.findByRole("button", { name: "Cloud API" }));
+  fireEvent.change(await screen.findByPlaceholderText("Paste API token"), {
+    target: { value: "cloud-token-123" },
+  });
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(writes("/api/settings/mineru")).toHaveLength(1);
+  expect(settings.draftState).toBe("clean");
+  expect(settings.hasUnsavedChanges).toBe(false);
+});
+
 it("allows incomplete model drafts but blocks Apply before writing any live settings", async () => {
   render(<App />);
   await ready();
@@ -408,6 +488,133 @@ it("allows incomplete model drafts but blocks Apply before writing any live sett
   expect(stored.catalog.services.llm.profiles[0].models[0].model).toBe("");
   await act(() => settings.applyCatalog());
   expect(settings.draftState).toBe("saved");
+  // Apply names the model and opens the editor that can fix it, instead of
+  // failing with a message that points at no visible field.
+  expect(mocks.push).toHaveBeenCalledWith(
+    "/settings/llm?profile=new&model=new",
+  );
+  expect(settings.toast).toContain(
+    "Add a model ID for new on the Language models page before applying changes.",
+  );
+  expect(
+    mocks.fetch.mock.calls.filter(([url]) => url === "/api/settings/apply"),
+  ).toHaveLength(0);
   expect(writes("/api/settings/workspace")).toHaveLength(0);
   expect(live.services.llm.profiles).toHaveLength(0);
+});
+
+it("preserves the distinction between untouched and explicitly cleared MinerU tokens", async () => {
+  resources.mineru = {
+    settings: { mode: "cloud", api_base_url: "http://mineru" },
+    api_token_set: true,
+  };
+  render(<App page="mineru" />);
+  await ready();
+  const token = await screen.findByPlaceholderText("••••••••••••");
+  fireEvent.click(screen.getByRole("button", { name: "Show API token" }));
+  expect(token).toHaveAttribute("type", "text");
+  expect(settings.hasUnsavedChanges).toBe(false);
+  fireEvent.change(token, { target: { value: "replacement" } });
+  fireEvent.change(token, { target: { value: "" } });
+  expect(settings.hasUnsavedChanges).toBe(true);
+  await act(() => settings.applyCatalog());
+  expect(JSON.parse(String(writes("/api/settings/mineru")[0][1].body))).toHaveProperty("api_token", "");
+});
+
+it("keeps edits made while Apply is pending for the next Apply", async () => {
+  render(<App />);
+  await ready();
+  fireEvent.change(screen.getByLabelText("workspace"), { target: { value: "/first" } });
+  const implementation = mocks.fetch.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  mocks.fetch.mockImplementation(async (url, init) => {
+    if (url === "/api/settings/workspace" && init?.method === "PUT") await gate;
+    return implementation(url, init);
+  });
+  let applying!: Promise<void>;
+  act(() => { applying = settings.applyCatalog(); });
+  await waitFor(() => expect(writes("/api/settings/workspace")).toHaveLength(1));
+  fireEvent.change(screen.getByLabelText("workspace"), { target: { value: "/second" } });
+  await act(async () => { release(); await applying; });
+  expect(resources.workspace.path).toBe("/first");
+  expect(screen.getByLabelText("workspace")).toHaveValue("/second");
+  expect(settings.draftState).toBe("unsaved");
+  await act(() => settings.applyCatalog());
+  expect(resources.workspace.path).toBe("/second");
+  expect(settings.draftState).toBe("clean");
+});
+
+function parserResource(engine: string, available = false) {
+  return {
+    engine,
+    engines: { docling: { mode: "local" } },
+    available_engines: [
+      { id: "text_only", name: "Text-only", available: true },
+      ...["docling", "markitdown", "liteparse", "pymupdf4llm"].map((id) => ({
+        id, name: id, available: id === engine && available,
+      })),
+    ],
+    readiness: {},
+    installable: ["docling", "markitdown", "liteparse", "pymupdf4llm"],
+    mineru: { api_token_set: false },
+  };
+}
+
+it.each(["docling", "markitdown", "liteparse", "pymupdf4llm"])(
+  "shows deployment instructions and rechecks %s without installing packages",
+  async (engine) => {
+    resources["document-parsing"] = parserResource(engine);
+    render(<App page="document-parsing" />);
+    await ready();
+    const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+    expect(screen.getByText(`parse-${engine}`)).toBeInTheDocument();
+    expect(screen.getByText(`python scripts/install_extras.py parse-${engine}`)).toBeInTheDocument();
+    expect(screen.getByText(`deeptutor module install parser-${engine}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download & install" })).not.toBeInTheDocument();
+    resources["document-parsing"] = parserResource(engine, true);
+    fireEvent.click(recheck);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Recheck availability" })).not.toBeInTheDocument());
+    expect(mocks.fetch.mock.calls.filter(([url]) => String(url).includes("document-parsing/install"))).toHaveLength(0);
+    expect(writes("/api/settings/document-parsing")).toHaveLength(0);
+  },
+);
+
+it("refreshes availability without replacing the pending parser selection", async () => {
+  resources["document-parsing"] = parserResource("text_only");
+  render(<App page="document-parsing" />);
+  await ready();
+  fireEvent.click(await screen.findByRole("button", { name: /^markitdown\s*Not installed/ }));
+  const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+  const refreshed = parserResource("markitdown", true);
+  resources["document-parsing"] = { ...refreshed, engine: "text_only" };
+  fireEvent.click(recheck);
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Recheck availability" })).not.toBeInTheDocument());
+  expect(settings.pendingExtensionPayload("document-parsing")).toHaveProperty("engine", "markitdown");
+  expect(screen.getByRole("button", { name: /^markitdown\s*Active/ })).toBeInTheDocument();
+  expect(writes("/api/settings/document-parsing")).toHaveLength(0);
+});
+
+it("reports a failed recheck, retains guidance, and allows retry when still missing", async () => {
+  resources["document-parsing"] = parserResource("markitdown");
+  render(<App page="document-parsing" />);
+  await ready();
+  const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+  const fetch = mocks.fetch.getMockImplementation()!;
+  let resolve: (value: unknown) => void = () => {};
+  mocks.fetch.mockImplementation((url: string, init?: RequestInit) =>
+    url === "/api/settings/document-parsing"
+      ? new Promise((done) => { resolve = done; })
+      : fetch(url, init),
+  );
+  fireEvent.click(recheck);
+  expect(screen.getByRole("button", { name: "Checking availability…" })).toBeDisabled();
+  await act(async () => resolve(reply({ detail: "Parser server unavailable" }, false)));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Parser server unavailable");
+  expect(screen.getByText("python scripts/install_extras.py parse-markitdown")).toBeInTheDocument();
+  mocks.fetch.mockImplementation(fetch);
+  fireEvent.click(screen.getByRole("button", { name: "Recheck availability" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(screen.getByRole("status")).toHaveTextContent("This parser is still unavailable");
+  expect(mocks.fetch.mock.calls.filter(([url]) => String(url).includes("document-parsing/install"))).toHaveLength(0);
 });

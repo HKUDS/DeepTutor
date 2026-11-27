@@ -111,6 +111,48 @@ async def test_replan_is_budget_limited() -> None:
 
 
 @pytest.mark.asyncio
+async def test_second_plan_is_refused_and_keeps_progress() -> None:
+    sid = "test-plan-twice"
+    await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="a", steps=[{"goal": "factor"}, {"goal": "solve roots"}]
+    )
+    await SolveFinishStepTool().execute(_solve_session_id=sid, step_id="S1", summary="done")
+
+    again = await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="b", steps=[{"goal": "start over"}]
+    )
+
+    assert again.success is False
+    payload = json.loads(again.content)
+    assert payload["status"] == "plan_exists"
+    # The refusal re-grounds the model on the plan it already has.
+    assert "- S1 [done] factor" in payload["plan"]
+    assert "- S2 [next] solve roots" in payload["plan"]
+    session = get_session(sid)
+    assert [s.goal for s in session.steps] == ["factor", "solve roots"]
+    assert session.steps[0].done is True
+    assert session.replans == 0
+
+
+@pytest.mark.asyncio
+async def test_second_plan_cannot_bypass_spent_replan_budget() -> None:
+    sid = "test-plan-after-budget"
+    await SolvePlanTool().execute(_solve_session_id=sid, analysis="a", steps=[{"goal": "g1"}])
+    get_session(sid).max_replans = 0
+    refused = await SolveReplanTool().execute(
+        _solve_session_id=sid, reason="stuck", steps=[{"goal": "g2"}]
+    )
+    assert refused.success is False
+
+    bypass = await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="b", steps=[{"goal": "g3"}]
+    )
+
+    assert bypass.success is False
+    assert [s.goal for s in get_session(sid).steps] == ["g1"]
+
+
+@pytest.mark.asyncio
 async def test_tools_require_a_session_id() -> None:
     res = await SolvePlanTool().execute(analysis="a", steps=[{"goal": "g"}])
     assert res.success is False
@@ -126,3 +168,45 @@ def test_session_replan_resets_steps_and_counts() -> None:
     assert session.replans == 1
     assert session.next_step().goal == "g2"
     assert session.all_done() is False
+
+
+def test_session_progress_text_marks_each_step() -> None:
+    session = SolveSession(session_id="x")
+    session.set_plan("a", [("S1", "factor"), ("S2", "solve roots"), ("S3", "verify")])
+    session.mark_done("S1", "(x-2)(x-3)")
+
+    lines = session.progress_text().splitlines()
+
+    assert "- S1 [done] factor" in lines
+    assert "- S2 [next] solve roots" in lines
+    assert "- S3 [todo] verify" in lines
+    assert "S2" in lines[-1] and "solve_finish_step" in lines[-1]
+
+
+def test_session_progress_text_after_last_step_and_replan() -> None:
+    session = SolveSession(session_id="x", max_replans=1)
+    session.set_plan("a", [("S1", "old plan")])
+    assert session.replan("redo", [("S1", "new first"), ("S2", "new second")]) is True
+    assert "old plan" not in session.progress_text()
+    assert "- S1 [next] new first" in session.progress_text()
+
+    session.mark_done("S1", "ok")
+    session.mark_done("S2", "ok")
+    text = session.progress_text()
+    assert "[next]" not in text and "[todo]" not in text
+    assert "final answer" in text.splitlines()[-1]
+
+
+@pytest.mark.asyncio
+async def test_finish_step_checkpoint_carries_plan_state() -> None:
+    sid = "test-plan-state"
+    await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="a", steps=[{"goal": "factor"}, {"goal": "solve roots"}]
+    )
+
+    fin = await SolveFinishStepTool().execute(_solve_session_id=sid, step_id="S1", summary="done")
+
+    checkpoint = fin.metadata["_context_checkpoint"]
+    assert checkpoint["summary"].startswith("[S1] factor")
+    assert checkpoint["state"] == get_session(sid).progress_text()
+    assert "- S2 [next] solve roots" in checkpoint["state"]

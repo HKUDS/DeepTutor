@@ -561,13 +561,24 @@ def _replace_limits_once(text: str) -> str:
         out.append(text[i : match.start()])
         i = match.end()
         i = _skip_ws(text, i)
+        placement = _COMMAND.match(text, i)
+        while placement and placement.group(0) in {r"\limits", r"\nolimits", r"\displaylimits"}:
+            i = _skip_ws(text, placement.end())
+            placement = _COMMAND.match(text, i)
         sub = None
         sup = None
-        if i < n and text[i] == "_":
-            sub, i = _read_tex_token(text, i + 1)
+        for _ in range(2):
+            if i >= n or text[i] not in "_^":
+                break
+            kind = text[i]
+            if (kind == "_" and sub is not None) or (kind == "^" and sup is not None):
+                break
+            value, i = _read_tex_token(text, i + 1)
+            if kind == "_":
+                sub = value
+            else:
+                sup = value
             i = _skip_ws(text, i)
-        if i < n and text[i] == "^":
-            sup, i = _read_tex_token(text, i + 1)
         head = _LIMIT_HEAD[match.group(1)]
         parts = [head]
         if match.group(1) == "lim":
@@ -650,6 +661,13 @@ def _drop_unknown_commands(text: str) -> str:
                         out.append(inner)
                 continue
             nxt = text[i + 1]
+            if nxt == "%":
+                # ``\%`` is the escaped literal percent (a bare ``%`` starts a
+                # TeX comment), so it carries numeric meaning and must be read,
+                # not dropped like the structural escapes below.
+                out.append(" percent ")
+                i += 2
+                continue
             if nxt in "{}":
                 i += 2
                 continue
@@ -672,12 +690,20 @@ def _drop_braces(text: str) -> str:
     return text.replace("{", " ").replace("}", " ")
 
 
+#: ``\circ`` as a superscript is the degree sign (``90^\circ``); everywhere
+#: else it is function composition. The superscript form is rewritten here,
+#: before ``\circ`` is mapped to "compose" by ``_replace_named_commands``, so a
+#: composition operand (``f \circ g``) still speaks as "compose".
+_DEGREE_SUPERSCRIPT = re.compile(r"\^\s*(?:\{\s*\\circ\s*\}|\\circ(?![a-zA-Z]))")
+
+
 def _verbalize_math(text: str) -> str:
     """Turn one math island's inner TeX into speakable words."""
     if not text:
         return ""
     out = text.replace("&", " ")
     out = out.replace(r"\\", ", ")
+    out = _DEGREE_SUPERSCRIPT.sub(" degrees ", out)
     out = _replace_blackboard_sets(out)
     out = _until_stable(_unwrap_style_once, out)
     out = _until_stable(_replace_frac_once, out)

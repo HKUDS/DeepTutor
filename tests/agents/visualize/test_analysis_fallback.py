@@ -175,3 +175,18 @@ def test_known_enum_values_are_left_alone() -> None:
 
     assert result.render_type == "mermaid"
     assert result.visual_genre == "structural"
+
+
+@pytest.mark.asyncio
+async def test_fixed_mindmap_mode_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_agent_stubs(monkeypatch, _FIXED_PROMPTS, _llm_reply("diagram"))
+
+    result = await AnalysisAgent().process(
+        user_input="organize photosynthesis concepts",
+        history_context="",
+        render_mode="mindmap",
+    )
+
+    assert result.render_type == "mindmap"

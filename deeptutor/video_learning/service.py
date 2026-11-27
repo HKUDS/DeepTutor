@@ -327,6 +327,10 @@ class TimedMediaStore:
             raise TimedMediaNotFound("Timed media material was not found.")
         return payload
 
+    def peek(self, material_id: str) -> dict[str, Any]:
+        """Read original legacy bytes without repair writes during migration (#1378)."""
+        return self._load(material_id)
+
     @staticmethod
     def _repair_transcript_text(material: dict[str, Any]) -> bool:
         """Repair legacy machine-generated captions without touching user content."""
@@ -691,7 +695,8 @@ async def resolve_material(
 
 
 async def material_with_playback(material_id: str) -> dict[str, Any]:
-    material = get_timed_media_store().get(material_id)
+    store = get_timed_media_store()
+    material = store.get(material_id)
     provider = load_video_learning_settings()["default_provider"]
     if provider == "invidious" and not material.get("provider_cache", {}).get("invidious_formats"):
         source = material.get("source") if isinstance(material.get("source"), dict) else {}
@@ -729,7 +734,11 @@ async def material_with_playback(material_id: str) -> dict[str, Any]:
             }
             material["segments"] = build_segments(cues)
         material["provider_cache"] = {"invidious_formats": formats}
-        get_timed_media_store().save(material)
+        with store.lock(material_id):
+            latest = store.get(material_id, lock_held=True)
+            if isinstance(latest.get("learning"), dict):
+                material["learning"] = latest["learning"]
+            material = store.save(material)
     return public_material(material, provider=provider)
 
 

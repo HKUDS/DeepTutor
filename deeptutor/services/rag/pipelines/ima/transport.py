@@ -25,7 +25,7 @@ from typing import Any, Optional
 import httpx
 
 from .config import ImaConfig
-from .envelope import ImaRateLimitError, unwrap
+from .envelope import ImaAPIError, ImaAuthError, ImaRateLimitError, unwrap
 
 API_BASE_URL = "https://ima.qq.com"
 WIKI_PREFIX = "/openapi/wiki/v1"
@@ -91,10 +91,18 @@ class ImaTransport:
 
     @staticmethod
     def _unwrap(response: httpx.Response) -> dict[str, Any]:
+        if response.status_code in {401, 403}:
+            raise ImaAuthError("IMA rejected the credentials or knowledge-base permissions.")
         # A transport-level 429 never reaches the envelope, so it is mapped here
         # to the same error the envelope's rate-limit codes raise.
         if response.status_code == 429:
             raise ImaRateLimitError("IMA rate limit reached. Try again shortly.")
+        if not response.is_success:
+            # #1500: a failed gateway response must not become a successful
+            # empty retrieval merely because its JSON contains code=0.
+            raise ImaAPIError(
+                f"IMA returned HTTP {response.status_code}. Retry or check the connection."
+            )
         try:
             payload = response.json()
         except Exception:

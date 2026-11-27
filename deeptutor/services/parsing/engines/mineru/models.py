@@ -118,13 +118,18 @@ class ModelDownloadManager:
             mt = model_type if model_type in MODEL_TYPES else "pipeline"
             src = source if source in DOWNLOAD_SOURCES else "huggingface"
             cmd = [downloader, "-s", src, "-m", mt]
-            env = {**os.environ, **model_env_overrides(src, endpoint)}
+            # Same contract as the MinerU parse subprocess: the child writes
+            # UTF-8 (its tqdm bars use block characters) and the pump reads
+            # UTF-8, whatever the server's ANSI code page is.
+            env = {**os.environ, **model_env_overrides(src, endpoint), "PYTHONUTF8": "1"}
             try:
                 process = subprocess.Popen(  # nosec B603 — argv from validated resolver
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     shell=False,
                     env=env,
                 )

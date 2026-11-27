@@ -14,6 +14,12 @@ mastery hint does would reject most of them. The one hard rule carried over is
 voice: this writes what the *user* would type, never a description of it
 ("you could ask...") and never the assistant's own voice.
 
+The other is that it never answers the assistant's own question. When a tutor
+ends on a check question ("so how many rows for 100 images?"), the most likely
+next line is the answer itself, and a placeholder that shows it gives the
+exercise away before the learner has tried. There it offers a hint request or
+a clarifying question instead.
+
 Nothing to predict from is a real state, not a failure
 -------------------------------------------------------
 A conversation with no messages yet has nothing for this to work from — that
@@ -133,10 +139,12 @@ Rules:
 - First person, exactly as the user would type it. Under 14 words.
 - Write what the USER would say, never what the assistant would say back, and never a description of a question ("you could ask...") instead of the question itself.
 - Ground it in what the assistant just said; do not introduce an unrelated subject.
+- If the assistant just asked the user to answer, solve, predict, calculate or fill in something (a check question, quiz or exercise), NEVER write the answer, a guess, a number or a formula for it. The user is meant to work it out alone. Write a line asking for a hint or clarifying the question instead.
 
 Good (assistant just explained a retry policy): "What happens after the third retry fails?"
 Good (assistant just drafted an email): "Make the tone more casual"
 Good (assistant just listed three options): "Let's go with the second one"
+Good (assistant just asked "how many rows for 100 images?"): "Can I get a hint first?"
 Bad: "You could ask about the retry limit"  <- describes a line instead of being it
 Bad: "That's a great explanation!"          <- not worth typing, continues nothing
 Bad: "Here's a more casual version: ..."    <- the assistant's voice, not the user's"""
@@ -150,10 +158,12 @@ _SYSTEM_ZH = """你要预测用户接下来最可能在聊天框里打出的**�
 - 第一人称，就像用户自己会打出来的样子。不超过 25 个字。
 - 写的是**用户**会说的话，绝不是助手会回的话，也不能只是描述一个问题（比如"你可以问问重试上限"），而要把那句话本身写出来。
 - 要接得上助手刚说的内容，不要引入一个不相关的话题。
+- 如果助手刚请用户回答、解题、预测、计算或填空（确认问题、小测、练习），**绝不要**写出答案、猜测、数字或公式。用户应该自己想出来。改为写一句请求提示或确认题意的话。
 
 好（助手刚讲完重试策略）："第三次重试失败之后会怎样？"
 好（助手刚起草了一封邮件）："语气改随意一点"
 好（助手刚列出三个选项）："就选第二个吧"
+好（助手刚问"100 张图像的话是几行？"）："能先给我一点提示吗？"
 差："你可以问问重试上限"          <- 描述了一句话，而不是把它写出来
 差："讲得真好！"                  <- 不值得打出来，也没往下接
 差："这是更随意一点的版本：……"    <- 这是助手的口吻，不是用户的"""
@@ -287,8 +297,16 @@ async def get_ask_hint(session_id: str) -> dict[str, Any]:
 
     An empty hint is a real answer, not an error — a conversation with no
     messages yet, a timeout, a model that answered instead of predicting, all
-    leave the composer's own static placeholder standing.
+    leave the composer's own static placeholder standing. So does the learner
+    having turned the hint off (Settings → Conversation), which is checked
+    before the cache: a line written while it was on must not outlive the
+    switch.
     """
+    from deeptutor.services.settings.starter_settings import ask_hint_enabled
+
+    if not ask_hint_enabled():
+        return AskHint(hint="", session_id=session_id, generated_at=time.time()).to_dict()
+
     material = await _collect(session_id)
     if not material:
         return AskHint(hint="", session_id=session_id, generated_at=time.time()).to_dict()
