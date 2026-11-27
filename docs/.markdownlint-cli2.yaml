@@ -1,0 +1,7 @@
+config:
+  default: false
+  no-hard-tabs: true
+  no-reversed-links: true
+  no-space-in-emphasis: true
+  no-space-in-links: true
+  no-empty-links: true

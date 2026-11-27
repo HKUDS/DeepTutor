@@ -19,6 +19,21 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: docs-locale-parity
+        name: Check English and Chinese docs
+        entry: python3 docs/scripts/check_docs.py staged-parity
+        language: system
+        pass_filenames: false
+        # Deleted pages are absent from pre-commit's list of changed files.
+        always_run: true
+
+      - id: docs-markdownlint
+        name: Lint docs Markdown
+        entry: markdownlint-cli2
+        language: node
+        additional_dependencies: [markdownlint-cli2@0.23.3]
+        files: ^docs/(src/content/docs/.*\.mdx?|README\.md|DEPLOYMENT\.md)$
+
   # ============================================
   # General file checks
   # ============================================

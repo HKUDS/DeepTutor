@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,30 +24,41 @@ SKIP_CHANNEL_MODULES = {"base", "manager", "registry", "weixin_qr", "lark_http"}
 SHARED_SWITCHES = {"enabled", "send_progress", "send_tool_hints", "streaming", "allow_from"}
 
 
-def pages(base: Path) -> set[str]:
-    found = set()
-    for pattern in ("*.md", "*.mdx"):
-        for path in base.rglob(pattern):
-            rel = path.relative_to(base).as_posix()
-            if rel.startswith("zh-cn/"):
-                continue
-            found.add(rel)
-    return found
-
-
-def check_parity() -> list[str]:
+def check_locale_paths(paths: set[str]) -> list[str]:
+    if not paths:
+        return ["no pages found in docs/src/content/docs"]
     errors = []
-    en = pages(CONTENT)
-    zh = pages(CONTENT / "zh-cn")
+    en = {path for path in paths if not path.startswith("zh-cn/")}
+    zh = {path.removeprefix("zh-cn/") for path in paths - en}
     if en - zh:
         errors.append("only English: " + ", ".join(sorted(en - zh)))
     if zh - en:
         errors.append("only Chinese: " + ", ".join(sorted(zh - en)))
-    for path in list(CONTENT.rglob("*.md")) + list(CONTENT.rglob("*.mdx")):
+    return errors
+
+
+def check_staged_parity() -> list[str]:
+    # An untracked translation will not land in the commit.
+    content = CONTENT.relative_to(ROOT).as_posix()
+    indexed = subprocess.check_output(
+        ["git", "ls-files", "-z", "--", content], cwd=ROOT, encoding="utf-8"
+    )
+    paths = {
+        path.removeprefix(f"{content}/")
+        for path in indexed.split("\0")
+        if path.endswith((".md", ".mdx"))
+    }
+    return check_locale_paths(paths)
+
+
+def check_parity() -> list[str]:
+    paths = list(CONTENT.rglob("*.md")) + list(CONTENT.rglob("*.mdx"))
+    errors = check_locale_paths({path.relative_to(CONTENT).as_posix() for path in paths})
+    for path in paths:
         rel = path.relative_to(CONTENT).as_posix()
         if rel in {"index.mdx", "zh-cn/index.mdx"}:
             continue
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         if not text.startswith("---"):
             errors.append(f"{rel} is missing frontmatter")
             continue
@@ -313,15 +325,18 @@ def check_links() -> list[str]:
 
 def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else "source"
-    errors = (
-        check_parity()
-        + check_screenshots()
-        + check_gifs()
-        + check_channel_schema()
-        + check_generated_reference()
-    )
-    if mode == "dist":
-        errors.extend(check_links())
+    if mode == "staged-parity":
+        errors = check_staged_parity()
+    else:
+        errors = (
+            check_parity()
+            + check_screenshots()
+            + check_gifs()
+            + check_channel_schema()
+            + check_generated_reference()
+        )
+        if mode == "dist":
+            errors.extend(check_links())
     if errors:
         print("\n".join(errors))
         return 1

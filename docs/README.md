@@ -162,6 +162,15 @@ python3 docs/scripts/check_docs.py dist
 
 `check_docs.py` checks that English and Chinese paths match, that every page except the splash homepage has `quadrant`, that copied screenshots match `assets/figs/web-dev/manifest.json`, and that channel schema pages name the source fields. `dist` also checks that internal links in the built HTML resolve. GitHub Actions runs the same steps in `.github/workflows/docs.yml`.
 
+The `docs-locale-parity` and `docs-markdownlint` pre-commit hooks check locale paths and Markdown before a commit. To run them on the full checkout:
+
+```bash
+pre-commit run docs-locale-parity --all-files
+pre-commit run docs-markdownlint --all-files
+```
+
+After a fresh docs build, run `python3 docs/scripts/audit_public_assets.py` from the repository root to list public files whose paths do not appear in the source or build. Check dynamic paths and any links from outside the docs site before removing a candidate.
+
 After changing a module manifest or `router_index.json`:
 
 ```bash
@@ -185,7 +194,11 @@ when the committed artifact drifts from the live CLI and API, and
 changing a command group or a route, regenerate the artifact and commit it with
 the code change.
 
-## PR previews (GitHub Pages)
+## Deployment
+
+See [production deployment](DEPLOYMENT.md) for the Cloudflare Workers build, deployment, and rollback procedure.
+
+### PR previews (GitHub Pages)
 
 Same-repo pull requests that touch docs build a subpath preview and publish it to the `gh-pages` branch under `pr-<number>/`, then post or update a comment on the PR with links to both locales. Closing the PR removes `pr-<number>/` automatically.
 
