@@ -71,8 +71,17 @@ async def _generate(response: str, monkeypatch: pytest.MonkeyPatch) -> Block:
         f"Here is the interactive page.\n\n```html\n{_HTML}\n```\n",
         f"Here is the interactive page.\n\n{_HTML}\n\nHope this helps.",
         f"```\n{_HTML}\n```",
+        f"```html\n{_HTML}",
+        f"{_HTML}\n\nNote: the page ends at its closing </html> tag.",
     ],
-    ids=["raw", "fenced", "raw-with-prose", "bare-fence"],
+    ids=[
+        "raw",
+        "fenced",
+        "raw-with-prose",
+        "bare-fence",
+        "fence-left-open",
+        "prose-quotes-end-tag",
+    ],
 )
 async def test_complete_html_is_normalized_and_marked_ready(
     response: str, monkeypatch: pytest.MonkeyPatch
@@ -88,15 +97,15 @@ async def test_complete_html_is_normalized_and_marked_ready(
 @pytest.mark.parametrize(
     ("response", "error"),
     [
-        (f"```html\n{_HTML}", "unterminated Markdown fence"),
-        (_HTML.replace("</html>", ""), "</html>"),
-        (f"```html\n{_HTML.replace('</html>', '')}\n```", "</html>"),
+        (f"```html\n{_HTML[: _HTML.index('</script>')]}", "cut off"),
+        (_HTML.replace("</html>", ""), "cut off"),
+        (f"```html\n{_HTML.replace('</html>', '')}\n```", "cut off"),
         (_HTML.replace("</script>", ""), "script"),
         (_HTML.replace("</body>", "</script></body>"), "script"),
         (_HTML.replace("<script>", "<script/>").replace("</script>", ""), "script"),
     ],
     ids=[
-        "unterminated-fence",
+        "truncated-inside-script",
         "missing-html-close",
         "truncated-fenced-document",
         "unclosed-script",
@@ -113,3 +122,19 @@ async def test_incomplete_html_is_not_persisted_as_ready(
     assert result.payload == {}
     assert error in result.error
     assert result.metadata["failure"]["retryable"] is True
+
+
+@pytest.mark.asyncio
+async def test_fences_and_end_tags_inside_the_document_are_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A code sample in <pre> and an end tag inside a script string belong to
+    # the page; neither may cut the document short.
+    html = _HTML.replace(
+        '<div id="app"></div>',
+        '<div id="app"></div>\n<pre>\n```python\nprint(1)\n```\n</pre>',
+    ).replace('"Ready"', '"</html> is only text here"')
+    result = await _generate(f"Here it is.\n\n```html\n{html}\n```\n", monkeypatch)
+
+    assert result.status == BlockStatus.READY
+    assert result.payload["code"]["content"] == html

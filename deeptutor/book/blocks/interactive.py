@@ -28,30 +28,47 @@ logger = logging.getLogger(__name__)
 
 _HTML_START = re.compile(r"<!doctype\s+html\b|<html\b", re.IGNORECASE)
 _HTML_END = re.compile(r"</html\s*>", re.IGNORECASE)
-_FENCE_OPEN = re.compile(r"^[ \t]*```(?:html)?[ \t]*\r?\n", re.IGNORECASE | re.MULTILINE)
-_FENCE_CLOSE = re.compile(r"^[ \t]*```[ \t]*(?:\r?\n|$)", re.MULTILINE)
 
 
-class _ScriptBalanceParser(HTMLParser):
+class _DocumentParser(HTMLParser):
+    """Find where the document really ends and check its scripts pair up.
+
+    The parser treats script bodies as raw text, so an ``</html>`` inside a
+    script string, a code fence in ``<pre>`` or prose after the page cannot
+    move the end of the document.
+    """
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=False)
+        self.end: tuple[int, int] | None = None
         self.open_scripts = 0
         self.extra_closes = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "script":
+        if tag == "script" and self.end is None:
             self.open_scripts += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag != "script":
+        if self.end is not None:
             return
-        if self.open_scripts:
-            self.open_scripts -= 1
-        else:
-            self.extra_closes += 1
+        if tag == "html":
+            self.end = self.getpos()
+        elif tag == "script":
+            if self.open_scripts:
+                self.open_scripts -= 1
+            else:
+                self.extra_closes += 1
+
+
+def _offset(text: str, position: tuple[int, int]) -> int:
+    line, column = position
+    offset = 0
+    for _ in range(line - 1):
+        offset = text.index("\n", offset) + 1
+    return offset + column
 
 
 def _normalize_interactive_html(code: str) -> str:
@@ -61,28 +78,26 @@ def _normalize_interactive_html(code: str) -> str:
         raise GenerationFailure(
             "interactive html is missing a document start (<!DOCTYPE html> or <html>)."
         )
+    text = text[start.start() :]
 
-    candidate = text
-    fence_open = _FENCE_OPEN.search(text[: start.start()])
-    if fence_open is not None:
-        fence_close = _FENCE_CLOSE.search(text, fence_open.end())
-        if fence_close is None:
-            raise GenerationFailure("interactive html has an unterminated Markdown fence.")
-        candidate = text[fence_open.end() : fence_close.start()]
-
-    start = _HTML_START.search(candidate)
-    ends = list(_HTML_END.finditer(candidate, start.end())) if start is not None else []
-    if start is None or not ends:
-        raise GenerationFailure("interactive html is missing a complete </html> boundary.")
-    document = candidate[start.start() : ends[-1].end()].strip()
-
-    parser = _ScriptBalanceParser()
-    parser.feed(document)
+    parser = _DocumentParser()
+    parser.feed(text)
     parser.close()
+    if parser.end is None:
+        if parser.open_scripts and _HTML_END.search(text) is not None:
+            raise GenerationFailure("interactive html contains unpaired <script> tags.")
+        where = "inside a <script>" if parser.open_scripts else "before its closing </html>"
+        raise GenerationFailure(
+            f"interactive html is incomplete: it stops {where} "
+            "(the model output was probably cut off)."
+        )
     if parser.open_scripts or parser.extra_closes:
         raise GenerationFailure("interactive html contains unpaired <script> tags.")
 
-    return document
+    end = _HTML_END.match(text, _offset(text, parser.end))
+    if end is None:  # pragma: no cover - the parser only reports real end tags
+        raise GenerationFailure("interactive html has an unreadable </html> tag.")
+    return text[: end.end()]
 
 
 class InteractiveGenerator(BlockGenerator):
