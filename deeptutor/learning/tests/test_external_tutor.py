@@ -16,6 +16,7 @@ from deeptutor.learning.models import (
     LearningModule,
     LearningProgress,
 )
+from deeptutor.learning.semantic_assessment import Verdict
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
@@ -26,12 +27,35 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
         root = Path(self.temp.name)
         self.store = LearningStore(root / "learning")
         self.sessions = SQLiteSessionStore(root / "chat.sqlite3")
+
+        async def judge_explanations(_config, items):
+            def verdict_for(answer):
+                if "都不变" in answer:
+                    return "incorrect"
+                if answer.startswith("呃"):
+                    return "partial"
+                return "correct"
+
+            return {
+                item["question_id"]: Verdict(
+                    result=verdict_for(item["answer"]),
+                    confidence=1.0,
+                    feedback="Assessed the learner's explanation.",
+                    reference_answer="离子反应中实际参加反应的离子发生变化，旁观离子不参与净离子反应。",
+                )
+                for item in items
+            }
+
         self.patches = [
             patch("deeptutor.learning.storage.LearningStore", return_value=self.store),
             patch("deeptutor.api.routers.mastery_path.LearningStore", return_value=self.store),
             patch("deeptutor.services.session.get_session_store", return_value=self.sessions),
             patch(
                 "deeptutor.services.session.get_sqlite_session_store", return_value=self.sessions
+            ),
+            patch(
+                "deeptutor.learning.semantic_assessment.judge_answers",
+                side_effect=judge_explanations,
             ),
         ]
         for item in self.patches:
@@ -80,12 +104,13 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json(), body
 
-    async def native(self, tool, arguments):
+    async def native(self, tool, arguments, learner_message=None):
         result = await native_tools()[tool].execute(
             **arguments,
             _mastery_path_id="native",
             _session_id="native_session",
             _turn_id=f"native_{self.counter}",
+            **({"_learner_message": learner_message} if learner_message is not None else {}),
         )
         self.assertTrue(result.success, result.content)
         return result
@@ -155,14 +180,19 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(before, self.store.load("network").model_dump())
             self.assert_parity()
         for passed in (True, False):
+            learner_message = (
+                "离子反应中实际参与的离子发生变化，旁观离子并没有参与净离子反应。"
+                if passed
+                else "离子反应中所有离子都不变。"
+            )
             args = {
                 "knowledge_point_id": "concept",
                 "passed": passed,
                 "feedback": "学生解释了反应中离子的变化。",
             }
-            result, body = await self.call("mastery_assess", args)
+            result, body = await self.call("mastery_assess", args, user_message=learner_message)
             self.assertTrue(result["success"], result)
-            await self.native("mastery_assess", args)
+            await self.native("mastery_assess", args, learner_message=learner_message)
             self.assert_parity()
         bank = await self.sessions.list_notebook_entries()
         self.assertGreaterEqual(len(bank["items"]), 2)
@@ -170,12 +200,13 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
     async def test_transcript_is_verbatim_and_ui_reads_evidence(self):
         user = "呃，可能是……哦不对，离子才发生变化。\n  保留空格  "
         tutor = "解释：请区分实际参加反应的离子。"
+        await self.call("mastery_status", turn_id="turn-1", user_message=user)
         result, body = await self.call(
             "mastery_assess",
             {"knowledge_point_id": "concept", "passed": False, "feedback": "需要进一步解释"},
             turn_id="turn-1",
-            user_message=user,
         )
+        self.assertTrue(result["success"], result)
         saved, record = await self.call(
             "record_turn", turn_id="turn-1", user_message=user, assistant_message=tutor
         )
@@ -250,7 +281,9 @@ class ExternalTutorTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(refusal["success"])
         await self.call("mastery_mode", {"mode": "study"})
         result, _ = await self.call(
-            "mastery_assess", {"knowledge_point_id": "concept", "passed": True}
+            "mastery_assess",
+            {"knowledge_point_id": "concept", "passed": True},
+            user_message="离子反应中参加反应的离子改变，旁观离子不变。",
         )
         self.assertTrue(result["success"])
         switched, _ = await self.call("mastery_switch", {"path_id": "native"})
