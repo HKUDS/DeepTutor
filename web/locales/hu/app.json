@@ -6664,5 +6664,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Engedélyezett gondolkodási szintek",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Engedélyezd a modell által támogatott szinteket, majd válassz egyet a beszélgetésben. Ha nem választasz, a szolgáltató alapértelmezése érvényes.",
+  "Provider reasoning mode": "A szolgáltató gondolkodási módja",
+  "Other tasks: default reasoning": "Egyéb feladatok: alapértelmezett gondolkodás",
+  "Supported reasoning levels": "Támogatott gondolkodási szintek",
+  "Use detected levels": "Észlelt szintek alkalmazása",
+  "No configurable reasoning levels reported.": "Nincs jelentett beállítható gondolkodási szint.",
+  "Managed model catalog": "Kezelt modellkatalógus",
+  "Provider model metadata": "A szolgáltató modellmetaadatai",
+  "Enable reasoning in model capabilities to use these levels.": "A szintek használatához engedélyezze a gondolkodást a modell képességeinél.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "A gondolkodási szintek nem állapíthatók meg. Tartsa meg a kézi választást.",
+  "Selectable through this connection: {{levels}}": "Ezen a kapcsolaton választható szintek: {{levels}}"
 }

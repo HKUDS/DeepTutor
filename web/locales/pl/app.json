@@ -6686,5 +6686,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Włączone poziomy rozumowania",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Włącz poziomy obsługiwane przez model, a następnie wybierz jeden na czacie. Bez wyboru używane jest ustawienie domyślne dostawcy.",
+  "Provider reasoning mode": "Tryb rozumowania dostawcy",
+  "Other tasks: default reasoning": "Inne zadania: domyślne rozumowanie",
+  "Supported reasoning levels": "Obsługiwane poziomy rozumowania",
+  "Use detected levels": "Zastosuj wykryte poziomy",
+  "No configurable reasoning levels reported.": "Nie zgłoszono konfigurowalnych poziomów rozumowania.",
+  "Managed model catalog": "Zarządzany katalog modeli",
+  "Provider model metadata": "Metadane modelu dostawcy",
+  "Enable reasoning in model capabilities to use these levels.": "Włącz rozumowanie w możliwościach modelu, aby użyć tych poziomów.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Nie udało się określić poziomów rozumowania. Zachowaj ręczny wybór.",
+  "Selectable through this connection: {{levels}}": "Poziomy dostępne przez to połączenie: {{levels}}"
 }

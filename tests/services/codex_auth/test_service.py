@@ -1954,3 +1954,54 @@ async def test_pasting_a_callback_with_no_login_waiting_is_a_conflict(tmp_path: 
 
     assert exc_info.value.code == "login_not_active"
     assert exc_info.value.http_status == 409
+
+
+def test_enabled_efforts_survive_managed_save_and_refresh(tmp_path):
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    initial = sync_codex_catalog(
+        service, _snapshot("live", _model("gpt-5.6-sol")), account_id="account-a"
+    )
+    proposed = deepcopy(initial.catalog)
+    _managed_profile(proposed)["models"][0]["enabled_reasoning_efforts"] = ["high", "bogus"]
+    reconciled = service_module.reconcile_codex_catalog_update(initial.catalog, proposed)
+    assert _managed_profile(reconciled)["models"][0]["enabled_reasoning_efforts"] == ["high"]
+    service.save(reconciled)
+    refreshed = sync_codex_catalog(
+        service, _snapshot("live", _model("gpt-5.6-sol")), account_id="account-a"
+    )
+    assert _managed_profile(refreshed.catalog)["models"][0]["enabled_reasoning_efforts"] == ["high"]
+    switched = sync_codex_catalog(
+        service, _snapshot("live", _model("gpt-5.6-sol")), account_id="account-b"
+    )
+    assert "enabled_reasoning_efforts" not in _managed_profile(switched.catalog)["models"][0]
+
+
+def test_restore_fixed_effort_removes_old_enabled_levels(tmp_path):
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    current = sync_codex_catalog(
+        service, _snapshot("live", _model("gpt-5.6-sol")), account_id="account-a"
+    ).catalog
+    _managed_profile(current)["models"][0]["enabled_reasoning_efforts"] = ["low"]
+    proposed = deepcopy(current)
+    model = _managed_profile(proposed)["models"][0]
+    model.pop("enabled_reasoning_efforts")
+    model["reasoning_effort"] = "high"
+    saved = service_module.reconcile_codex_catalog_update(current, proposed)
+    model = _managed_profile(saved)["models"][0]
+    assert "enabled_reasoning_efforts" not in model
+    assert model["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_owner_can_set_enabled_levels_without_changing_background_default(tmp_path):
+    service, catalog = _bound_reasoning_service(tmp_path, _snapshot("live", _model("gpt-5.6-sol")))
+    await service.set_reasoning_effort("gpt-5.6-sol", "high")
+    status = await service.set_reasoning_effort(
+        "gpt-5.6-sol", None, enabled_reasoning_efforts=["medium", "high"]
+    )
+    assert status["models"][0]["enabled_reasoning_efforts"] == ["medium", "high"]
+    assert status["models"][0]["reasoning_effort"] == "high"
+    before = catalog.load()
+    with pytest.raises(CodexAuthError):
+        await service.set_reasoning_effort("gpt-5.6-sol", None, enabled_reasoning_efforts=["ultra"])
+    assert catalog.load() == before

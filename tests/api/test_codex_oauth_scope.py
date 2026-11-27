@@ -62,7 +62,12 @@ class _Service:
         self,
         model: str,
         reasoning_effort: str | None,
+        *,
+        enabled_reasoning_efforts: list[str] | None = None,
     ) -> dict[str, Any]:
+        if enabled_reasoning_efforts is not None:
+            self.calls.append(f"levels:{model}:{enabled_reasoning_efforts}")
+            return {"connection": "connected"}
         self.calls.append(f"reasoning:{model}:{reasoning_effort}")
         return {"connection": "connected"}
 
@@ -142,5 +147,26 @@ def test_a_partner_cannot_change_their_owners_reasoning_effort(client, tmp_path)
         json={"model": "gpt-5.6-sol", "reasoning_effort": "high"},
     )
 
+    assert response.status_code == 403
+    assert service.calls == []
+
+
+def test_personal_enabled_levels_use_the_owner_scoped_endpoint(client):
+    test_client, service, _current = client
+    response = test_client.post(
+        "/api/settings/providers/openai-codex/models/reasoning-effort",
+        json={"model": "gpt-5.6-sol", "enabled_reasoning_efforts": ["low", "high"]},
+    )
+    assert response.status_code == 200
+    assert service.calls == ["levels:gpt-5.6-sol:['low', 'high']"]
+
+
+def test_partner_cannot_change_enabled_levels(client, tmp_path):
+    test_client, service, current = client
+    current["user"] = _user(f"{PARTNER_USER_PREFIX}ada", role="user", root=tmp_path / "partner")
+    response = test_client.post(
+        "/api/settings/providers/openai-codex/models/reasoning-effort",
+        json={"model": "gpt-5.6-sol", "enabled_reasoning_efforts": []},
+    )
     assert response.status_code == 403
     assert service.calls == []

@@ -831,3 +831,56 @@ async def test_provider_stream_reports_signed_thinking_blocks() -> None:
 
     final = chunks[-1].choices[0]
     assert final.provider_specific_fields["thinking_blocks"] == blocks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rotating", [False, True])
+async def test_native_pool_keeps_efforts_local_without_extra_transports(monkeypatch, rotating):
+    from dataclasses import replace
+
+    await agentic_client.close_agentic_client_pool()
+    seen = []
+    closed = []
+
+    from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
+
+    class Provider(AnthropicProvider):
+        def __init__(self):
+            pass
+
+        async def chat(self, **kwargs):
+            seen.append(kwargs["reasoning_effort"])
+            return LLMResponse(content="OK")
+
+        async def aclose(self):
+            closed.append(True)
+
+    provider = Provider()
+    monkeypatch.setattr(
+        agentic_client,
+        "_build_openai_client",
+        lambda config, **kwargs: (
+            agentic_client._KeyRotatingClient(
+                agentic_client.KeyPool(["a", "b"]),
+                {key: _ProviderOpenAIAdapter(Provider()) for key in ("a", "b")},
+            )
+            if rotating
+            else _ProviderOpenAIAdapter(provider)
+        ),
+    )
+    monkeypatch.setattr(
+        agentic_client, "load_system_settings", lambda: {"disable_ssl_verify": False}
+    )
+    config = LLMClientConfig(binding="anthropic", model="demo", api_key="fixture", base_url=None)
+    high = build_openai_client(replace(config, reasoning_effort="high"))
+    auto = build_openai_client(replace(config, reasoning_effort=""))
+    low = build_openai_client(replace(config, reasoning_effort="low"))
+    try:
+        assert agentic_client.agentic_client_pool_size() == 1
+        assert not closed
+        for client in (high, auto, low, high):
+            await client.chat.completions.create(messages=[{"role": "user", "content": "Test"}])
+        assert seen == ["high", "", "low", "high"]
+    finally:
+        await agentic_client.close_agentic_client_pool()
+    assert closed == [True] * (2 if rotating else 1)

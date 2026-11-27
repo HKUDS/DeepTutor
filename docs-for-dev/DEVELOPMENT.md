@@ -98,3 +98,38 @@ Update the relevant handbook topic and README links when a public behavior
 changes. Put reusable executable examples under this handbook's
 [`examples/`](examples/learning_echo/README.md). Keep command examples usable
 from the repository root and avoid personal machine paths.
+
+### Conversation reasoning levels
+
+Language-model settings can store `enabled_reasoning_efforts` on each model.
+This list controls choices in the conversation composer, including Chat, Deep
+Research, Question Generation, and Deep Solve; it does not set a fixed effort
+for every request. An empty list leaves requests on the provider default. Interactive capability turns use provider defaults when no effort is selected;
+background and indexing callers retain the legacy default. A conversation's explicit choice is checked against
+the enabled list and any managed catalog declaration before dispatch. Manually
+selecting a level is not evidence that an API endpoint supports it.
+
+The language-model connection test also reads explicit reasoning-level metadata from
+compatible provider model endpoints or the managed Codex catalog. Results show
+their source and are offered for manual adoption into `enabled_reasoning_efforts`;
+testing never changes the catalog automatically. Missing or unavailable metadata
+is unknown, not an empty supported list. Built-in family guesses and successful
+completion responses are not treated as provider declarations. No additional
+per-level generation requests are sent. Read-only models keep their managed
+settings flow.
+The declared model levels stay visible. Adoption is limited to the active
+transport's representable levels, which are shown separately when narrower,
+so a binary thinking switch is not presented as several distinct efforts.
+Background task-model diagnostics retain their separate, short connection probe.
+Metadata is collected independently before the generation probe. If generation
+fails, that failure remains visible while known, usable metadata can still be
+adopted to help correct the settings.
+
+For supported Anthropic effort-based families, explicit selections are sent as
+`output_config.effort` alongside adaptive thinking. Budget-based or unknown
+Anthropic families retain manual configuration; an unsupported effort capability
+alone does not imply that thinking controls are unavailable.
+
+Research and question-generation pipelines inherit the turn-scoped model config.
+Existing step-specific recovery calls may lower reasoning when recovering from
+an exhausted output budget; the conversation preference remains unchanged.

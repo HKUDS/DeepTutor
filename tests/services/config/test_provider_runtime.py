@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from deeptutor.services.config.provider_runtime import (
     SEARCH_PROVIDERS,
     resolve_llm_runtime_config,
@@ -1458,3 +1460,74 @@ def test_llm_standardcompute_base_url_detection_preserves_openai_binding_compati
     assert resolved.provider_name == "standardcompute"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://api.stdcmpt.com/v1"
+
+
+@pytest.mark.parametrize(
+    "requested,expected", [(None, ""), ("low", "low"), ("high", ""), ("max", "")]
+)
+def test_enabled_levels_replace_default_and_bound_chat_override(requested, expected):
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "binding": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "test-key",
+            "models": [
+                {
+                    "id": "llm-m",
+                    "model": "gpt-5.2",
+                    "reasoning_effort": "high",
+                    "enabled_reasoning_efforts": ["low", "max"],
+                    "codex_supported_reasoning_levels": ["low", "high"],
+                }
+            ],
+        }
+    )
+    resolved = resolve_llm_runtime_config(
+        catalog=catalog,
+        conversation_reasoning=True,
+        llm_selection={
+            "profile_id": "llm-p",
+            "model_id": "llm-m",
+            "reasoning_effort": requested,
+        },
+    )
+    assert resolved.reasoning_effort == expected
+
+
+def test_non_chat_selection_keeps_explicit_effort_outside_enabled_levels():
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "binding": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "test-key",
+            "models": [{"id": "llm-m", "model": "gpt-5.2", "enabled_reasoning_efforts": ["low"]}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(
+        catalog=catalog,
+        llm_selection={
+            "profile_id": "llm-p",
+            "model_id": "llm-m",
+            "reasoning_effort": "high",
+        },
+    )
+    assert resolved.reasoning_effort == "high"
+
+
+def test_legacy_catalog_auto_omits_default_only_for_conversation():
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "binding": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "test-key",
+            "models": [{"id": "llm-m", "model": "gpt-5.2", "reasoning_effort": "high"}],
+        }
+    )
+    assert resolve_llm_runtime_config(catalog=catalog).reasoning_effort == "high"
+    assert (
+        resolve_llm_runtime_config(catalog=catalog, conversation_reasoning=True).reasoning_effort
+        == ""
+    )

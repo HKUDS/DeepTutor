@@ -352,6 +352,7 @@ class SettingsPresetDraftRequest(SettingsDraftPayload):
 class CodexReasoningEffortUpdate(BaseModel):
     model: str = Field(min_length=1)
     reasoning_effort: str | None = None
+    enabled_reasoning_efforts: list[str] | None = Field(default=None, max_length=7)
 
 
 class FetchModelsPayload(BaseModel):
@@ -1094,6 +1095,11 @@ async def update_openai_codex_reasoning_effort(
             status_payload = await get_codex_oauth_service().set_reasoning_effort(
                 payload.model,
                 payload.reasoning_effort,
+                **(
+                    {"enabled_reasoning_efforts": payload.enabled_reasoning_efforts}
+                    if payload.enabled_reasoning_efforts is not None
+                    else {}
+                ),
             )
         except CodexAuthError as exc:
             raise _codex_http_exception(exc) from None

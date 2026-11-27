@@ -7569,5 +7569,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Niveaux de raisonnement activés",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Activez les niveaux acceptés par votre modèle, puis choisissez-en un dans la conversation. Sans sélection, le réglage par défaut du fournisseur est utilisé.",
+  "Provider reasoning mode": "Mode de raisonnement du fournisseur",
+  "Other tasks: default reasoning": "Autres tâches : raisonnement par défaut",
+  "Supported reasoning levels": "Niveaux de raisonnement pris en charge",
+  "Use detected levels": "Utiliser les niveaux détectés",
+  "No configurable reasoning levels reported.": "Aucun niveau de raisonnement configurable signalé.",
+  "Managed model catalog": "Catalogue de modèles géré",
+  "Provider model metadata": "Métadonnées du modèle du fournisseur",
+  "Enable reasoning in model capabilities to use these levels.": "Activez le raisonnement dans les capacités du modèle pour utiliser ces niveaux.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Les niveaux de raisonnement n’ont pas pu être déterminés. Conservez votre sélection manuelle.",
+  "Selectable through this connection: {{levels}}": "Niveaux utilisables via cette connexion : {{levels}}"
 }

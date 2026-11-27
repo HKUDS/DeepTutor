@@ -647,3 +647,12 @@ test("Logging out clears remote authorization guidance after success", () => {
       logout.indexOf("setLoginStart(null)"),
   );
 });
+
+test("personal Codex enabled levels do not overwrite the fixed task default", async () => {
+  let payload: unknown;
+  await setCodexReasoningEffort("gpt-5.6-sol", ["low", "high"], async (_input, init) => {
+    payload = JSON.parse(String(init?.body));
+    return Response.json(status({ connection: "connected" }));
+  });
+  assert.deepEqual(payload, { model: "gpt-5.6-sol", enabled_reasoning_efforts: ["low", "high"] });
+});

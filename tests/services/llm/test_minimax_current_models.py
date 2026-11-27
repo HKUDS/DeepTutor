@@ -88,12 +88,13 @@ def test_reasoning_choices_follow_model_contract(binding):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("api_format", ["openai_chat", "anthropic"])
 @pytest.mark.parametrize("model", [FLASH, "MiniMax-M3"])
-@pytest.mark.parametrize("effort", [None, "none", "low", "xhigh", "max"])
+@pytest.mark.parametrize("effort", [None, "", "none", "low", "xhigh", "max"])
 async def test_agentic_real_sdk_payload(api_format, model, effort):
     anthropic = api_format == "anthropic"
     client = _build_openai_client(
         LLMClientConfig(
             binding="minimax",
+            reasoning_effort="high" if effort == "none" else effort,
             model=model,
             api_key="fixture-key",
             base_url=None,
@@ -130,7 +131,9 @@ async def test_agentic_real_sdk_payload(api_format, model, effort):
         assert result.choices[0].message.content == "OK"
         body = json.loads(requests[0].content)
         assert body["model"] == model
-        if model == FLASH:
+        if effort == "":
+            assert "thinking" not in body
+        elif model == FLASH:
             assert body["thinking"] == {"type": "adaptive"}
             if anthropic:
                 assert "reasoning_split" not in body
@@ -270,7 +273,10 @@ async def test_flash_real_sdk_payload(api_format, host, effort):
         body = json.loads(request.content)
         assert str(request.url) == base + ("/v1/messages" if anthropic else "/chat/completions")
         assert body["model"] == FLASH
-        assert body["thinking"] == {"type": "adaptive"}
+        if effort == "":
+            assert "thinking" not in body
+        else:
+            assert body["thinking"] == {"type": "adaptive"}
         assert "service_tier" not in body
         assert body.get("reasoning_split") is not False
         if anthropic:
@@ -326,7 +332,10 @@ async def test_flash_real_sdk_payload(api_format, host, effort):
         response = await provider.chat(messages=replay, tools=TOOLS, reasoning_effort=effort)
         assert response.content == "OK", response
         replay_body = json.loads(requests[1].content)
-        assert replay_body["thinking"] == {"type": "adaptive"}
+        if effort == "":
+            assert "thinking" not in replay_body
+        else:
+            assert replay_body["thinking"] == {"type": "adaptive"}
         assert image_url in json.dumps(replay_body)
         if anthropic:
             assert "call_lookup" in json.dumps(replay_body)

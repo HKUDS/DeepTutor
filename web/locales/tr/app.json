@@ -6664,5 +6664,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Etkin akıl yürütme düzeyleri",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Modelinizin desteklediği düzeyleri etkinleştirin, ardından sohbette birini seçin. Seçim yapılmazsa sağlayıcının varsayılanı kullanılır.",
+  "Provider reasoning mode": "Sağlayıcının akıl yürütme modu",
+  "Other tasks: default reasoning": "Diğer görevler: varsayılan akıl yürütme",
+  "Supported reasoning levels": "Desteklenen akıl yürütme düzeyleri",
+  "Use detected levels": "Algılanan düzeyleri uygula",
+  "No configurable reasoning levels reported.": "Yapılandırılabilir akıl yürütme düzeyi bildirilmedi.",
+  "Managed model catalog": "Yönetilen model kataloğu",
+  "Provider model metadata": "Sağlayıcı model meta verileri",
+  "Enable reasoning in model capabilities to use these levels.": "Bu düzeyleri kullanmak için model yeteneklerinde akıl yürütmeyi etkinleştirin.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Akıl yürütme düzeyleri belirlenemedi. Elle yaptığınız seçimi koruyun.",
+  "Selectable through this connection: {{levels}}": "Bu bağlantı üzerinden seçilebilen düzeyler: {{levels}}"
 }

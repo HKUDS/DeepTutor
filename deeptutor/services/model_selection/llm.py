@@ -135,6 +135,8 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
                 context_window = _coerce_int(model.get("context_window_tokens"))
             if context_window is not None:
                 option["context_window"] = context_window
+            if isinstance(model.get("enabled_reasoning_efforts"), list):
+                option["enabled_reasoning_efforts"] = model["enabled_reasoning_efforts"]
             reasoning_effort = str(model.get("reasoning_effort") or "").strip().lower()
             if reasoning_effort:
                 option["reasoning_effort"] = reasoning_effort

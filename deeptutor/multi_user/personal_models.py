@@ -112,6 +112,7 @@ def personal_llm_rows() -> list[dict[str, Any]]:
                     "model": model.get("model") or "",
                     "provider": profile.get("binding") or "",
                     "reasoning_effort": model.get("reasoning_effort"),
+                    "enabled_reasoning_efforts": model.get("enabled_reasoning_efforts"),
                     "supported_reasoning_efforts": model.get("codex_supported_reasoning_levels"),
                     **{
                         f"declared_{key}": value
