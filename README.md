@@ -29,7 +29,7 @@
   <a href="assets/README/README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](./Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](assets/figs/community/feishu-group.png) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://ucn26x8r4a7l.feishu.cn/wiki/DmEJwWEowimznCkcdeycLGhunCg?from=from_copylink)
 
 [Features](#-key-features) · [Get Started](#-get-started) · [Explore](#-explore-deeptutor) · [CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) · [Ecosystem](#-ecosystem--eduhub--the-skills-community) · [Community](#-community)
 
@@ -43,7 +43,64 @@
 <img src="assets/figs/web-dev/overview.png" alt="DeepTutor Home and workspace navigation" width="900">
 </div>
 
+### Sponsors & Partners
+
+#### Sponsors
+
+<table>
+  <tr>
+    <td width="240" align="center" valign="middle">
+      <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelgo-dark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/modelgo.svg">
+          <img src="assets/figs/partners/modelgo.svg" alt="ModelGo" height="38">
+        </picture>
+      </a>
+    </td>
+    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek (40% off v4.1 Flash). <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">Sign up</a> and receive a $10 bonus with your first top-up.</td>
+  </tr>
+  <tr>
+    <td width="240" align="center" valign="middle">
+      <a href="https://www.amd.com/en/corporate/university-program.html">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/amd-university-program-dark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/amd-university-program.svg">
+          <img src="assets/figs/partners/amd-university-program.svg" alt="AMD University Program" height="42">
+        </picture>
+      </a>
+    </td>
+    <td valign="middle">The AMD University Program supports academic research, teaching, and innovation in computing and AI.</td>
+  </tr>
+</table>
+
+#### Partners
+
+<p align="center">
+  <a href="https://modelscope.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelscope-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/modelscope.png">
+      <img src="assets/figs/partners/modelscope.png" alt="ModelScope" height="26">
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.siliconflow.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
+      <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="#policies-of-sponsors--partners">Why am I seeing this?</a>
+</p>
+
 ### 📦 Releases
+
+> **[2026.11.20]** [v1.7.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.4) — Desktop security update for macOS and Windows. Install the new app to trust the replacement runtime signing key.
 
 > **[2026.11.16]** [v1.7.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.3) — Flexible reading and book editing, richer search and agent connections, clearer learning records, and more reliable model streams and desktop upgrades.
 
@@ -228,7 +285,7 @@
 
 </details>
 
-> ✨ **v1.7.3 is live.** `pip install -U "deeptutor[full]"` installs the full Web app and CLI; bare `deeptutor` installs core only. See the upgrade steps below for legacy CLI installations.
+> ✨ **v1.7.4 is live.** `pip install -U "deeptutor[full]"` installs the full Web app and CLI; bare `deeptutor` installs core only. See the upgrade steps below for legacy CLI installations.
 
 ### 📰 News
 
@@ -254,6 +311,18 @@ DeepTutor is an agent-native learning workspace that connects tutoring, research
 ## 🚀 Get Started
 
 Choose the installation path that fits how you want to use DeepTutor. Terminal-based installs share one runtime home: private settings live in `data/user/settings/` under the launch directory, or under `DEEPTUTOR_HOME` / `deeptutor start --home` when set explicitly. After starting the app, configure a provider and model in **Settings → Providers** and **Language models**.
+
+### Let your agent setup for you
+
+Copy this prompt into an agent with terminal access to your DeepTutor installation, such as Codex or Claude Code:
+
+```text
+Help me configure my existing DeepTutor installation: https://github.com/HKUDS/DeepTutor.
+First read SKILL.md and docs-for-dev/AGENT_SETUP.md in the matching checkout (or in that repository if no local source is available).
+Identify the installation, version, running instance, account, and runtime home. Reuse my environment and preserve existing files, settings, and pending drafts.
+Help me connect a provider and select a chat model; configure embedding, search, and other services only as needed. Ask for missing model choices or credential sources; do not ask me to paste API keys into chat or print them.
+Follow the guide and the installed CLI's --help to configure and verify this same instance. Finish with what changed, actual check results, and any remaining steps.
+```
 
 <details>
 <summary><b>Desktop — macOS and Windows (Preview)</b></summary>
@@ -913,21 +982,9 @@ Add more registries in `data/user/settings/skill_hubs.json`: a `type: "clawhub"`
 
 </details>
 
-## 🤝 Open Source Partners
+## Policies of Sponsors & Partners
 
-<p align="center">
-  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
-      <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
-    </picture>
-  </a>
-</p>
-
-<p align="center">
-  Using code: <b><code>DEEPTUTOR20</code></b> — get $20 off for your first <a href="https://developer.pageindex.ai/">PageIndex subscription</a>!
-</p>
+We hope DeepTutor can iterate independently, freely, and efficiently, and our sponsors make that possible. We welcome sponsorship in any form and offer sponsors whatever visibility or support we can. We also welcome open-source partners. Through collaboration and discussion with the open-source community, we hope to keep finding valuable directions for iteration and work together to build a valuable ecosystem. Content supplied by sponsors or partners is always clearly labeled as such.
 
 ## 🌐 Community
 

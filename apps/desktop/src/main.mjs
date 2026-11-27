@@ -8,7 +8,7 @@ import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
-import { killTree } from './processes.mjs';
+import { killTree, withinTime } from './processes.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -30,8 +30,10 @@ const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-p
 // macOS draws the shell's own title bar under the traffic lights; Windows keeps its native frame and menu bar.
 const HEADER_HEIGHT = WINDOWS ? 0 : 44;
 const BACKGROUND = { light: '#ffffff', dark: '#161618' };
+const CONTENT_LOAD_TIMEOUT_MS = 60000;
 let window;
 let view;
+let contentVisible = false;
 let worker;
 let state = { phase: 'starting', step: 'opening' };
 let ui = { language: 'en', theme: 'light' };
@@ -63,23 +65,23 @@ function coreVersion() {
 function snapshot() {
   const failed = state.phase === 'error';
   return {
-    phase: state.phase, theme: ui.theme, language: ui.language,
+    phase: state.phase, step: state.step, contentVisible, theme: ui.theme, language: ui.language,
     title: failed ? t('errorTitle') : state.phase === 'stopped' ? t('stoppedTitle') : '',
     message: failed ? t('errorBody') : state.step ? t(state.step) : '',
     detail: failed ? state.message ?? '' : '',
-    tagline: t('tagline'), retry: t('retry'), logs: t('logs'),
+    tagline: t('tagline'), slowHint: t('slowHint'), retry: t('retry'), logs: t('logs'),
     edition: `${EDITION.full} v${coreVersion()}`,
   };
 }
 
 function publish() {
-  if (window && !window.isDestroyed()) window.webContents.send('desktop:status', snapshot());
+  if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('desktop:status', snapshot());
 }
 
 function status(next) {
   state = { ...state, ...next };
-  publish();
   if (next.phase && next.phase !== 'ready') hideContent();
+  publish();
 }
 
 async function readInterface() {
@@ -112,10 +114,16 @@ function watchInterface() {
 }
 
 function hideContent() {
-  if (!view) return;
-  window?.contentView.removeChildView(view);
-  view.webContents.close();
+  contentVisible = false;
+  const current = view;
   view = undefined;
+  if (!current) return;
+  if (window && !window.isDestroyed()) {
+    try { window.contentView.removeChildView(current); } catch { /* ignore */ }
+  }
+  if (!current.webContents.isDestroyed()) {
+    current.webContents.close();
+  }
 }
 
 function layout() {
@@ -124,14 +132,17 @@ function layout() {
   view.setBounds({ x: 0, y: HEADER_HEIGHT, width: bounds.width, height: Math.max(1, bounds.height - HEADER_HEIGHT) });
 }
 
-async function openContent(url) {
+async function openContent(ready) {
   hideContent();
-  const origin = new URL(url).origin;
-  view = new WebContentsView({ webPreferences: {
+  const origin = new URL(ready.url).origin;
+  const nextView = new WebContentsView({ webPreferences: {
     contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     partition: 'persist:deeptutor',
   } });
-  const content = view.webContents;
+  view = nextView;
+  nextView.setBackgroundColor(BACKGROUND[ui.theme]);
+  nextView.setVisible(false);
+  const content = nextView.webContents;
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -151,9 +162,20 @@ async function openContent(url) {
   content.on('will-redirect', restrict);
   content.on('will-attach-webview', event => event.preventDefault());
   content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
-  window.contentView.addChildView(view);
+  // Mount and size while hidden so Next.js hydrates at the real viewport width without flashing white.
+  window.contentView.addChildView(nextView);
   layout();
-  await content.loadURL(url);
+  // Load the canonical chat route directly; the Next.js root redirects to it.
+  // The splash waits for this load, so a load that never settles must still end in Retry.
+  await withinTime(content.loadURL(new URL('/chat', ready.url).href), CONTENT_LOAD_TIMEOUT_MS,
+    `The learning space did not finish loading within ${CONTENT_LOAD_TIMEOUT_MS / 1000} seconds.`);
+  if (view === nextView && !quitting) {
+    layout();
+    nextView.setVisible(true);
+    contentVisible = true;
+    status(ready);
+    content.focus();
+  }
 }
 
 function trustedShell(event) {
@@ -187,8 +209,11 @@ async function launchRuntime(installed) {
     let ready = false;
     child.on('message', next => {
       if (worker !== child || quitting) return;
+      if (next.phase === 'ready') {
+        if (!ready) { ready = true; resolve(next); }
+        return;
+      }
       status(next);
-      if (next.phase === 'ready' && !ready) { ready = true; resolve(next); }
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
     child.once('error', reject);
@@ -228,9 +253,10 @@ async function startupManifest() {
   if (!saved) return { manifestFile: seed };
   // A missing or unreadable seed must not stop the installed core from starting.
   const bundled = await readJSON(seed).catch(error => { console.error(error); return null; });
-  const { current, upgrade, seedError } = startupRuntime({
+  const { current, upgrade, seedError, replaceUntrusted } = startupRuntime({
     saved, seed: bundled, transaction: await readJSON(transactionFile), publicKey,
   });
+  if (replaceUntrusted) return { manifestFile: seed, replaceUntrusted: true };
   if (seedError) console.error(seedError);
   const installed = path.join(userRoot, 'runtimes', current.runtimeId, 'installed.json');
   return upgrade ? { manifestFile: seed, previous: current, installed } : { manifestFile: installed };
@@ -244,7 +270,7 @@ async function boot() {
     status({ phase: 'starting', step: 'starting' });
     await stopWorker();
     await recoverInterruptedUpgrade();
-    const { manifestFile, previous, installed } = await startupManifest();
+    const { manifestFile, previous, installed, replaceUntrusted } = await startupManifest();
     try { active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step })); }
     catch (error) {
       if (!previous) throw error;
@@ -253,7 +279,7 @@ async function boot() {
       active = await installBundle(installed, userRoot, publicKey, step => status({ step }));
     }
     if (quitting) return;
-    if (previous && active.manifest.runtimeId !== previous.runtimeId) {
+    if (replaceUntrusted || (previous && active.manifest.runtimeId !== previous.runtimeId)) {
       // The app was installed over an older core: switch to the bundled one with the
       // same backup and rollback as a manual update.
       status({ phase: 'starting', step: 'updating' });
@@ -265,7 +291,7 @@ async function boot() {
         if (error.code !== 'ENOENT') throw error;
         backup = undefined;
       }
-      transaction = { phase: 'testing', previous, candidate: active.manifest, backup };
+      transaction = { phase: 'testing', previous: previous ?? null, candidate: active.manifest, backup };
       await writeJSON(transactionFile, transaction);
     }
     const ready = await launchRuntime(active);
@@ -274,8 +300,9 @@ async function boot() {
     if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
-    await openContent(ready.url);
+    await openContent(ready);
   } catch (error) {
+    if (quitting) return;
     await logStartupFailure(error);
     if (transaction) {
       // Restore the previous core and workspace; the next start uses them again.
@@ -313,7 +340,7 @@ async function installUpdate() {
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
-    await openContent(ready.url);
+    await openContent(ready);
     await writeJSON(activeFile, next.manifest);
     await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     active = next;
@@ -408,6 +435,10 @@ else {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
+  ipcMain.on('desktop:status-sync', event => {
+    trustedShell(event);
+    event.returnValue = snapshot();
+  });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
     restart: () => { void boot(); },

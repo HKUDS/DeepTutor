@@ -12,6 +12,8 @@ export function canonicalManifest(manifest) {
   return JSON.stringify(Object.fromEntries(Object.entries(manifest).filter(([key]) => key !== 'signature').sort(([a], [b]) => a.localeCompare(b))));
 }
 
+class InvalidRuntimeSignature extends Error {}
+
 export function verifyManifest(manifest, publicKey, architecture = process.arch, platform = process.platform) {
   if (!manifest || manifest.formatVersion !== 1 || manifest.protocolVersion !== 1
     || manifest.platform !== platform || manifest.arch !== architecture
@@ -19,7 +21,7 @@ export function verifyManifest(manifest, publicKey, architecture = process.arch,
     || !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]*\.tar\.gz$/.test(manifest.archive)
     || !/^[a-f0-9]{64}$/.test(manifest.sha256)) throw new Error('This core bundle is not compatible with this app or this computer');
   if (!verify(null, Buffer.from(canonicalManifest(manifest)), publicKey, Buffer.from(manifest.signature ?? '', 'base64'))) {
-    throw new Error('The core bundle signature is invalid');
+    throw new InvalidRuntimeSignature('The core bundle signature is invalid');
   }
   return manifest;
 }
@@ -53,7 +55,14 @@ export function newerRuntime(candidate, current) {
  */
 export function startupRuntime({ saved, seed, transaction, publicKey }) {
   if (!saved) return {};
-  const current = verifyManifest(saved, publicKey);
+  let current;
+  try { current = verifyManifest(saved, publicKey); }
+  catch (error) {
+    // A shell with a rotated key can recover only from its own trusted seed.
+    if (!(error instanceof InvalidRuntimeSignature) || !seed) throw error;
+    verifyManifest(seed, publicKey);
+    return { replaceUntrusted: true };
+  }
   let bundled = null;
   let seedError;
   if (seed) {

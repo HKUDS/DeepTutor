@@ -19,6 +19,7 @@ import re
 import select
 import shutil
 import signal
+import sys
 import tempfile
 import time
 
@@ -159,7 +160,7 @@ def _capture_model_screen() -> str | None:
     on screen, or ``None`` if we couldn't get there. POSIX-only; gracefully
     returns ``None`` when ``pyte`` is unavailable or the platform has no pty.
     """
-    if os.name != "posix":
+    if sys.platform == "win32" or os.name != "posix":
         return None
     try:
         import pty

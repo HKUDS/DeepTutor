@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { localURL, externalURL, validateConfig } from '../src/config.mjs';
 import { canonicalManifest, verifyManifest, installBundle, sha256, newerRuntime, startupRuntime } from '../src/bundles.mjs';
 import { runtimeLayout, systemTar } from '../src/platform.mjs';
-import { ProcessGroup, availablePort, probe, waitReady } from '../src/processes.mjs';
+import { ProcessGroup, availablePort, probe, waitReady, withinTime } from '../src/processes.mjs';
 import { SourceRuntime, stageBundledWeb } from '../src/runtime.mjs';
 
 test('only explicit loopback origins are accepted for attachment', () => {
@@ -64,6 +64,11 @@ test('boot keeps the saved core unless the app ships a newer signed one that has
   assert.deepEqual(startupRuntime({ saved, seed, publicKey }), { current: saved, upgrade: true, seedError: undefined });
   assert.equal(startupRuntime({ saved: seed, seed: saved, publicKey }).upgrade, false);
   assert.equal(startupRuntime({ saved, seed: null, publicKey }).upgrade, false);
+  const retired = generateKeyPairSync('ed25519');
+  const old = { ...saved, signature: sign(null, Buffer.from(canonicalManifest(saved)), retired.privateKey).toString('base64') };
+  assert.deepEqual(startupRuntime({ saved: old, seed, publicKey }), { replaceUntrusted: true });
+  assert.throws(() => startupRuntime({ saved: old, seed: old, publicKey }), /signature/);
+  assert.throws(() => startupRuntime({ saved: old, seed: null, publicKey }), /signature/);
   const tampered = startupRuntime({ saved, seed: { ...seed, coreVersion: '9.0.0' }, publicKey });
   assert.equal(tampered.upgrade, false);
   assert.match(tampered.seedError.message, /signature/);
@@ -137,6 +142,18 @@ test('readiness polling can be cancelled', async () => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(waitReady('http://127.0.0.1:1', { signal: controller.signal }), /abort/i);
+});
+
+test('a page load that never settles fails after its deadline', async () => {
+  const stuck = new Promise(() => {});
+  await assert.rejects(withinTime(stuck, 20, 'page did not load'), /page did not load/);
+  assert.equal(await withinTime(Promise.resolve('loaded'), 1000, 'unused'), 'loaded');
+  // A load that fails after the deadline has already been reported must not surface as unhandled.
+  let late;
+  const failing = new Promise((_, reject) => { late = reject; });
+  await assert.rejects(withinTime(failing, 20, 'page did not load'), /page did not load/);
+  late(new Error('ERR_FAILED'));
+  await new Promise(resolve => setImmediate(resolve));
 });
 
 test('public placeholders are patched in a cache, preserving immutable bundle', async t => {

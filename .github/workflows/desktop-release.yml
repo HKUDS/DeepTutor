@@ -7,18 +7,16 @@ name: Desktop Release
 #
 # Pull requests that touch apps/desktop build and smoke-test all three without
 # publishing; they keep the downloads as workflow artifacts for 7 days.
-# Pushes to dev and manual validation runs exercise configured signing without
-# publishing. Pull requests always use disposable runtime signing keys.
+# Branch and pull request builds use disposable keys. Version tags use the
+# protected desktop-release environment for signed validation and publishing.
 #
-# Secrets:
+# desktop-release environment secrets:
 #   DESKTOP_RUNTIME_SIGNING_KEY  (required for releases) Ed25519 PEM matching
 #                                apps/desktop/assets/runtime-public.pem.
 #                                Pull requests always seal with a throwaway key.
 #   APPLE_CERTIFICATE_P12, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD
-#                                (optional) Developer ID signing and
-#                                notarization. Without them the Mac apps are
-#                                signed ad hoc and Gatekeeper warns on first open.
+#                                Required for signed and notarized Mac tag builds.
 #   The Windows build is unsigned; SmartScreen warns on first open.
 
 on:
@@ -45,7 +43,7 @@ on:
         default: false
 
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
   PUBLISH: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
 permissions:
@@ -71,21 +69,34 @@ jobs:
           - target: windows-x64
             name: Open DeepTutor for Windows
             runner: windows-2025
+    environment: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && 'desktop-release' || 'desktop-validation' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
-      HAS_DEVELOPER_ID: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
-      HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
-      HAS_RUNTIME_KEY: ${{ github.event_name != 'pull_request' && secrets.DESKTOP_RUNTIME_SIGNING_KEY != '' }}
+      HAS_DEVELOPER_ID: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.APPLE_CERTIFICATE_P12 != '' }}
+      HAS_NOTARY: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.APPLE_ID != '' }}
+      HAS_RUNTIME_KEY: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.DESKTOP_RUNTIME_SIGNING_KEY != '' }}
     defaults:
       run:
         shell: bash
         working-directory: apps/desktop
     steps:
+      - name: Check publishing ref
+        if: env.PUBLISH == 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          [[ "$RELEASE_TAG" == v* && "$RELEASE_TAG" == "$REQUESTED_TAG" ]] || {
+            echo "Select the same version tag as the workflow ref and release tag." >&2
+            exit 1
+          }
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.PUBLISH == 'true' && env.RELEASE_TAG || '' }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Verify release tag matches deeptutor/__version__.py
         if: env.PUBLISH == 'true'
@@ -98,7 +109,7 @@ jobs:
           fi
 
       - name: Verify signing configuration
-        if: github.event_name != 'pull_request'
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         env:
           HAS_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
           HAS_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
@@ -106,14 +117,11 @@ jobs:
           HAS_NOTARY_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD != '' }}
         run: |
           set -euo pipefail
-          [ "$HAS_RUNTIME_KEY" = "true" ] || { echo "DESKTOP_RUNTIME_SIGNING_KEY is required for signed validation and releases." >&2; exit 1; }
+          [ "$HAS_RUNTIME_KEY" = "true" ] || { echo "Missing release runtime signing key." >&2; exit 1; }
           if [ "$RUNNER_OS" = "macOS" ]; then
-            if [ "$HAS_DEVELOPER_ID" = "true" ] || [ "$HAS_SIGNING_IDENTITY" = "true" ] || [ "$HAS_CERTIFICATE_PASSWORD" = "true" ]; then
-              [ "$HAS_DEVELOPER_ID" = "true" ] && [ "$HAS_SIGNING_IDENTITY" = "true" ] && [ "$HAS_CERTIFICATE_PASSWORD" = "true" ] || { echo "Developer ID signing configuration is incomplete." >&2; exit 1; }
-            fi
-            if [ "$HAS_NOTARY" = "true" ] || [ "$HAS_NOTARY_PASSWORD" = "true" ]; then
-              [ "$HAS_DEVELOPER_ID" = "true" ] && [ "$HAS_NOTARY" = "true" ] && [ "$HAS_TEAM_ID" = "true" ] && [ "$HAS_NOTARY_PASSWORD" = "true" ] || { echo "Apple notarization configuration is incomplete." >&2; exit 1; }
-            fi
+            for configured in "$HAS_DEVELOPER_ID" "$HAS_SIGNING_IDENTITY" "$HAS_CERTIFICATE_PASSWORD" "$HAS_NOTARY" "$HAS_TEAM_ID" "$HAS_NOTARY_PASSWORD"; do
+              [ "$configured" = "true" ] || { echo "Missing release signing or notarization credential." >&2; exit 1; }
+            done
           fi
 
       - uses: actions/setup-node@v4
@@ -154,8 +162,8 @@ jobs:
 
       - name: Build the bundled runtime
         env:
-          OPEN_DEEPTUTOR_SIGNING_KEY: ${{ github.event_name != 'pull_request' && secrets.DESKTOP_RUNTIME_SIGNING_KEY || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ github.event_name != 'pull_request' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          OPEN_DEEPTUTOR_SIGNING_KEY: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.DESKTOP_RUNTIME_SIGNING_KEY || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
           set -euo pipefail
           if [ "$HAS_RUNTIME_KEY" = "true" ]; then
@@ -172,7 +180,7 @@ jobs:
 
       - name: Package
         env:
-          APPLE_SIGNING_IDENTITY: ${{ github.event_name != 'pull_request' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: npm run package -- --target ${{ matrix.target }}
 
       - name: Verify Windows installation and app lifecycle
