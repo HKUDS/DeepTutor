@@ -372,7 +372,7 @@ class TurnExecutor:
                         exc,
                     )
 
-            from deeptutor.utils.document_extractor import extract_documents_from_records
+            from deeptutor.utils.document_extractor import extract_chat_documents
 
             # Keep the built-in extractor as a graceful fallback, then replace
             # every PDF's result with the configured parser output. Running the
@@ -382,7 +382,7 @@ class TurnExecutor:
             # back as-is and keep it out of extraction.
             quotes = read_quotes(attachment_records)
             quote_records = [r for r in attachment_records if is_quote(r)]
-            document_texts, attachment_records = extract_documents_from_records(
+            document_texts, attachment_records = await extract_chat_documents(
                 [r for r in attachment_records if not is_quote(r)]
             )
             attachment_records = quote_records + attachment_records

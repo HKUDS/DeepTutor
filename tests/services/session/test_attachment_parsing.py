@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,38 @@ from deeptutor.services.config.runtime_settings import ChatAttachmentLimits
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.session.attachment_parsing import parse_chat_pdf_attachments
 from deeptutor.services.storage.attachment_store import LocalDiskAttachmentStore
+
+
+@pytest.mark.asyncio
+async def test_pdf_fallback_extraction_in_worker_preserves_batch_and_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pymupdf
+
+    from deeptutor.utils import document_extractor
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((40, 60), "PDF attachment text")
+        pdf_bytes = pdf.tobytes()
+    monkeypatch.setattr(
+        document_extractor, "_current_limits", lambda: (len(pdf_bytes), len(pdf_bytes), 1000, 1000)
+    )
+
+    def fail_in_parent(*args: object, **kwargs: object) -> None:
+        pytest.fail("PDF fallback extraction ran in the API process")
+
+    monkeypatch.setattr(document_extractor, "extract_documents_from_records", fail_in_parent)
+    records = [
+        {"id": "pdf", "filename": "notes.PDF", "base64": base64.b64encode(pdf_bytes).decode()},
+        {"id": "text", "filename": "notes.txt", "base64": base64.b64encode(b"over quota").decode()},
+    ]
+
+    texts, updated = await document_extractor.extract_chat_documents(records)
+
+    assert "PDF attachment text" in texts[0]
+    assert "total attachment quota exceeded" in texts[1]
+    assert [record["id"] for record in updated] == ["pdf", "text"]
+    assert all(record["base64"] == "" for record in updated)
 
 
 @pytest.mark.asyncio

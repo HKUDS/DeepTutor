@@ -13,8 +13,8 @@ Three format families:
     the chat composer accepts every format the knowledge-base pipeline
     already ingests. Decoded with the same multi-encoding fallback chain.
 
-Design mirrors ``nanobot/nanobot/utils/document.py`` but works on bytes
-instead of file paths so the server never touches disk.
+Design mirrors ``nanobot/nanobot/utils/document.py`` but accepts attachment
+bytes directly.
 """
 
 from __future__ import annotations
@@ -251,6 +251,13 @@ def extract_text_from_bytes(
     the same parsers with its larger upload policy while chat keeps the
     stricter per-turn limit.
     """
+    text, _ = _extract_document(filename, data, max_bytes=max_bytes, max_chars=max_chars)
+    return text
+
+
+def _extract_document(
+    filename: str, data: bytes, *, max_bytes: int | None, max_chars: int | None
+) -> tuple[str, tuple[EmbeddedImage, ...] | None]:
     if not data:
         raise EmptyDocumentError(f"{filename} is empty", filename=filename)
     if max_bytes is not None and len(data) > max_bytes:
@@ -267,8 +274,9 @@ def extract_text_from_bytes(
 
     _check_magic(ext, data, filename)
 
+    images = None
     if ext == ".pdf":
-        text = _extract_pdf(data, filename)
+        text, images = _extract_pdf(data, filename)
     elif ext == ".docx":
         text = _extract_docx(data, filename)
     elif ext == ".xlsx":
@@ -284,7 +292,7 @@ def extract_text_from_bytes(
 
     if not text.strip():
         raise EmptyDocumentError(f"{filename}: no extractable text", filename=filename)
-    return _truncate(text, max_chars) if max_chars is not None else text
+    return (_truncate(text, max_chars) if max_chars is not None else text), images
 
 
 def extract_text_from_path(
@@ -366,7 +374,7 @@ async def extract_text_from_path_isolated(
     return result
 
 
-def _extract_pdf(data: bytes, filename: str) -> str:
+def _extract_pdf(data: bytes, filename: str) -> tuple[str, tuple[EmbeddedImage, ...] | None]:
     global fitz, PdfReader, _PypdfNotDecryptedError
     if fitz is _NOT_LOADED:
         try:
@@ -400,7 +408,7 @@ def _extract_pdf(data: bytes, filename: str) -> str:
                 note = pdf_images.collection.summary_note()
                 if note:
                     pages.append(note)
-            return "\n\n".join(pages)
+            return "\n\n".join(pages), pdf_images.collection.images
         except CorruptDocumentError:
             raise
         except Exception as exc:
@@ -432,7 +440,7 @@ def _extract_pdf(data: bytes, filename: str) -> str:
             f"--- Page {i} ---\n{page.extract_text() or ''}"
             for i, page in enumerate(reader.pages, 1)
         ]
-        return "\n\n".join(pages)
+        return "\n\n".join(pages), None
     except CorruptDocumentError:
         raise
     except _PypdfNotDecryptedError as exc:
@@ -1319,8 +1327,29 @@ def _embedded_images_for_document(filename: str, data: bytes) -> tuple[EmbeddedI
     return ()
 
 
+async def extract_chat_documents(records: list[dict]) -> tuple[list[str], list[dict]]:
+    """Keep native PDF text and image extraction off the API event loop."""
+    if not any(
+        _ext(str(record.get("filename") or "")) == ".pdf" and record.get("base64")
+        for record in records
+    ):
+        return extract_documents_from_records(records)
+
+    from deeptutor.runtime.isolated_worker import run_in_isolated_process
+
+    # Keep the full batch together so quotas and embedded image ordering match
+    # the in-process extraction. Resolve the policy in the caller's workspace.
+    # Image-heavy PDFs can take several minutes even with attachment size caps.
+    return await run_in_isolated_process(
+        "deeptutor.utils.document_extractor:extract_documents_from_records",
+        records,
+        timeout=600.0,
+        kwargs={"limits": _current_limits()},
+    )
+
+
 def extract_documents_from_records(
-    records: Iterable[dict],
+    records: Iterable[dict], *, limits: tuple[int, int, int, int] | None = None
 ) -> tuple[list[str], list[dict]]:
     """Process a list of attachment records from the WS payload.
 
@@ -1329,6 +1358,9 @@ def extract_documents_from_records(
     records:
         Raw attachment records as parsed by the turn runtime
         (``{"type", "url", "base64", "filename", "mime_type"}``).
+    limits:
+        Optional caller-resolved per-file and total byte and text quotas,
+        in the same order as ``_current_limits()``.
 
     Returns
     -------
@@ -1350,7 +1382,9 @@ def extract_documents_from_records(
     """
     doc_texts: list[str] = []
     updated: list[dict] = []
-    max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total = _current_limits()
+    max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total = (
+        limits if limits is not None else _current_limits()
+    )
     total_bytes = 0
     total_chars = 0
     over_quota = False
@@ -1396,7 +1430,7 @@ def extract_documents_from_records(
         total_bytes += len(data)
 
         try:
-            text = extract_text_from_bytes(
+            text, images = _extract_document(
                 filename,
                 data,
                 max_bytes=max_file_bytes,
@@ -1429,7 +1463,9 @@ def extract_documents_from_records(
         # the UI previews them like any pasted screenshot.
         doc_id = str(record.get("id") or "")
         stem = filename[: -len(_ext(filename))] or filename
-        images = _embedded_images_for_document(filename, data)
+        # The PDF text pass already harvested the pictures for its page markers.
+        if images is None:
+            images = _embedded_images_for_document(filename, data)
         emitted: list[EmbeddedImage] = []
         for image in images:
             if embedded_images >= MAX_EMBEDDED_IMAGES_PER_TURN:

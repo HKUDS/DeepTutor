@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+from random import Random
 import zipfile
 
 from docx import Document as DocxDocument
@@ -600,6 +601,45 @@ class TestTruncation:
 
 
 class TestExtractDocumentsFromRecords:
+    def test_pdf_uses_one_image_pass_for_page_markers_and_attachments(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from PIL import Image
+        import pymupdf
+
+        image = io.BytesIO()
+        Image.frombytes("RGB", (100, 100), Random(0).randbytes(30_000)).save(image, format="PNG")
+        with pymupdf.open() as pdf:
+            page = pdf.new_page()
+            page.insert_text((40, 60), "Figure on page one")
+            page.insert_image(pymupdf.Rect(40, 90, 140, 190), stream=image.getvalue())
+            pdf_bytes = pdf.tobytes()
+
+        harvest = document_extractor_module.extract_pdf_images
+        calls = []
+
+        def count_harvest(data: bytes):
+            calls.append(len(data))
+            return harvest(data)
+
+        monkeypatch.setattr(document_extractor_module, "extract_pdf_images", count_harvest)
+        texts, records = extract_documents_from_records(
+            [
+                {
+                    "id": "pdf",
+                    "filename": "figure.pdf",
+                    "base64": base64.b64encode(pdf_bytes).decode(),
+                }
+            ]
+        )
+
+        assert calls == [len(pdf_bytes)]
+        assert "Figure on page one" in texts[0]
+        assert "[图片 1:" in texts[0]
+        assert records[0]["id"] == "pdf-e01"
+        assert records[0]["embedded"] is True
+        assert records[1]["id"] == "pdf"
+
     def test_native_word_equations_reach_chat_attachment_text(self) -> None:
         records = [
             {
