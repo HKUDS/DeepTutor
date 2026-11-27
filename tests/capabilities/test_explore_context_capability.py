@@ -9,6 +9,7 @@ import pytest
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.explore_context import explorer as explorer_mod
+from deeptutor.capabilities.explore_context.capability import _load_prompts
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
@@ -595,6 +596,30 @@ def test_explorer_kind_label_from_prefix() -> None:
     assert explorer._kind_label("hs-abc") == "Conversation transcript"
     assert explorer._kind_label("at-abc") == "Document"
     assert explorer._kind_label("zz-abc") == "Source"
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_preloaded_source_text_stays_in_the_shared_prefix(language: str) -> None:
+    explorer = explorer_mod.ContextExplorer(language=language, prompts=_load_prompts(language))
+    source_text = "Lecture notes on the sampling theorem."
+    sources = {"at-lecture": source_text}
+    fresh = "at-lecture: preview from the upload"
+    previous = "at-lecture: previously attached (turn 1)"
+    upload = explorer._cache_shaped_messages(
+        source_index=sources, mode="chat", manifest=fresh, question="What is the theorem?"
+    )
+    followup = explorer._cache_shaped_messages(
+        source_index=sources, mode="deep_solve", manifest=previous, question="Can you prove it?"
+    )
+
+    assert upload[0] == followup[0]
+    assert source_text in upload[0]["content"]
+    for messages, mode, manifest, question in (
+        (upload, "chat", fresh, "What is the theorem?"),
+        (followup, "deep_solve", previous, "Can you prove it?"),
+    ):
+        assert [m["role"] for m in messages] == ["user", "user"]
+        assert all(value in messages[1]["content"] for value in (mode, manifest, question))
 
 
 def test_preload_never_exceeds_limit_even_for_the_first_source():

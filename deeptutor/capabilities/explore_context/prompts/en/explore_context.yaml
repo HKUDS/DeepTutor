@@ -64,25 +64,21 @@ loop:
     Begin investigating: call read_source as needed, then write your objective,
     thorough investigation.
 
-  # Cache-shaped split of the same message: everything that repeats across
-  # turns (mode, manifest, attached sources) comes first, and the only per-turn
-  # bytes — the user's request — come last, so the repeated prefix is a prompt
-  # cache hit. Falls back to the single-message user_template above when these
-  # keys are absent.
+  # Keep preloaded text ahead of the mode and manifest. A follow-up replaces
+  # the fresh upload preview in the manifest with a reference to the earlier turn.
   preamble_template: |
-    Current mode: {mode}
-
-    Manifest of readable sources (use read_source to load full text by id):
-    {manifest}
-
-    Full text of this turn's attached sources (already loaded for you — do not
-    call read_source for these again):
+    Preloaded source texts by ID:
     {sources}
 
-    Begin investigating: call read_source for any further sources you need,
-    then write your objective, thorough investigation.
-
   question_template: |
+    Current mode: {mode}
+
+    Manifest of readable sources:
+    {manifest}
+
+    Call read_source by ID only for sources you need whose full text was not
+    preloaded above. Then write your objective, thorough investigation.
+
     The user's current request:
     {question}
 

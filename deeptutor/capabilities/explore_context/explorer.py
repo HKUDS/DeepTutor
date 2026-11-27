@@ -639,17 +639,10 @@ class ContextExplorer:
         mode: str,
         manifest: str,
     ) -> list[dict[str, Any]]:
-        """Lay the investigation out so the repeatable bytes come first.
+        """Keep preloaded source text in the shared prefix on follow-up turns.
 
-        Provider prompt caches match a *prefix*, so only the bytes before the
-        first per-turn difference can ever be reused. The original layout put
-        the user's question at the top of the first message, which meant the
-        longest shared prefix with the previous turn ended a few tokens in and
-        every byte the pre-pass re-read — including tens of thousands of tokens
-        of unchanged source text — was billed at the miss rate, every turn.
-        Here the question is the *last* message and everything ahead of it
-        (mode, manifest, attached sources) is byte-stable for as long as the
-        attachments are, so it becomes a cache hit.
+        The manifest replaces fresh previews with references on later turns,
+        so it belongs with the current mode and question after the source text.
 
         Returns ``[]`` when the localized split prompts are absent, leaving the
         caller on the original single-message layout.
@@ -659,15 +652,15 @@ class ContextExplorer:
         if not preamble_template or not question_template:
             return []
         selected = self._preload_selection(source_index)
-        sources_text = self._render_preloaded_sources(source_index, selected)
+        fields = {
+            "sources": self._render_preloaded_sources(source_index, selected) or "(none)",
+            "mode": mode,
+            "manifest": manifest,
+            "question": question,
+        }
         return [
-            {
-                "role": "user",
-                "content": preamble_template.format(
-                    mode=mode, manifest=manifest, sources=sources_text or "(none)"
-                ),
-            },
-            {"role": "user", "content": question_template.format(question=question)},
+            {"role": "user", "content": preamble_template.format(**fields)},
+            {"role": "user", "content": question_template.format(**fields)},
         ]
 
     def _preload_selection(self, source_index: dict[str, str]) -> list[str]:
