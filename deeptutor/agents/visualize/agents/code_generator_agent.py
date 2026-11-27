@@ -6,9 +6,32 @@ import json
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
+from deeptutor.services.llm.utils import clean_thinking_tags
 
 from ..models import VisualizationAnalysis
 from ..utils import extract_code_block
+
+_LANG_HINTS = {
+    "svg": "svg",
+    "mermaid": "mermaid",
+    "mindmap": "mermaid",
+    "html": "html",
+}
+
+
+def _slice_root_element(text: str, render_type: str) -> str | None:
+    lower = text.lower()
+    close_tag = "</svg>" if render_type == "svg" else "</html>"
+    start = (
+        lower.find("<svg")
+        if render_type == "svg"
+        else (lower.find("<!doctype") if lower.find("<!doctype") != -1 else lower.find("<html"))
+    )
+    end = lower.rfind(close_tag)
+    if 0 <= start < end:
+        return text[start : end + len(close_tag)]
+    return None
 
 
 class CodeGeneratorAgent(BaseAgent):
@@ -59,59 +82,70 @@ class CodeGeneratorAgent(BaseAgent):
         )
 
         # Blocking rather than streamed: the fenced block is only usable whole.
-        response = await self.call_llm(
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            stage="generating",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("viz-codegen"),
-                phase="generating",
-                label="Code generation",
-                call_kind="viz_code_generation",
-                trace_role="generate",
-                trace_kind="llm_output",
-            ),
+        async def _generate_once(reasoning_effort: str | None) -> str:
+            response = await self.call_llm(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                reasoning_effort=reasoning_effort,
+                stage="generating",
+                trace_meta=build_trace_metadata(
+                    call_id=new_call_id("viz-codegen"),
+                    phase="generating",
+                    label="Code generation",
+                    call_kind="viz_code_generation",
+                    trace_role="generate",
+                    trace_kind="llm_output",
+                ),
+            )
+            return self._extract_code(response, analysis.render_type)
+
+        first = await _generate_once(None)
+        if self._is_usable_code(first, analysis.render_type):
+            return first
+
+        # Reasoning models spend hidden tokens out of max_tokens and can exhaust
+        # the budget before finishing the visualization (#2914).
+        self.logger.warning(
+            "Visualize code generation (%s) returned no complete code; "
+            "retrying with reasoning_effort=%s",
+            analysis.render_type,
+            RETRY_REASONING_EFFORT,
         )
+        retried = await _generate_once(RETRY_REASONING_EFFORT)
+        if self._is_usable_code(retried, analysis.render_type):
+            return retried
+        return retried or first
 
-        if analysis.render_type == "svg":
-            lang_hint = "svg"
-        elif analysis.render_type in ("mermaid", "mindmap"):
-            lang_hint = "mermaid"
-        elif analysis.render_type == "html":
-            lang_hint = "html"
-        else:
-            lang_hint = "javascript"
-
-        extracted = extract_code_block(response, lang_hint) or extract_code_block(response)
-
-        # For html, the model sometimes returns the full document with no fence.
-        # `extract_code_block` will then return the trimmed raw response — accept
-        # it as long as it looks like an HTML document.
-        if analysis.render_type == "html" and not extracted:
-            stripped = (response or "").strip()
-            lowered = stripped.lower()
-            if lowered.startswith("<!doctype") or lowered.startswith("<html"):
-                return stripped
+    @staticmethod
+    def _extract_code(response: str, render_type: str) -> str:
+        cleaned = clean_thinking_tags(response or "")
+        lang_hint = _LANG_HINTS.get(render_type, "javascript")
+        extracted = extract_code_block(cleaned, lang_hint) or extract_code_block(cleaned)
 
         # The renderers expect their payload to start cleanly with the right
-        # root tag. Models often wrap output with prose ("Here you go: <svg>…")
-        # or emit a code fence on the same line as the closing tag, which
-        # `extract_code_block`'s regex (requiring a leading \n before ```) does
-        # not strip. Trim to the outermost root tags as a defensive net.
-        if extracted:
-            if analysis.render_type == "svg":
-                lower = extracted.lower()
-                start = lower.find("<svg")
-                end = lower.rfind("</svg>")
-                if start != -1 and end != -1 and end > start:
-                    extracted = extracted[start : end + len("</svg>")]
-            elif analysis.render_type == "html":
-                lower = extracted.lower()
-                start = lower.find("<!doctype")
-                if start == -1:
-                    start = lower.find("<html")
-                end = lower.rfind("</html>")
-                if start != -1 and end != -1 and end > start:
-                    extracted = extracted[start : end + len("</html>")]
+        # root tag. Models often wrap output with prose, omit fences, or include
+        # nested ``` fences inside <pre>/<script> that make non-greedy fence
+        # matching stop before </html>.
+        if render_type in ("svg", "html"):
+            sliced = _slice_root_element(extracted, render_type) or _slice_root_element(
+                cleaned, render_type
+            )
+            if sliced is not None:
+                return sliced
+            if render_type == "html" and not extracted:
+                stripped = cleaned.strip()
+                if stripped.lower().startswith(("<!doctype", "<html")):
+                    return stripped
 
         return extracted
+
+    @staticmethod
+    def _is_usable_code(code: str, render_type: str) -> bool:
+        if not code or code.lstrip().startswith("```"):
+            return False
+        lower = code.lower()
+        if render_type == "html" and ("<!doctype" in lower or "<html" in lower):
+            return "</html>" in lower
+        if render_type == "svg" and "<svg" in lower:
+            return "</svg>" in lower
+        return True
