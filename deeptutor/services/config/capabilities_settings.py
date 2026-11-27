@@ -55,11 +55,12 @@ _SIMPLE_LLM_DEFAULTS: dict[str, dict[str, Any]] = {
     "solve": {"temperature": 0.3, "max_tokens": 8192},
     "research": {"temperature": 0.5, "max_tokens": 16834},
     "question": {"temperature": 0.7, "max_tokens": 4096},
-    # The visualize loop's own defaults, unchanged from when they were written
-    # into the pipeline construction: a user who never touches this keeps the
-    # behaviour they had, and one whose reasoning model eats the budget can now
-    # raise it (#1546).
-    "visualize": {"temperature": 0.15, "max_tokens": 16000},
+    # Made configurable so a user whose reasoning model eats the budget can
+    # raise it (#1546). 16000 was still too small by default: deepseek-flash
+    # thinks by default and spends 16k-26k tokens on hidden reasoning before it
+    # writes a page, so book interactive blocks came back empty. 32768 lets most
+    # of those finish while staying within the output cap of most providers.
+    "visualize": {"temperature": 0.15, "max_tokens": 32768},
     "co_writer": {"temperature": 0.6, "max_tokens": 4096},
     "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
     "math_animator": {"temperature": 0.2, "max_tokens": 16834},
