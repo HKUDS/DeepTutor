@@ -71,7 +71,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: docs/.nvmrc
+          node-version: "22"
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
@@ -182,7 +182,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: docs/.nvmrc
+          node-version: "22"
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
