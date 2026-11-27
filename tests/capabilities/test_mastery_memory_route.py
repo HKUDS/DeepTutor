@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from deeptutor.capabilities.mastery.history import project_mastery_replay
-from deeptutor.capabilities.mastery.memory import MasteryContextBuilder
+from deeptutor.capabilities.mastery.memory import MasteryContextBuilder, _plan_tokens
 from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.session.context_builder import _count_model_context_tokens
 from deeptutor.services.session.model_history import replay_history
@@ -235,3 +235,33 @@ async def test_small_windows_give_kept_snapshots_no_extra_room():
 
     assert built.budget == 11200
     assert _count_model_context_tokens(built.model_history) <= built.budget
+
+
+def test_recent_history_selection_discounts_kept_snapshots_like_the_plan():
+    """A small dialogue with large kept snapshots keeps its tail exact.
+
+    The plan already discounts kept snapshots by the window headroom, but the
+    recent-tail selection counted them in full, so a quiz-style session with
+    tiny exchanges archived most of them the moment selection ran.
+    """
+    status = " ".join(str(7919 * n % 1_000_003) for n in range(150))
+    rows = []
+    for turn in range(10):
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct.", status)
+    builder = MasteryContextBuilder(MagicMock())
+    builder._snapshot_headroom = 2
+    recent_budget = 1500
+
+    _older, recent = builder._select_recent_messages(rows, recent_budget)
+
+    def plan(tail):
+        return _plan_tokens(replay_history(tail), "", 2)
+
+    kept = len(recent) // 2
+    sent = _count_model_context_tokens(replay_history(rows[-2:]))
+    assert sent > 200  # each exchange is mostly snapshot
+    assert recent == rows[-2 * kept :]
+    assert plan(recent) <= recent_budget
+    assert kept == 10 or plan(rows[-2 * (kept + 1) :]) > recent_budget
+    # Counting snapshots in full would keep only recent_budget // sent exchanges.
+    assert kept > recent_budget // sent

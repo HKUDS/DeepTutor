@@ -301,3 +301,76 @@ def test_short_header_snapshots_are_still_shared_anchors() -> None:
     legacy = _MASTERY_SNAPSHOT_NOTICE + json.dumps(payload)
     assert json.loads(snapshot_payload_text(legacy)) == payload
     assert snapshot_payload_text("[Runtime context: workspace]\n{}") is None
+
+
+def _status_with_defaults():
+    points = [
+        {
+            "id": f"kp{n}",
+            "name": f"Point {n}: derivatives of composed functions",
+            "type": "procedure",
+            "prerequisite_ids": [],
+            "topic_source_ids": [],
+            "status": "learning" if n == 0 else "new",
+            "mastery": 0.4 if n == 0 else 0,
+            "mastery_source": "",
+            "override_note": "",
+            "deferred": False,
+        }
+        for n in range(12)
+    ]
+    return {
+        "path_id": "p",
+        "map": {"name": "Derivatives", "modules": [{"id": "m1", "knowledge_points": points}]},
+        "learning_stages": {f"kp{n}": "not_yet_covered" for n in range(12)},
+    }
+
+
+def test_a_full_status_result_shares_the_map_a_compact_snapshot_already_sent():
+    """The snapshot leaves defaults out; a later full read must still reuse it."""
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER, STATE_REFERENCE_NOTICE
+    from deeptutor.capabilities.mastery.snapshot import compact_status
+
+    full = _status_with_defaults()
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(compact_status(full)),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("read", "mastery_status", full)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+
+    assert projected[0] == snapshot
+    shared = json.loads(projected[-1]["content"])
+    assert shared["map"] == {
+        "$mastery_same_value": {
+            "snapshot": "mastery_status_snapshot",
+            "pointer": "/map",
+            "defaults_omitted": True,
+        }
+    }
+    assert len(projected[-1]["content"]) < len(messages[-1]["content"]) / 2
+    # The reference resolves to the compact map, which is the full one less defaults.
+    sent = json.loads(snapshot["content"][len(SNAPSHOT_HEADER) :])
+    assert sent["map"] == compact_status(full)["map"]
+    assert '"defaults_omitted": true' in STATE_REFERENCE_NOTICE
+
+
+def test_a_changed_map_is_not_shared_with_an_older_compact_snapshot():
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER
+    from deeptutor.capabilities.mastery.snapshot import compact_status
+
+    before = _status_with_defaults()
+    after = deepcopy(before)
+    after["map"]["modules"][0]["knowledge_points"][3]["status"] = "learning"
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(compact_status(before)),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("read", "mastery_status", after)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+
+    assert json.loads(projected[-1]["content"])["map"] == after["map"]

@@ -64,7 +64,7 @@ def _map(overview: Any) -> Any:
     return {**overview, "modules": modules}
 
 
-def _next(step: Any) -> Any:
+def _compact_next_step(step: Any) -> Any:
     if not isinstance(step, dict):
         return step
     step = dict(step)
@@ -96,6 +96,39 @@ def _profile(profile: Any) -> Any:
     return {key: value for key, value in profile.items() if not _empty(value)}
 
 
+def _stages(stages: Any) -> Any:
+    if not isinstance(stages, dict):
+        return stages
+    return {key: value for key, value in stages.items() if value != "not_yet_covered"}
+
+
+def _visuals(requirements: Any) -> Any:
+    if not isinstance(requirements, dict):
+        return requirements
+    return {
+        key: value
+        for key, value in requirements.items()
+        if not (isinstance(value, dict) and all(_empty(item) for item in value.values()))
+    }
+
+
+#: How the snapshot shortens each state field that history sharing tracks.
+#: Sharing applies the same function to a full ``mastery_status`` result, so a
+#: field the snapshot already carried is not sent again in its long form.
+_FIELD_COMPACTORS = {
+    "map": _map,
+    "learner_profile": _profile,
+    "learning_stages": _stages,
+    "visual_requirements": _visuals,
+}
+
+
+def compact_field(field: str, value: Any) -> Any:
+    """The snapshot form of one top-level ``mastery_status`` field."""
+    compactor = _FIELD_COMPACTORS.get(field)
+    return compactor(value) if compactor is not None else value
+
+
 def _pending(interaction: Any) -> Any:
     if not isinstance(interaction, dict):
         return interaction
@@ -116,23 +149,10 @@ def compact_status(payload: dict[str, Any]) -> dict[str, Any]:
     if result.get("intake_needed") is False:
         result.pop("intake_needed")
     if "next" in result:
-        result["next"] = _next(result["next"])
-    if "map" in result:
-        result["map"] = _map(result["map"])
-    if "learner_profile" in result:
-        result["learner_profile"] = _profile(result["learner_profile"])
-    if isinstance(result.get("learning_stages"), dict):
-        result["learning_stages"] = {
-            key: value
-            for key, value in result["learning_stages"].items()
-            if value != "not_yet_covered"
-        }
-    if isinstance(result.get("visual_requirements"), dict):
-        result["visual_requirements"] = {
-            key: value
-            for key, value in result["visual_requirements"].items()
-            if not (isinstance(value, dict) and all(_empty(item) for item in value.values()))
-        }
+        result["next"] = _compact_next_step(result["next"])
+    for field in _FIELD_COMPACTORS:
+        if field in result:
+            result[field] = compact_field(field, result[field])
     if "pending_interaction" in result:
         result["pending_interaction"] = _pending(result["pending_interaction"])
     for key in ("goal", "sources", "due_review_ids", "learning_stages", "visual_requirements"):
@@ -156,4 +176,4 @@ def status_guide(template: str) -> str:
     return template
 
 
-__all__ = ["SNAPSHOT_HEADER", "compact_status", "status_guide"]
+__all__ = ["SNAPSHOT_HEADER", "compact_field", "compact_status", "status_guide"]

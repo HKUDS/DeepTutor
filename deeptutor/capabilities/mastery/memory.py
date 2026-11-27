@@ -192,6 +192,12 @@ class MasteryContextBuilder(ContextBuilder):
             getattr(self, "_snapshot_headroom", 1),
         )
 
+    def _recent_history_tokens(self, replayed):
+        # Choose the exact tail with the same measure as the plan; counting
+        # kept snapshots in full here archived exchanges the plan still had
+        # room for, and the rewrite that followed missed the cached prefix.
+        return _plan_tokens(replayed, "", getattr(self, "_snapshot_headroom", 1))
+
     def _select_recent_messages(self, messages, recent_budget, route=None):
         older, recent = super()._select_recent_messages(messages, recent_budget, route=route)
         # A failed memory call keeps the watermark, so the backlog grows by one

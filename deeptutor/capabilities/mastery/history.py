@@ -41,8 +41,11 @@ STATE_REFERENCE_NOTICE = (
     "For a mastery status snapshot, the payload is the JSON after its first line; "
     'without "occurrence" it is the first such snapshot in this request, '
     'with "occurrence": N the N-th one. '
+    'With "defaults_omitted": true the named value is the compact form a status '
+    "snapshot sends: this value is that one with the omitted empty values, "
+    "defaults and fixed guidance restored, as the status guide describes. "
     "The referenced value is included in this request, not external memory. "
-    "Only identical repeated state is shared; unique past state and learner "
+    "Only repeated state is shared; unique past state and learner "
     "exchanges are retained. Historical status is not current progress."
 )
 
@@ -149,6 +152,20 @@ def reference_history_reads(messages: list[dict[str, Any]]) -> None:
             sources = {}
 
 
+def _compact_anchor(
+    anchors: dict[str, dict[str, Any]], field: str, value: Any
+) -> dict[str, Any] | None:
+    """An anchor holding ``value`` in the compact form a snapshot sends."""
+    from deeptutor.capabilities.mastery.snapshot import compact_field
+
+    compact = compact_field(field, value)
+    if compact == value:
+        return None
+    encoded = json.dumps(compact, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    anchor = anchors.get(encoded) if len(encoded) >= 512 else None
+    return {**anchor, "defaults_omitted": True} if anchor is not None else None
+
+
 def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> None:
     """Share exact repeated state in the owned historical request copy in-place.
 
@@ -177,6 +194,10 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
         # Small values cost less verbatim than a locator plus its explanation.
         candidate = anchors.get(encoded) if len(encoded) >= 512 else None
+        if replace and candidate is None and pointer[1:] in _FIELDS["mastery_status"]:
+            # Snapshots carry the compact form of each state field; a full
+            # mastery_status result repeats it with defaults and fixed guidance.
+            candidate = _compact_anchor(anchors, pointer[1:], value)
         if replace and candidate is not None:
             reference = {"$mastery_same_value": candidate}
             if len(json.dumps(reference)) < len(encoded):
