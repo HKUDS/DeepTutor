@@ -52,7 +52,7 @@ def _pipeline(responses: list[str]) -> MagicMock:
     pipeline.run_code_generation = AsyncMock(side_effect=responses)
     pipeline.code_agent.binding = "deepseek"
     pipeline.code_agent.get_model.return_value = "deepseek-flash"
-    pipeline.code_agent.get_max_tokens.return_value = 16000
+    pipeline.code_agent.get_output_budget.return_value = 16000
     return pipeline
 
 

@@ -126,7 +126,7 @@ def _normalize_interactive_html(code: str) -> str:
 def _max_tokens(agent: Any) -> int | None:
     """The budget the code-generation call was sent with, for the error text."""
     try:
-        return int(agent.get_max_tokens())
+        return int(agent.get_output_budget())
     except Exception:  # pragma: no cover - only used to word an error
         logger.debug("Could not read the visualize budget", exc_info=True)
         return None
