@@ -27,6 +27,13 @@ const MODULE_LABELS = new Set([
 
 const TYPE_LABELS = new Set(["bug", "enhancement", "documentation", "question"]);
 
+// v1.7.0 release timestamp (2026-10-28T14:13:12Z):
+// - PRs created BEFORE v1.7.0 are owned by @pancacake.
+// - PRs created ON/AFTER v1.7.0 are handled by Maintainers and must NOT keep
+//   @pancacake in requested_reviewers unless escalated via `needs-pancake`.
+const V170_CUTOFF_ISO = "2026-10-28T14:13:12Z";
+const PANCAKE_LOGIN = "pancacake";
+
 const NOISE_FILE_RE =
   /(?:^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|uv\.lock|Cargo\.lock)|(?:\.snap|\.png|\.jpg|\.jpeg|\.gif|\.webp|\.ico|\.woff2?|\.ttf)$/i;
 
@@ -113,7 +120,7 @@ export function computePrLabels({ files, title, existingLabels = [], action = "o
   return [...toAdd].filter((l) => !existing.has(l));
 }
 
-async function ghRequest(token, repoFull, method, urlPath, body = undefined) {
+async function ghRequest(token, repoFull, method, urlPath, body = undefined, allowStatus = []) {
   const res = await fetch(`https://api.github.com/repos/${repoFull}${urlPath}`, {
     method,
     headers: {
@@ -124,12 +131,31 @@ async function ghRequest(token, repoFull, method, urlPath, body = undefined) {
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
+  if (!res.ok && !allowStatus.includes(res.status)) {
     const txt = await res.text();
     throw new Error(`GitHub API ${method} ${urlPath} -> ${res.status}: ${txt}`);
   }
-  if (res.status === 204) return null;
+  if (res.status === 204 || !res.ok) return null;
   return res.json();
+}
+
+export function decidePancakeRouting({ createdAt, existingLabels = [], requestedReviewers = [], assignees = [] }) {
+  const isPre170 = Boolean(createdAt && createdAt < V170_CUTOFF_ISO);
+  const labels = new Set(existingLabels);
+  const reviewersLower = requestedReviewers.map((u) => u.toLowerCase());
+  const assigneesLower = assignees.map((u) => u.toLowerCase());
+
+  if (isPre170) {
+    return {
+      assignPancake: !assigneesLower.includes(PANCAKE_LOGIN),
+      stripPancakeReviewer: false,
+    };
+  }
+  return {
+    assignPancake: false,
+    stripPancakeReviewer:
+      reviewersLower.includes(PANCAKE_LOGIN) && !labels.has("needs-pancake"),
+  };
 }
 
 function runSelfTest() {
@@ -171,6 +197,34 @@ function runSelfTest() {
   });
   assert.deepEqual(labels3, []);
 
+  assert.deepEqual(
+    decidePancakeRouting({
+      createdAt: "2026-10-20T00:00:00Z",
+      existingLabels: [],
+      requestedReviewers: [],
+      assignees: [],
+    }),
+    { assignPancake: true, stripPancakeReviewer: false },
+  );
+  assert.deepEqual(
+    decidePancakeRouting({
+      createdAt: "2026-11-26T00:00:00Z",
+      existingLabels: ["web"],
+      requestedReviewers: ["pancacake"],
+      assignees: [],
+    }),
+    { assignPancake: false, stripPancakeReviewer: true },
+  );
+  assert.deepEqual(
+    decidePancakeRouting({
+      createdAt: "2026-11-26T00:00:00Z",
+      existingLabels: ["web", "needs-pancake"],
+      requestedReviewers: ["pancacake"],
+      assignees: [],
+    }),
+    { assignPancake: false, stripPancakeReviewer: false },
+  );
+
   console.log("pr-labeler self-test passed.");
 }
 
@@ -184,14 +238,52 @@ async function main() {
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const prNumber = Number(process.env.PR_NUMBER || "0");
   const prTitle = process.env.PR_TITLE || "";
+  const envCreatedAt = process.env.PR_CREATED_AT || "";
   const action = process.env.EVENT_ACTION || "opened";
 
   if (!token || !repoFull || !prNumber) {
     throw new Error("Missing GH_TOKEN, GITHUB_REPOSITORY, or PR_NUMBER.");
   }
 
-  const issue = await ghRequest(token, repoFull, "GET", `/issues/${prNumber}`);
-  const existingLabels = (issue.labels || []).map((l) => l.name);
+  const pr = await ghRequest(token, repoFull, "GET", `/pulls/${prNumber}`);
+  const existingLabels = (pr.labels || []).map((l) => l.name);
+  const requestedReviewers = (pr.requested_reviewers || []).map((u) => u.login);
+  const assignees = (pr.assignees || []).map((u) => u.login);
+  const createdAt = pr.created_at || envCreatedAt;
+
+  // Enforce v1.7.0 @pancacake routing rule
+  const routing = decidePancakeRouting({
+    createdAt,
+    existingLabels,
+    requestedReviewers,
+    assignees,
+  });
+  if (routing.assignPancake) {
+    await ghRequest(
+      token,
+      repoFull,
+      "POST",
+      `/issues/${prNumber}/assignees`,
+      { assignees: [PANCAKE_LOGIN] },
+      [422],
+    );
+    console.log(`PR #${prNumber}: pre-v1.7.0 PR assigned to @${PANCAKE_LOGIN}.`);
+  }
+  if (routing.stripPancakeReviewer) {
+    await ghRequest(
+      token,
+      repoFull,
+      "DELETE",
+      `/pulls/${prNumber}/requested_reviewers`,
+      { reviewers: [PANCAKE_LOGIN] },
+      [422],
+    );
+    console.log(`PR #${prNumber}: removed @${PANCAKE_LOGIN} from requested_reviewers (post-v1.7.0 rule).`);
+  }
+
+  if (action === "review_requested") {
+    return;
+  }
 
   const files = [];
   for (let page = 1; page <= 3; page += 1) {
