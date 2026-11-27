@@ -39,13 +39,19 @@ from deeptutor.runtime.agentic import (
     build_openai_client,
     can_use_native_tool_calling,
     dispatch_tool_calls,
+    refuse_truncated_tool_calls,
 )
 from deeptutor.runtime.agentic.messages import assistant_message, assistant_message_with_tool_calls
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config.loader import get_capability_params
-from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
+from deeptutor.services.llm import (
+    clean_thinking_tags,
+    finish_was_truncated,
+    get_llm_config,
+    get_token_limit_kwargs,
+)
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
@@ -138,6 +144,11 @@ class _CallResult:
     # the thinking mode must be passed back to the API".
     response_output_items: list[dict[str, Any]] = field(default_factory=list)
     thinking_blocks: list[dict[str, Any]] = field(default_factory=list)
+    # The provider's terminal reason, when it sent one. A round that hit the
+    # output cap is not safe to dispatch (its arguments may be cut off), and
+    # this loop had no way to tell — unlike ``run_labeled_step``, which keeps
+    # it on every result it returns.
+    finish_reason: str | None = None
 
 
 class ContextExplorer:
@@ -360,6 +371,18 @@ class ContextExplorer:
                         continue
                     break
                 messages.append(_assistant_message_with_provider_state(result))
+                if finish_was_truncated(result.finish_reason):
+                    # Same refusal as the shared agentic loop: a batch cut off
+                    # by the output cap is never repaired and never dispatched.
+                    messages.extend(
+                        await refuse_truncated_tool_calls(
+                            tool_calls=result.tool_calls,
+                            stream=stream,
+                            source=EXPLORE_SOURCE,
+                            stage=EXPLORE_STAGE,
+                        )
+                    )
+                    continue
                 dispatch = await dispatch_tool_calls(
                     tool_calls=result.tool_calls,
                     context=context,
@@ -421,6 +444,7 @@ class ContextExplorer:
         thinking_blocks: list[dict[str, Any]] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
+        finish_reason: str | None = None
         # Bound connection setup as well as the idle reads below, the same way
         # the answer loop does: a provider that hangs while opening the stream
         # parks the turn just as effectively as one that stalls mid-stream.
@@ -434,6 +458,9 @@ class ContextExplorer:
                 if not choices:
                     continue
                 choice = choices[0]
+                # The final chunk carries the reason and commonly no delta, so
+                # read it before the ``delta is None`` short-circuit below.
+                finish_reason = getattr(choice, "finish_reason", None) or finish_reason
                 provider_fields = getattr(choice, "provider_specific_fields", None)
                 if isinstance(provider_fields, dict):
                     native_items = provider_fields.get("native_output_items")
@@ -479,6 +506,7 @@ class ContextExplorer:
             reasoning_content="".join(reasoning_parts),
             response_output_items=response_output_items,
             thinking_blocks=thinking_blocks,
+            finish_reason=finish_reason,
         )
 
     def _read_source_schemas(self, source_index: dict[str, str]) -> list[dict[str, Any]]:
