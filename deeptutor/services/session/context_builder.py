@@ -634,6 +634,7 @@ class ContextBuilder:
         language: str = "en",
         on_event: Callable[[StreamEvent], Awaitable[None]] | None = None,
         leaf_message_id: int | None = None,
+        through_message_id: int | str | None = None,
     ) -> ContextBuildResult:
         session = await self.store.get_session(session_id)
         # When ``leaf_message_id`` is given (edit-branch turn), only the
@@ -642,6 +643,18 @@ class ContextBuilder:
         messages = await self.store.get_messages_for_context(
             session_id, leaf_message_id=leaf_message_id
         )
+        if through_message_id is not None:
+            # A regeneration runs from the original user message. This also
+            # bounds history for stores without branch-aware context.
+            through = next(
+                (
+                    i
+                    for i, message in enumerate(messages)
+                    if message.get("id") == through_message_id
+                ),
+                -1,
+            )
+            messages = messages[: through + 1]
         if session is None:
             return ContextBuildResult([], "", "", [], 0, self._history_budget(llm_config))
 

@@ -3,8 +3,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import UsageSettingsSection from '@/features/settings/sections/UsageSettingsSection'
 import UsageActivity from '@/features/settings/components/UsageActivity'
+import { CHATGPT_PLAN_PROVIDER, CHATGPT_PLAN_USAGE_URL } from '@/lib/chatgpt-plan'
 import { activityCalendar, usageYear, type UsageStatistics } from '@/lib/usage-statistics'
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), push: vi.fn(), search: 'year=2024' }))
+const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  push: vi.fn(),
+  search: 'year=2024',
+  providers: { llm: [] as { value: string }[] },
+}))
+vi.mock('@/features/settings/store/SettingsStore', () => ({
+  useSettings: () => ({ providers: mocks.providers }),
+}))
 vi.mock('@/lib/usage-statistics', async original => ({ ...await original<object>(), fetchUsageStatistics: mocks.fetch }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({push: mocks.push}), useSearchParams: () => new URLSearchParams(mocks.search) }))
 vi.mock('@/components/settings/shared', () => ({ SettingsPageHeader: ({title}: {title: string}) => <h1>{title}</h1> }))
@@ -12,7 +21,12 @@ vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string, vars?:
 const day = {date: '2024-02-29', turns: 3, total_calls: 5, total_tokens: 200, tracked_turns: 3}
 const totals = {total_tokens: 200, prompt_tokens: 180, completion_tokens: 20, total_calls: 5, cache_read_input_tokens: 90, cache_creation_input_tokens: 0, cache_input_tokens: 180, cache_reported_calls: 5, cache_hit_rate: .5, ttft_seconds: 1.2, tokens_per_second: 40, duration_seconds: 8, estimated_calls: 0}
 const data: UsageStatistics = {year: 2024, timezone: 'UTC', totals, days: activityCalendar([day], 2024).dates, models: [{...totals, provider: 'zhipu', model: 'glm-test'}], active_days: 1, sessions: 1, turns: 3, tracked_turns: 3, updated_at: 1709164800}
-beforeEach(() => {mocks.search = 'year=2024'; mocks.fetch.mockReset(); mocks.push.mockReset()})
+beforeEach(() => {
+  mocks.search = 'year=2024'
+  mocks.providers.llm = []
+  mocks.fetch.mockReset()
+  mocks.push.mockReset()
+})
 it('builds a Monday-first leap-year calendar without losing days', () => {
   const calendar = activityCalendar([day], 2024)
   expect(calendar.offset).toBe(0)
@@ -31,9 +45,11 @@ it('supports day selection and keyboard movement across weeks', () => {
   expect(screen.getByRole('button', {name: /2024-03-07/})).toHaveFocus()
 })
 it('loads yearly totals and persists navigation in the URL', async () => {
+  mocks.providers.llm = [{ value: CHATGPT_PLAN_PROVIDER }]
   mocks.fetch.mockResolvedValue(data)
   render(<UsageSettingsSection />)
   expect(await screen.findByText('glm-test')).toBeVisible()
+  expect(screen.getByRole('link', { name: 'Manage ChatGPT usage' })).toHaveAttribute('href', CHATGPT_PLAN_USAGE_URL)
   expect(screen.getAllByText('50.0%')).toHaveLength(2)
   fireEvent.click(screen.getByRole('button', {name: 'Previous year'}))
   expect(mocks.push).toHaveBeenCalledWith('/settings/usage?year=2023', {scroll: false})
@@ -42,6 +58,7 @@ it('shows errors and retries instead of presenting failure as zero usage', async
   mocks.fetch.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(data)
   render(<UsageSettingsSection />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load usage statistics.')
+  expect(screen.queryByRole('link', { name: 'Manage ChatGPT usage' })).toBeNull()
   expect(screen.getByRole('alert')).toHaveTextContent('offline')
   expect(screen.queryByText('No recorded model usage for this year.')).toBeNull()
   fireEvent.click(screen.getByRole('button', {name: 'Retry'}))

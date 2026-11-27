@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHmac, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import http from 'node:http';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -27,11 +27,12 @@ test('source data cannot share the checkout', () => {
   assert.equal(validateConfig({ ...config, runtimeHome: '/tmp/data' }).runtimeHome, path.resolve('/tmp/data'));
 });
 
-test('update signatures bind version, checksum and architecture', () => {
+test('update signatures bind version, checksum, architecture and vault support', () => {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-  const manifest = { formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: 'arm64', runtimeId: '1.7.0-test-arm64', archive: 'core.tar.gz', sha256: 'a'.repeat(64) };
+  const manifest = { formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: 'arm64', runtimeId: '1.7.0-test-arm64', archive: 'core.tar.gz', sha256: 'a'.repeat(64), chatGPTPlanVaultVersion: 1 };
   manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
   assert.equal(verifyManifest(manifest, publicKey, 'arm64'), manifest);
+  assert.throws(() => verifyManifest({ ...manifest, chatGPTPlanVaultVersion: 2 }, publicKey, 'arm64'));
   assert.throws(() => verifyManifest({ ...manifest, sha256: 'b'.repeat(64) }, publicKey, 'arm64'));
   assert.throws(() => verifyManifest(manifest, publicKey, 'x64'));
   assert.throws(() => verifyManifest({ ...manifest, runtimeId: '../outside' }, publicKey, 'arm64'));
@@ -86,6 +87,20 @@ test('occupied ports are left alone and an available port is chosen', async t =>
   const occupied = server.address().port;
   assert.notEqual(await availablePort(occupied), occupied);
   assert.equal(await probe(`http://127.0.0.1:${occupied}`), true);
+});
+
+test('authenticated readiness requires the runtime proof', async t => {
+  const proofKey = randomBytes(32).toString('hex');
+  const server = http.createServer((req, res) => {
+    const challenge = req.headers['x-deeptutor-ready-challenge'];
+    if (challenge) res.setHeader('x-deeptutor-ready-proof', createHmac('sha256', proofKey).update(challenge).digest('hex'));
+    res.end('ready');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}`;
+  assert.equal(await probe(url, { proofKey }), true);
+  assert.equal(await probe(url, { proofKey: randomBytes(32).toString('hex') }), false);
 });
 
 test('a signed bundle installs from and into paths containing spaces and Chinese characters', async t => {

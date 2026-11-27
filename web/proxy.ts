@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHmac } from "node:crypto";
 import { parseAuthEnabled } from "./lib/api";
 import { resolveBackendApiBase } from "./lib/backend-runtime-config";
 import { prepareBackendForwardHeaders } from "./lib/backend-forward";
@@ -50,6 +51,25 @@ function redirectToLogin(
 
 export function proxy(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
+
+  if (pathname === "/_deeptutor_desktop/ready") {
+    const key = process.env.DEEPTUTOR_DESKTOP_READY_KEY ?? "";
+    const challenge = req.headers.get("x-deeptutor-ready-challenge") ?? "";
+    if (
+      req.method !== "GET" ||
+      !/^[a-f0-9]{64}$/.test(key) ||
+      !/^[a-f0-9]{64}$/.test(challenge)
+    ) {
+      return new NextResponse(null, { status: 404 });
+    }
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        "x-deeptutor-ready-proof": createHmac("sha256", key).update(challenge).digest("hex"),
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 
   if (isCodexCallbackPath(pathname)) {
     return NextResponse.rewrite(

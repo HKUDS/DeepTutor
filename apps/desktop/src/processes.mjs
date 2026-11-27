@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createHmac, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -93,12 +94,17 @@ export function availablePort(preferred = 0) {
   });
 }
 
-export function probe(url, { timeout = 2500 } = {}) {
+export function probe(url, { timeout = 2500, proofKey } = {}) {
   // Node HTTP deliberately bypasses shell/system proxy settings for loopback.
   return new Promise(resolve => {
-    const request = http.get(url, { agent: false }, response => {
+    const challenge = proofKey ? randomBytes(32).toString('hex') : undefined;
+    const expected = proofKey ? createHmac('sha256', proofKey).update(challenge).digest('hex') : undefined;
+    const headers = challenge ? { 'x-deeptutor-ready-challenge': challenge } : undefined;
+    const request = http.get(url, { agent: false, headers }, response => {
       response.resume();
-      resolve(response.statusCode >= 200 && response.statusCode < 400);
+      resolve(proofKey
+        ? response.statusCode === 200 && response.headers['x-deeptutor-ready-proof'] === expected
+        : response.statusCode >= 200 && response.statusCode < 400);
     });
     const timer = setTimeout(() => request.destroy(), timeout);
     request.once('close', () => clearTimeout(timer));
@@ -113,12 +119,16 @@ export function withinTime(work, ms, message) {
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
 
-export async function waitReady(url, { signal, alive = () => true, timeout = 180000 } = {}) {
+export async function waitReady(url, { signal, alive = () => true, timeout = 180000, proofKey } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     signal?.throwIfAborted();
     if (!alive()) throw new Error('A runtime process exited early; see the runtime log');
-    if (await probe(url)) return;
+    if (await probe(url, { proofKey })) {
+      signal?.throwIfAborted();
+      if (!alive()) throw new Error('A runtime process exited early; see the runtime log');
+      return;
+    }
     await delay(250, undefined, { signal });
   }
   throw new Error(`Timed out waiting for ${url}`);

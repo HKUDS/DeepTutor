@@ -86,7 +86,7 @@ async def test_legacy_health_url_uses_readiness_handler():
         if getattr(route, "path", "") in {"/health", "/health/ready"}
     }
     assert routes["/health"].endpoint is routes["/health/ready"].endpoint
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(ready=False)))
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(ready=False)), headers={})
     assert (await health_ready(request)).status_code == 503
     request.app.state.ready = True
     request.app.state.application_container = SimpleNamespace(

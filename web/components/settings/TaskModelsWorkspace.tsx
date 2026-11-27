@@ -5,6 +5,7 @@ import { stageRegistryAction, type RegistryEdit } from "@/lib/provider-registry"
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { flattenModels, modelProvider } from "@/lib/provider-registry";
+import { CHATGPT_PLAN_PROVIDER } from "@/lib/chatgpt-plan";
 import { SettingRow, SettingSection, selectClass } from "./shared";
 
 /**
@@ -123,7 +124,7 @@ function choiceValue(
 
 export function TaskModelsWorkspace() {
   const { t } = useTranslation();
-  const { draft: catalog, taskKinds, catalogEditable, mutateCatalog, applying } =
+  const { draft: catalog, taskKinds, catalogEditable, mutateCatalog, applying, providers } =
     useSettings();
 
   const stageRegistry = async (edit: RegistryEdit) => {
@@ -139,7 +140,7 @@ export function TaskModelsWorkspace() {
 
   const task = catalog.services.task;
   const rows = flattenModels(catalog, ["llm", "task"]).filter(
-    (row) => row.model?.model,
+    (row) => row.model?.model && row.profile.binding !== CHATGPT_PLAN_PROVIDER,
   );
   // Catalogs written before the task service had a `mode` say which model to use
   // by holding a task profile at all, so an absent mode means "profiles" there.
@@ -229,6 +230,11 @@ export function TaskModelsWorkspace() {
           "Every call DeepTutor makes on its own runs here unless the task below names its own model.",
         )}
       >
+        {providers.llm.some((provider) => provider.value === CHATGPT_PLAN_PROVIDER) && (
+          <p className="pb-3 text-[13px] text-[var(--muted-foreground)]">
+            {t("ChatGPT Plan is available for chat and manual language-model tests. Choose a different model for background tasks.")}
+          </p>
+        )}
         <SettingRow
           title={t("Background task model")}
           description={t(

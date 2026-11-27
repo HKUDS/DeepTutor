@@ -147,6 +147,7 @@ class TurnExecutor:
         workspace_mode = _workspace_mode(payload.get("workspace_mode"), capability=capability_name)
         mastery_lease_managed = bool(payload.get("mastery_path_lease_managed"))
         turn_id = execution.turn_id
+        keep_plan_reply_variants = bool(payload.get("_keep_plan_reply_variants"))
         attachments = []
         attachment_records = []
         assistant_events: list[dict[str, Any]] = []
@@ -290,6 +291,11 @@ class TurnExecutor:
                     branch_parent_explicit = False
             else:
                 branch_parent_id = None
+            if keep_plan_reply_variants and not branch_parent_explicit:
+                # Keep the previous answer visible while excluding it from this prompt.
+                reply_parent = payload.get("regenerated_from_message_id")
+                if isinstance(reply_parent, int):
+                    branch_parent_id = reply_parent
             notebook_references = payload.get("notebook_references", []) or []
             history_references = payload.get("history_references", []) or []
             partner_group_references = _partner_group_references(
@@ -589,6 +595,15 @@ class TurnExecutor:
                 language=payload.get("language", "en"),
                 on_event=_emit_context_event,
                 leaf_message_id=branch_parent_id,
+                **(
+                    {"through_message_id": payload.get("regenerated_from_message_id")}
+                    if keep_plan_reply_variants
+                    and (
+                        not branch_parent_explicit
+                        or isinstance(payload.get("regenerated_from_message_id"), str)
+                    )
+                    else {}
+                ),
             )
             memory_context = ""
             if memory_references:
@@ -1211,13 +1226,17 @@ class TurnExecutor:
                 _persisted_answer(),
                 str(payload.get("language", "en") or "en"),
             )
+            turn_status, turn_error = _resolve_turn_outcome(assistant_events, pending_done_event)
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
             # that; if we did not (regenerate path) and the caller pinned a
             # parent, we use it; otherwise we let the store auto-append
             # (legacy behavior).
-            if new_user_message_id is not None:
+            assistant_message_id: int | str | None
+            if keep_plan_reply_variants and turn_status != "completed":
+                assistant_message_id = None
+            elif new_user_message_id is not None:
                 assistant_message_id = await self.store.add_message(
                     session_id=session_id,
                     role="assistant",
@@ -1264,11 +1283,8 @@ class TurnExecutor:
                     attachments=generated_attachments or None,
                     metadata=assistant_provider_metadata,
                 )
-            await self.store.link_turn_message(turn_id, assistant_message_id)
-            turn_status, turn_error = _resolve_turn_outcome(
-                assistant_events,
-                pending_done_event,
-            )
+            if assistant_message_id is not None:
+                await self.store.link_turn_message(turn_id, assistant_message_id)
             failure_code, retryable = _resolve_turn_failure_metadata(assistant_events)
             if pending_done_event is None:
                 pending_done_event = StreamEvent(
@@ -1425,7 +1441,9 @@ class TurnExecutor:
             # suppressed separately so the status update below always runs —
             # a turn left "running" gets mislabelled as a restart orphan.
             partial_content = _persisted_answer()
-            if partial_content or generated_attachments or assistant_events:
+            if not keep_plan_reply_variants and (
+                partial_content or generated_attachments or assistant_events
+            ):
                 with contextlib.suppress(Exception):
                     assistant_message_id = await asyncio.shield(
                         self.store.add_message(

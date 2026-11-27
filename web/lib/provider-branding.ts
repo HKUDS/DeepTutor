@@ -49,6 +49,8 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   onomeo: { file: "onomeo.svg" },
   openai: { file: "openai.svg", mono: true },
   openai_codex: { file: "openai.svg", mono: true },
+  openai_chatgpt_plan: { file: "openai.svg", mono: true },
+  openai_siwc: { file: "chatgpt-button-white-21.svg" },
   openrouter: { file: "openrouter.svg", mono: true },
   orcarouter: { file: "orcarouter.png" },
   ovms: { file: "openvino.ico" },
@@ -149,6 +151,7 @@ export function formatProviderLabel(provider: string, label: string, language: s
 /** Enrich default account names while preserving names the user chose themselves. */
 export function formatConfiguredProviderName(provider: string, name: string, language: string): string {
   const key = canonicalProviderBrand(provider);
+  if (key === "openai_chatgpt_plan" && (name === "Plan" || name === "ChatGPT plan")) return "ChatGPT Plan";
   const chinese = Object.hasOwn(CHINESE_NAMES, key) ? CHINESE_NAMES[key] : undefined;
   const english = formatProviderLabel(provider, name, "en");
   if (!chinese?.labels.some(label => label.toLowerCase() === english.trim().toLowerCase())) return name;

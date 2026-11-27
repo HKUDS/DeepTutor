@@ -1,5 +1,6 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme, safeStorage } from 'electron';
 import { fork } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,6 +10,8 @@ import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree, withinTime } from './processes.mjs';
+import { planRequestHeaders } from './chatgpt-plan-request.mjs';
+import { prepareChatGPTPlanVault } from './chatgpt-plan-vault.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -35,6 +38,8 @@ let window;
 let view;
 let contentVisible = false;
 let worker;
+let planSessionToken;
+let planFrontendURL;
 let state = { phase: 'starting', step: 'opening' };
 let ui = { language: 'en', theme: 'light' };
 let interfaceWatcher;
@@ -80,6 +85,7 @@ function publish() {
 
 function status(next) {
   state = { ...state, ...next };
+  if (['error', 'stopping', 'stopped'].includes(next.phase)) planSessionToken = undefined;
   if (next.phase && next.phase !== 'ready') hideContent();
   publish();
 }
@@ -115,6 +121,7 @@ function watchInterface() {
 
 function hideContent() {
   contentVisible = false;
+  planFrontendURL = undefined;
   const current = view;
   view = undefined;
   if (!current) return;
@@ -140,6 +147,8 @@ async function openContent(ready) {
     partition: 'persist:deeptutor',
   } });
   view = nextView;
+  // The web page can request plan status before the splash hands off to it.
+  planFrontendURL = ready.planAuthenticated === true ? ready.url : undefined;
   nextView.setBackgroundColor(BACKGROUND[ui.theme]);
   nextView.setVisible(false);
   const content = nextView.webContents;
@@ -186,6 +195,8 @@ function trustedShell(event) {
 async function stopWorker() {
   const previous = worker;
   worker = undefined;
+  planSessionToken = undefined;
+  planFrontendURL = undefined;
   if (!previous || previous.exitCode !== null) return;
   await new Promise(resolve => {
     // Windows cannot signal the worker, so a stuck worker is ended with its services.
@@ -197,8 +208,30 @@ async function stopWorker() {
   });
 }
 
+async function chatGPTPlanKey() {
+  // No platform fallback may write a vault key in plaintext.
+  if ((process.platform !== 'darwin' && !WINDOWS) || !safeStorage.isEncryptionAvailable()) return undefined;
+  const keyFile = path.join(userRoot, 'chatgpt-plan-key.enc');
+  try {
+    return safeStorage.decryptString(await readFile(keyFile));
+  } catch (error) {
+    if (error.code !== 'ENOENT') return undefined;
+    const key = randomBytes(32).toString('base64url') + '=';
+    await mkdir(userRoot, { recursive: true, mode: 0o700 });
+    await writeFile(keyFile, safeStorage.encryptString(key), { mode: 0o600, flag: 'wx' });
+    return key;
+  }
+}
+
 async function launchRuntime(installed) {
   const config = bundleConfig(installed.destination, runtimeHome, installed.manifest.runtimeId);
+  // Never prevent regular Desktop startup if the OS key store is locked.
+  // Older cores write their vault into workspace backups. Keep the migrated
+  // vault available for the next supported core without enabling OAuth there.
+  const isolatedVault = installed.manifest.chatGPTPlanVaultVersion === 1
+    && installed.manifest.chatGPTPlanReadyVersion === 1;
+  const planKey = isolatedVault ? await chatGPTPlanKey().catch(() => undefined) : undefined;
+  planSessionToken = planKey ? randomBytes(32).toString('base64url') : undefined;
   const child = fork(path.join(sourceDirectory, 'supervisor.mjs'), [], {
     execPath: config.nodePath, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
@@ -216,13 +249,16 @@ async function launchRuntime(installed) {
       status(next);
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
-    child.once('error', reject);
+    child.once('error', error => {
+      if (worker === child && !quitting) status({ phase: 'error', step: null, message: error.message });
+      if (!ready) reject(error);
+    });
     child.once('exit', code => {
       if (worker !== child || quitting) return;
       status({ phase: 'error', step: null, message: t('workerExited', { code }) });
       if (!ready) reject(new Error(state.message));
     });
-    child.send({ type: 'start', config, logPath, cachePath: path.join(userRoot, 'cache', installed.manifest.runtimeId) });
+    child.send({ type: 'start', config, logPath, planKey, planSessionToken, cachePath: path.join(userRoot, 'cache', installed.manifest.runtimeId) });
   });
 }
 
@@ -269,6 +305,7 @@ async function boot() {
   try {
     status({ phase: 'starting', step: 'starting' });
     await stopWorker();
+    await prepareChatGPTPlanVault(userRoot);
     await recoverInterruptedUpgrade();
     const { manifestFile, previous, installed, replaceUntrusted } = await startupManifest();
     try { active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step })); }
@@ -416,6 +453,16 @@ else {
   ui = await readInterface();
   nativeTheme.on('updated', () => void refreshInterface());
   const coreSession = session.fromPartition('persist:deeptutor');
+  coreSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const contents = view?.webContents;
+    const headers = planRequestHeaders(details, {
+      sessionToken: planSessionToken,
+      frontendURL: planFrontendURL,
+      contentsId: contents?.id,
+      mainFrame: contents?.mainFrame,
+    });
+    callback(headers ? { requestHeaders: headers } : {});
+  });
   // The web UI reads this marker to name the client, e.g. "Open DeepTutor for MacOS with Apple Silicon".
   coreSession.setUserAgent(`${coreSession.getUserAgent()} ${agentMarker(app.getVersion())}`);
   coreSession.setPermissionCheckHandler((_contents, permission) => permission === 'clipboard-sanitized-write');

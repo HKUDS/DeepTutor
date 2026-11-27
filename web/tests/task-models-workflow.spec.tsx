@@ -80,6 +80,7 @@ function show(overrides: Record<string, unknown> = {}) {
     catalog: live,
     draft: structuredClone(live),
     catalogEditable: true,
+    providers: { llm: [] },
     applying: false,
     modelTests: {},
     testRunning: null,

@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+import os
 import sys
 
 from fastapi import FastAPI, Request
@@ -114,6 +115,11 @@ async def lifespan(app: FastAPI):
     # Execute on startup
     logger.info("Application startup")
     app.state.ready = False
+
+    from deeptutor.api.chatgpt_plan_origin import configure_desktop_request_auth
+    from deeptutor.services.chatgpt_plan import configure_desktop_session
+
+    configure_desktop_session(request_auth=configure_desktop_request_auth())
 
     # Validate configuration consistency
     validate_tool_consistency()
@@ -303,6 +309,10 @@ async def lifespan(app: FastAPI):
     # Execute on shutdown
     app.state.ready = False
     logger.info("Application shutdown")
+    from deeptutor.services.chatgpt_plan import available, get_session
+
+    if available():
+        await get_session().cancel()
 
     if module_enabled("knowledge"):
         install_progress_ports(broadcast=None, emit_task_event=None)
@@ -476,6 +486,11 @@ async def selective_access_log(request, call_next):
 
 
 _cors_settings = _build_cors_settings()
+if os.environ.get("DEEPTUTOR_CHATGPT_PLAN_KEY") and os.environ.get("FRONTEND_PORT", "").isdigit():
+    from deeptutor.api.chatgpt_plan_origin import DesktopOriginMiddleware
+
+    desktop_origin = f"http://127.0.0.1:{os.environ['FRONTEND_PORT']}"
+    app.add_middleware(DesktopOriginMiddleware, origin=desktop_origin)
 logger.info(
     "CORS configured: mode=%s allow_origins=%s allow_origin_regex=%s",
     _cors_settings["mode"],
@@ -538,6 +553,16 @@ async def health_ready(request: Request):
             status_code=503,
             content={"status": "not_ready", "reason": "coordination_unavailable"},
         )
+    challenge = request.headers.get("x-deeptutor-ready-challenge")
+    if challenge is not None:
+        from deeptutor.api.chatgpt_plan_origin import desktop_ready_proof
+
+        proof = desktop_ready_proof(challenge)
+        if proof:
+            return JSONResponse(
+                content={"status": "ready"},
+                headers={"x-deeptutor-ready-proof": proof, "Cache-Control": "no-store"},
+            )
     return {"status": "ready"}
 
 

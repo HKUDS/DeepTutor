@@ -41,6 +41,13 @@ import type { SelectedHistorySession } from "@/components/chat/HistorySessionPic
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import { ActivityFold, FoldCaret } from "@/components/activity";
 import { LearningText } from "@/components/common/LearningText";
+import ProviderIcon from "@/components/common/ProviderIcon";
+import {
+  CHATGPT_PLAN_ACCOUNT_URL,
+  CHATGPT_PLAN_LOGIN_REQUIRED,
+  CHATGPT_PLAN_USAGE_LIMIT,
+  CHATGPT_PLAN_USAGE_URL,
+} from "@/lib/chatgpt-plan";
 import AssistantResponse from "@/components/common/AssistantResponse";
 import {
   InlineFileCardProvider,
@@ -2456,6 +2463,23 @@ export const ChatMessageList = memo(function ChatMessageList({
                 </div>
               );
               if (!terminalError && !emptyResponse) return null;
+              const planError = terminalError?.metadata?.error_code;
+              if (planError === CHATGPT_PLAN_USAGE_LIMIT || planError === CHATGPT_PLAN_LOGIN_REQUIRED) {
+                const needsLogin = planError === CHATGPT_PLAN_LOGIN_REQUIRED;
+                return (
+                  <div role="alert" className="mt-3 max-w-sm rounded-xl border border-[var(--border)] p-3 text-sm">
+                    <p className="flex items-center gap-2 font-medium">
+                      <ProviderIcon provider="openai" size={17} />
+                      {needsLogin ? t("Reconnect your ChatGPT account to continue.") : t("ChatGPT plan usage is unavailable.")}
+                    </p>
+                    <a href={needsLogin ? CHATGPT_PLAN_ACCOUNT_URL : CHATGPT_PLAN_USAGE_URL}
+                      target={needsLogin ? undefined : "_blank"} rel={needsLogin ? undefined : "noreferrer"}
+                      className="mt-2 inline-block rounded-md bg-[var(--foreground)] px-3 py-1.5 font-medium text-[var(--background)]">
+                      {needsLogin ? t("Manage ChatGPT account") : t("Manage ChatGPT usage")}
+                    </a>
+                  </div>
+                );
+              }
               return (
                 <div role="alert" className="mt-3 flex w-full max-w-[min(520px,90%)] items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">
                   <AlertCircle className="h-4 w-4 shrink-0 text-[var(--destructive)]" />

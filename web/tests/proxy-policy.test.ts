@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
-import { config as proxyConfig } from "../proxy";
+import { config as proxyConfig, proxy } from "../proxy";
 
 // Unit tests for the pure middleware routing policy (web/lib/proxy-policy.ts).
 // The policy is deliberately decoupled from `next/server`, so it can be
@@ -28,6 +30,28 @@ function makeToken(payload: Record<string, unknown>): string {
     Buffer.from(JSON.stringify(value)).toString("base64url");
   return `${encode({ alg: "HS256" })}.${encode(payload)}.signature`;
 }
+
+test("desktop readiness returns a proof only when configured", (t) => {
+  const previous = process.env.DEEPTUTOR_DESKTOP_READY_KEY;
+  t.after(() => {
+    if (previous === undefined) delete process.env.DEEPTUTOR_DESKTOP_READY_KEY;
+    else process.env.DEEPTUTOR_DESKTOP_READY_KEY = previous;
+  });
+  const key = "b".repeat(64);
+  const challenge = "c".repeat(64);
+  const request = new NextRequest("http://127.0.0.1:18802/_deeptutor_desktop/ready", {
+    headers: { "x-deeptutor-ready-challenge": challenge },
+  });
+  delete process.env.DEEPTUTOR_DESKTOP_READY_KEY;
+  assert.equal(proxy(request).status, 404);
+  process.env.DEEPTUTOR_DESKTOP_READY_KEY = key;
+  const response = proxy(request);
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get("x-deeptutor-ready-proof"),
+    createHmac("sha256", key).update(challenge).digest("hex"),
+  );
+});
 
 test("isBackendPath matches /api and /ws paths only", () => {
   assert.equal(isBackendPath("/api/knowledge-bases"), true);

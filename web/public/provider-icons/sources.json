@@ -176,6 +176,11 @@
       "url": "https://www.searchapi.io/favicon.svg",
       "sha256": "5ef13fedc55abb407621cb0219a563ab400735b8ba6228b52d0629990d922ca0",
       "source": "Official website favicon; verified 2026-11-14"
+    },
+    "chatgpt-button-white-21.svg": {
+      "url": "https://raw.githubusercontent.com/openai/sign-in-with-chatgpt-devkit/0a36fefeb913055c8c7a1a29b63d82b96b2e841a/assets/brand/chatgpt-button-white-21.svg",
+      "sha256": "568ce2e8701934856aaafc0ed1c3d0300f6c2ff384d0ae743dd1dea08570e12c",
+      "source": "OpenAI Sign in with ChatGPT DevKit (brand asset)"
     }
   },
   "chinese_names": {

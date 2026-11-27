@@ -36,6 +36,8 @@ import {
 import { ProviderServices } from "./ProviderServices";
 import { AddProviderPanel, ProviderProtocol, type CustomProviderInput } from "./AddProviderPanel";
 import { CodexOAuthCard } from "./CodexOAuthCard";
+import { CHATGPT_PLAN_LABEL, CHATGPT_PLAN_PROVIDER, requestChatGPTPlan, type PlanStatus } from "@/lib/chatgpt-plan";
+import { ChatGPTPlanCard } from "./ChatGPTPlanCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
 import { stringifyExtraHeaders, subPanelClass } from "./shared";
 import {
@@ -81,6 +83,7 @@ export function ProvidersWorkspace() {
   const [vendor, setVendor] = useState("");
   const [query, setQuery] = useState("");
   const [auth, setAuth] = useState("");
+  const [planStatus, setPlanStatus] = useState<PlanStatus>();
   // The add panel and the selected provider live in the URL so a refresh
   // lands on the same surface instead of the bare list.
   const syncQuery = (updates: Record<string, string | null>) => {
@@ -99,6 +102,7 @@ export function ProvidersWorkspace() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("add") === "1") setAdding(true);
+    if (params.get("chatgpt-plan") === "1") setAuth(CHATGPT_PLAN_PROVIDER);
     const id = params.get("provider");
     if (id && sources.some((p) => p.id === id))
       setSelected((current) => current || id);
@@ -119,6 +123,15 @@ export function ProvidersWorkspace() {
   const addableOptions = options.filter((p) => p.status !== "legacy").sort(
     (a, b) => Number(b.value === "siliconflow") - Number(a.value === "siliconflow"),
   );
+  const planAvailable = addableOptions.some((item) => item.value === CHATGPT_PLAN_PROVIDER);
+  useEffect(() => {
+    if (!planAvailable) return;
+    let current = true;
+    void requestChatGPTPlan<PlanStatus>("status").then((status) => {
+      if (current) setPlanStatus(status);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [planAvailable]);
   const optionLabel = (provider: string) => formatProviderLabel(provider, options.find(p => p.value === provider)?.label ?? provider, uiLanguage);
   const source = sources.find((p) => p.id === selected);
   const option = options.find((p) => p.value === source?.provider);
@@ -138,10 +151,10 @@ export function ProvidersWorkspace() {
   const create = (custom?: CustomProviderInput) => {
     const option = addableOptions.find((o) => o.value === vendor);
     if (!option) return;
-    if (option.value === "openai_codex") {
-      setAuth("openai_codex");
+    if (option.value === "openai_codex" || option.value === CHATGPT_PLAN_PROVIDER) {
+      setAuth(option.value);
       setAdding(false);
-      syncQuery({ add: null });
+      syncQuery({ add: null, "chatgpt-plan": option.value === CHATGPT_PLAN_PROVIDER ? "1" : null });
       return;
     }
     const id = `conn-${randomUuid()}`;
@@ -175,9 +188,12 @@ export function ProvidersWorkspace() {
     );
   const savedIds = new Set(providerRegistry(catalog).map((p) => p.id));
   const saved = Boolean(source && savedIds.has(source.id));
-  const filtered = sources.filter((p) =>
+  const filtered = sources.filter((p) => p.provider !== CHATGPT_PLAN_PROVIDER &&
     `${formatConfiguredProviderName(p.provider, p.name, uiLanguage)} ${optionLabel(p.provider)} ${p.provider}`.toLowerCase().includes(query.toLowerCase()),
   );
+  const showPlanAccount = planAvailable && (planStatus?.accounts.length || auth === CHATGPT_PLAN_PROVIDER ||
+    sources.some((p) => p.provider === CHATGPT_PLAN_PROVIDER)) &&
+    `${CHATGPT_PLAN_LABEL} ChatGPT OpenAI`.toLowerCase().includes(query.toLowerCase());
   const hints = source ? PROVIDER_SERVICES.filter(service => providerServiceSupport(source, service, connectionTargets, providers).enabled)
     .map(service => ["tts", "stt"].includes(service) ? "voice" : ["imagegen", "videogen"].includes(service) ? "generation" : service) : [];
   if (adding)
@@ -222,13 +238,25 @@ export function ProvidersWorkspace() {
               placeholder: t("Search by name"),
             }}
             empty={
-              filtered.length
+              filtered.length || showPlanAccount
                 ? undefined
                 : sources.length
                   ? t("No providers match your search.")
                   : t("Add your first provider to start configuring models.")
             }
           >
+            {showPlanAccount && (
+              <button type="button" aria-pressed={auth === CHATGPT_PLAN_PROVIDER}
+                onClick={() => { setAuth(CHATGPT_PLAN_PROVIDER); revealDetail(); syncQuery({ add: null, provider: null, "chatgpt-plan": "1" }); }}
+                className={workspaceCardClass(auth === CHATGPT_PLAN_PROVIDER)}>
+                <span className="flex items-center gap-2 text-[14px] font-medium">
+                  <ProviderIcon provider={CHATGPT_PLAN_PROVIDER} size={16} />{CHATGPT_PLAN_LABEL}
+                </span>
+                <span className="mt-1 block truncate pl-6 text-[12px] text-[var(--muted-foreground)]">
+                  {planStatus?.account || t("Not connected")}
+                </span>
+              </button>
+            )}
             {filtered.map((p) => {
               const editing = !adding && !auth && p.id === selected;
               return (
@@ -240,7 +268,7 @@ export function ProvidersWorkspace() {
                     setSelected(p.id);
                     setAdding(false);
                     setAuth("");
-                    syncQuery({ add: null, provider: p.id });
+                    syncQuery({ add: null, provider: p.id, "chatgpt-plan": null });
                   }}
                   className={workspaceCardClass(editing)}
                 >
@@ -266,7 +294,9 @@ export function ProvidersWorkspace() {
         }
         detail={
           <div ref={editorRef} className="min-w-0 scroll-mt-4">
-            {auth === "openai_codex" ? (
+            {auth === CHATGPT_PLAN_PROVIDER || source?.provider === CHATGPT_PLAN_PROVIDER ? (
+              <ChatGPTPlanCard onStatus={setPlanStatus} />
+            ) : auth === "openai_codex" ? (
               <CodexOAuthCard />
             ) : source && connection ? (
               <section

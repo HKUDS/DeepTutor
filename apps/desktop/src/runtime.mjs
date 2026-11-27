@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { randomBytes } from 'node:crypto';
 import { access, cp, mkdir, readFile, rm, symlink, realpath, readdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
@@ -66,7 +67,7 @@ export class SourceRuntime extends EventEmitter {
 
   update(state) { this.state = { ...this.state, ...state }; this.emit('status', this.state); }
 
-  async start(input, cachePath) {
+  async start(input, cachePath, planKey, planSessionToken) {
     const config = validateConfig(input);
     this.config = config;
     this.update({ phase: 'starting', step: 'checking', mode: config.mode });
@@ -103,12 +104,18 @@ export class SourceRuntime extends EventEmitter {
       delete env.DEEPTUTOR_LAUNCHER_PID;
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.PYTHONHOME;
+      delete env.DEEPTUTOR_CHATGPT_PLAN_KEY;
+      delete env.DEEPTUTOR_CHATGPT_PLAN_SESSION;
+      delete env.DEEPTUTOR_DESKTOP_READY_KEY;
       await this.group.run(config.pythonPath, ['-m', 'deeptutor_cli.main', 'init', '--non-interactive', '--home', config.runtimeHome],
         { cwd: config.runtimeHome, env });
       let auth = {};
       try { auth = JSON.parse(await readFile(path.join(config.runtimeHome, 'data/user/settings/auth.json'), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       const authEnabled = String(Boolean(auth.enabled));
+      const planEnabled = Boolean(config.mode === 'bundled' && !auth.enabled && planKey && planSessionToken);
+      const backendProofKey = planEnabled ? randomBytes(32).toString('hex') : undefined;
+      const frontendProofKey = planEnabled ? randomBytes(32).toString('hex') : undefined;
       Object.assign(env, {
         AUTH_ENABLED: authEnabled, NEXT_PUBLIC_AUTH_ENABLED: authEnabled,
         DEEPTUTOR_AUTH_ENABLED: authEnabled, DEEPTUTOR_API_BASE_URL: backendURL,
@@ -124,22 +131,34 @@ export class SourceRuntime extends EventEmitter {
       this.update({ step: 'startingCore' });
       this.backend = this.group.spawn(config.pythonPath,
         ['-m', 'deeptutor_cli.main', 'serve', '--host', '127.0.0.1', '--port', String(backendPort)],
-        { cwd: config.runtimeHome, env });
+        { cwd: config.runtimeHome, env: planEnabled
+          ? { ...env, DEEPTUTOR_BACKEND_WORKERS: '1', DEEPTUTOR_CHATGPT_PLAN_KEY: planKey, DEEPTUTOR_CHATGPT_PLAN_SESSION: planSessionToken, DEEPTUTOR_DESKTOP_READY_KEY: backendProofKey }
+          : env });
       await waitReady(`${backendURL}/health/ready`, {
-        signal: this.controller.signal, alive: () => this.group.alive(this.backend),
+        signal: this.controller.signal, alive: () => this.group.alive(this.backend), proofKey: backendProofKey,
       });
       this.update({ step: 'openingSpace' });
       this.frontend = this.group.spawn(config.nodePath,
         config.mode === 'bundled' ? [path.join(webPath, 'server.js')]
           : [path.join(webPath, 'scripts/dev.mjs'), '--webpack', '--hostname', '127.0.0.1', '--port', String(frontendPort)],
-        { cwd: webPath, env: { ...env, PORT: String(frontendPort), HOSTNAME: '127.0.0.1', DEEPTUTOR_NEXT_DIST_DIR: '.next', DEEPTUTOR_NEXT_TSCONFIG: 'tsconfig.json', NEXT_TELEMETRY_DISABLED: '1' } });
-      await waitReady(url, {
+        { cwd: webPath, env: { ...env, PORT: String(frontendPort), HOSTNAME: '127.0.0.1', DEEPTUTOR_NEXT_DIST_DIR: '.next', DEEPTUTOR_NEXT_TSCONFIG: 'tsconfig.json', NEXT_TELEMETRY_DISABLED: '1',
+          ...(planEnabled ? { DEEPTUTOR_DESKTOP_READY_KEY: frontendProofKey } : {}) } });
+      const frontendReadyURL = planEnabled ? `${url}/_deeptutor_desktop/ready` : url;
+      await waitReady(frontendReadyURL, {
         signal: this.controller.signal, timeout: 240000,
         alive: () => this.group.alive(this.frontend) && this.group.alive(this.backend),
+        proofKey: frontendProofKey,
       });
       const versionFile = await readFile(path.join(config.sourcePath, 'deeptutor/__version__.py'), 'utf8');
       const coreVersion = /__version__\s*=\s*['"]([^'"]+)/.exec(versionFile)?.[1] ?? 'dev';
-      this.update({ phase: 'ready', step: 'ready', coreVersion, url, owned: true });
+      if (planEnabled && !await probe(`${backendURL}/health/ready`, { proofKey: backendProofKey })) {
+        throw new Error('The Desktop runtime identity could not be verified. Restart the core.');
+      }
+      this.controller.signal.throwIfAborted();
+      if (!this.group.alive(this.backend) || !this.group.alive(this.frontend)) {
+        throw new Error('A runtime process exited early; see the runtime log');
+      }
+      this.update({ phase: 'ready', step: 'ready', coreVersion, url, owned: true, planAuthenticated: planEnabled });
       for (const child of [this.backend, this.frontend]) {
         child.done.then(() => {
           if (this.state.phase === 'ready') void this.fail(new Error('A core process exited. Restart the core.'));
@@ -149,7 +168,12 @@ export class SourceRuntime extends EventEmitter {
         if (this.checking || this.state.phase !== 'ready') return;
         this.checking = true;
         try {
-          this.misses = await probe(`${backendURL}/health/ready`) ? 0 : (this.misses ?? 0) + 1;
+          const backendReady = await probe(`${backendURL}/health/ready`, { proofKey: backendProofKey });
+          if (planEnabled && (!backendReady || !await probe(frontendReadyURL, { proofKey: frontendProofKey }))) {
+            if (this.state.phase === 'ready') await this.fail(new Error('The Desktop runtime identity could not be verified. Restart the core.'));
+            return;
+          }
+          this.misses = backendReady ? 0 : (this.misses ?? 0) + 1;
           if (this.misses >= 3 && this.state.phase === 'ready') await this.fail(new Error('The core failed three health checks in a row. Restart the core.'));
         } finally { this.checking = false; }
       }, 10000);

@@ -9199,6 +9199,57 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/settings/providers/chatgpt-plan/{action}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Chatgpt Plan Action */
+    readonly post: operations["chatgpt_plan_action_api_settings_providers_chatgpt_plan__action__post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/providers/chatgpt-plan/models": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Chatgpt Plan Models */
+    readonly get: operations["chatgpt_plan_models_api_settings_providers_chatgpt_plan_models_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/providers/chatgpt-plan/status": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Chatgpt Plan Status */
+    readonly get: operations["chatgpt_plan_status_api_settings_providers_chatgpt_plan_status_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/settings/providers/codebuddy/auth/cancel": {
     readonly parameters: {
       readonly query?: never;
@@ -13110,6 +13161,13 @@ export interface components {
       readonly max_file_mb: number;
       /** Max Total Mb */
       readonly max_total_mb: number;
+    };
+    /** ChatGPTPlanAccountPayload */
+    readonly ChatGPTPlanAccountPayload: {
+      /** Account Id */
+      readonly account_id?: string | null;
+      /** Label */
+      readonly label?: string | null;
     };
     /** ChatHistoryImportRequest */
     readonly ChatHistoryImportRequest: {
@@ -19163,6 +19221,8 @@ export type SchemaChatAttachmentRequest =
   components["schemas"]["ChatAttachmentRequest"];
 export type SchemaChatAttachmentSettingsUpdate =
   components["schemas"]["ChatAttachmentSettingsUpdate"];
+export type SchemaChatGptPlanAccountPayload =
+  components["schemas"]["ChatGPTPlanAccountPayload"];
 export type SchemaChatHistoryImportRequest =
   components["schemas"]["ChatHistoryImportRequest"];
 export type SchemaChatMessageRequest =
@@ -40280,6 +40340,119 @@ export interface operations {
         };
         content: {
           readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly chatgpt_plan_action_api_settings_providers_chatgpt_plan__action__post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly action:
+          "start" | "add" | "cancel" | "disconnect" | "dismiss-welcome";
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: {
+      readonly content: {
+        readonly "application/json":
+          components["schemas"]["ChatGPTPlanAccountPayload"] | null;
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly chatgpt_plan_models_api_settings_providers_chatgpt_plan_models_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": readonly {
+            readonly [key: string]: string;
+          }[];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly chatgpt_plan_status_api_settings_providers_chatgpt_plan_status_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */

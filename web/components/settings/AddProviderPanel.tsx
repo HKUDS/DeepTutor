@@ -7,6 +7,7 @@ import { formatProviderLabel } from '@/lib/provider-branding'
 import type { ApiFormat, ServiceName } from '@/lib/model-catalog-types'
 import { SERVICE_TITLES } from '@/lib/provider-registry'
 import { inputClass, selectClass, subPanelClass } from './shared'
+import { CHATGPT_PLAN_LABEL, CHATGPT_PLAN_PROVIDER } from '@/lib/chatgpt-plan'
 import { registryButton, registryPrimary } from './RegistryControls'
 
 export type ProviderCatalogOption = { value: string; label: string; services: ServiceName[] }
@@ -146,9 +147,9 @@ export function AddProviderPanel({
             className={`relative flex min-h-24 min-w-0 flex-col rounded-xl border p-4 text-left cursor-pointer outline-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)] ${vendor === option.value ? 'border-[var(--primary)] bg-[var(--accent)]' : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)]'}`}
           >
             {/* Anchor the hidden radio to its card so focus cannot scroll the settings shell. */}
-            <input type="radio" className="sr-only" name={radioName} value={option.value} aria-label={option.value === 'custom' ? t('Custom') : option.label} checked={vendor === option.value} onChange={() => onVendor(option.value)} />
+            <input type="radio" className="sr-only" name={radioName} value={option.value} aria-label={option.value === 'custom' ? t('Custom') : option.value === CHATGPT_PLAN_PROVIDER ? CHATGPT_PLAN_LABEL : option.label} checked={vendor === option.value} onChange={() => onVendor(option.value)} />
             <span className="flex items-start gap-2.5 text-[15px] font-medium leading-6">
-              <ProviderIcon provider={option.value} size={20} />
+              <ProviderIcon provider={option.value === CHATGPT_PLAN_PROVIDER ? "openai" : option.value} size={20} />
               <span className="min-w-0 break-words">{option.value === 'custom' ? t('Custom') : option.label}</span>
             </span>
             <span className="mt-3 flex flex-wrap gap-1.5">
@@ -156,6 +157,8 @@ export function AddProviderPanel({
                 <span className="text-[13px] text-[var(--muted-foreground)]">
                   {t('settings.providerServices.customHint')}
                 </span>
+              ) : option.value === CHATGPT_PLAN_PROVIDER ? (
+                <span className="text-[13px] text-[var(--muted-foreground)]">{t("Sign in to use your ChatGPT plan for text chat.")}</span>
               ) : (
                 option.services.map(service => (
                   <span

@@ -52,6 +52,20 @@ class LLMReasoningBudgetExhausted(LLMProviderError):
         self.diagnostics = diagnostics or {}
 
 
+class LLMChatGPTPlanUsageLimit(LLMProviderError):
+    """The user must review their ChatGPT plan or connected app limits."""
+
+    error_code = "chatgpt_plan_usage_limit"
+    retryable = False
+
+
+class LLMChatGPTPlanLoginRequired(LLMProviderError):
+    """A confirmed credential failure needs a fresh sign-in."""
+
+    error_code = "chatgpt_plan_login_required"
+    retryable = False
+
+
 class LLMProviderTransportError(LLMProviderError):
     """A retryable provider connection or response-stream failure."""
 

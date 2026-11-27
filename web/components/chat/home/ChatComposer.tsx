@@ -50,6 +50,7 @@ import type { SelectedHistorySession } from "@/components/chat/HistorySessionPic
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { LLMSelection } from "@/features/chat/model/protocol";
+import { CHATGPT_PLAN_PROVIDER, CHATGPT_PLAN_USAGE_URL } from "@/lib/chatgpt-plan";
 import { sameLLMSelection, type LLMOption } from "@/lib/llm-options";
 import { effectiveReasoningEffort } from "@/lib/reasoning-effort";
 import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
@@ -1611,6 +1612,13 @@ export default memo(function ChatComposer({
               </div>
 
               <div className={styles.actions}>
+                {effortModelOption?.provider === CHATGPT_PLAN_PROVIDER && (
+                  <a href={CHATGPT_PLAN_USAGE_URL} target="_blank" rel="noreferrer"
+                    aria-label={t("Manage ChatGPT usage")}
+                    className="shrink-0 rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
+                    {t("Using ChatGPT plan")}
+                  </a>
+                )}
                 <ModelSelector
                   options={llmOptions}
                   activeDefault={activeLLMDefault}
