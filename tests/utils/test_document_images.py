@@ -289,6 +289,35 @@ def test_pdf_images_default_budget_caps_at_twelve(tmp_path) -> None:
     assert result.collection.skipped_page_budget == 0
 
 
+def test_pdf_image_cap_skips_decode_but_maps_repeated_images(monkeypatch) -> None:
+    pymupdf = pytest.importorskip("pymupdf")
+    rect = pymupdf.Rect(72, 72, 300, 220)
+    with pymupdf.open() as pdf:
+        kept = [
+            pdf.new_page().insert_image(rect, stream=_png_for_index(index)) for index in range(12)
+        ]
+        skipped = pdf.new_page().insert_image(rect, stream=_png_for_index(12))
+        last_page = pdf.new_page()
+        last_page.insert_image(rect, xref=kept[0])
+        last_page.insert_image(rect, xref=skipped)
+        data = pdf.tobytes()
+
+    decoded = []
+    extract_image = pymupdf.Document.extract_image
+
+    def track_decode(document, xref):
+        decoded.append(xref)
+        return extract_image(document, xref)
+
+    monkeypatch.setattr(pymupdf.Document, "extract_image", track_decode)
+    result = extract_pdf_images(data)
+
+    assert decoded == kept
+    assert len(result.collection.images) == 12
+    assert result.collection.skipped_budget == 1
+    assert result.page_map == tuple((i + 1, (i,)) for i in range(12)) + ((14, (0,)),)
+
+
 # ---------------------------------------------------------------------------
 # Inline transport bound
 # ---------------------------------------------------------------------------
