@@ -34,7 +34,7 @@ export default function ShellLayout({
           <CalendarRuntime>
             <ChatRuntimeProvider>
               {/* Above the page on purpose: sending the first message navigates
-                  /chat → /chat/<id>, and hopping to Space/Settings keeps live
+                  /chat → /chat/<id>, and hopping to Space/Personalization keeps live
                   streams and open reading materials intact. */}
               <ReadingProvider>
                 <AppShell sidebar={<WorkspaceSidebar />} pageBar={<LayoutPageBar />}>
