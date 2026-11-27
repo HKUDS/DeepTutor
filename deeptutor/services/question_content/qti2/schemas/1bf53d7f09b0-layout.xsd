@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+<xs:annotation>
+  <xs:documentation>
+  This is the XML schema module for the layout elements of the 
+  presentation part of MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "mrow" -->
+
+<xs:attributeGroup name="mrow.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mrow.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mrow.attlist"/>
+</xs:complexType>
+
+<xs:element name="mrow" type="mrow.type"/>
+
+<!-- "mfrac" -->
+
+<xs:attributeGroup name="mfrac.attlist">
+  <xs:attribute name="bevelled" type="xs:boolean"/>
+  <xs:attribute name="denomalign" type="centering" default="center"/>
+  <xs:attribute name="numalign" type="centering" default="center"/>
+  <xs:attribute name="linethickness" default="1">
+    <xs:simpleType>
+      <xs:union memberTypes="length-with-optional-unit thickness"/>
+    </xs:simpleType> 
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mfrac.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="mfrac.attlist"/>
+</xs:complexType>
+
+<xs:element name="mfrac" type="mfrac.type"/>
+
+<!-- "msqrt" -->
+
+<xs:attributeGroup name="msqrt.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<!-- "msqrt" has an "inferred mrow" if more than one argument -->
+<xs:complexType name="msqrt.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="msqrt.attlist"/>  
+</xs:complexType>
+
+<xs:element name="msqrt" type="msqrt.type"/>
+
+<!-- "mroot" -->
+
+<xs:attributeGroup name="mroot.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mroot.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="2" maxOccurs="2"/>
+  <xs:attributeGroup ref="mroot.attlist"/>
+</xs:complexType>
+
+<xs:element name="mroot" type="mroot.type"/>
+
+<!-- "mpadded" -->
+
+<xs:simpleType name="mpadded-space">
+  <xs:restriction base="xs:string">
+    <xs:pattern
+value="(\+|-)?([0-9]+|[0-9]*\.[0-9]+)(((%?) *(width|lspace|height|depth))|(em|ex|px|in|cm|mm|pt|pc))"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="mpadded-width-space">
+  <xs:restriction base="xs:string">
+    <!-- MaxF: definition from spec seems wrong, fixing to ([+|-] unsigned-number (%[pseudo-unit]|pseudo-unit|h-unit)) | namedspace | 0 -->
+    <xs:pattern value="((\+|-)?([0-9]+|[0-9]*\.[0-9]+)(((%?) *(width|lspace|height|depth)?)|(width|lspace|height|depth)|(em|ex|px|in|cm|mm|pt|pc)))|((veryverythin|verythin|thin|medium|thick|verythick|veryverythick)mathspace)|0"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:attributeGroup name="mpadded.attlist">
+  <xs:attribute name="width" type="mpadded-width-space"/>
+  <!-- should have default=0 below but '0' is not in value space -->
+  <!-- see bug #425 -->
+  <xs:attribute name="lspace" type="mpadded-space"/>
+  <xs:attribute name="height" type="mpadded-space"/>
+  <xs:attribute name="depth" type="mpadded-space"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mpadded.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mpadded.attlist"/>
+</xs:complexType>
+
+<xs:element name="mpadded" type="mpadded.type"/>
+
+<!-- "mphantom" -->
+
+<xs:attributeGroup name="mphantom.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mphantom.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mphantom.attlist"/>
+</xs:complexType>
+
+<xs:element name="mphantom" type="mphantom.type"/>
+
+<!-- "mfenced" -->
+
+<xs:attributeGroup name="mfenced.attlist">
+  <xs:attribute name="open" type="xs:string" default="("/>
+  <xs:attribute name="close" type="xs:string" default=")"/>
+  <xs:attribute name="separators" type="xs:string" default=","/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mfenced.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mfenced.attlist"/>
+</xs:complexType>
+
+<xs:element name="mfenced" type="mfenced.type"/>
+
+<!-- "menclose" -->
+
+<xs:attributeGroup name="menclose.attlist">
+  <xs:attribute name="notation" default="longdiv">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+        <xs:enumeration value="actuarial"/>
+        <xs:enumeration value="longdiv"/>
+        <xs:enumeration value="radical"/>
+        <xs:enumeration value="box"/>
+        <xs:enumeration value="roundedbox"/>
+        <xs:enumeration value="circle"/>
+        <xs:enumeration value="left"/>
+        <xs:enumeration value="right"/>
+        <xs:enumeration value="top"/>
+        <xs:enumeration value="bottom"/>
+        <xs:enumeration value="updiagonalstrike"/>
+        <xs:enumeration value="downdiagonalstrike"/>
+        <xs:enumeration value="verticalstrike"/>
+        <xs:enumeration value="horizontalstrike"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="menclose.type">
+  <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="menclose.attlist"/>
+</xs:complexType>
+
+<xs:element name="menclose" type="menclose.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Presentation-layout.class">
+  <xs:choice> 
+    <xs:element ref="mrow"/>
+    <xs:element ref="mfrac"/>
+    <xs:element ref="msqrt"/>
+    <xs:element ref="mroot"/>
+    <xs:element ref="mpadded"/>
+    <xs:element ref="mphantom"/>
+    <xs:element ref="mfenced"/>
+    <xs:element ref="menclose"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

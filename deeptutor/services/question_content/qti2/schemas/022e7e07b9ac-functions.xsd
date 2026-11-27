@@ -1,0 +1,73 @@
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for operators dealing with functions in content
+  MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+
+<xs:complexType name="Functions.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<!-- "compose" -->
+
+<xs:element name="compose" type="Functions.type"/>
+
+<!-- Domain, codomain and image -->
+
+<xs:element name="domain" type="Functions.type"/>
+<xs:element name="codomain" type="Functions.type"/>
+<xs:element name="image" type="Functions.type"/>
+
+<!-- "domainofapplication" -->
+
+<xs:group name="domainofapplication.content">
+  <xs:sequence>
+     <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="domainofapplication.type">
+  <xs:group ref="domainofapplication.content"/>
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<xs:element name="domainofapplication" type="domainofapplication.type"/>
+
+<!-- identity -->
+
+<xs:element name="ident" type="Functions.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-functions.class">
+  <xs:choice>
+    <xs:element ref="compose"/>
+    <xs:element ref="domain"/>
+    <xs:element ref="codomain"/>
+    <xs:element ref="image"/>
+    <xs:element ref="domainofapplication"/>
+    <xs:element ref="ident"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

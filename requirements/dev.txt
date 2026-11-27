@@ -8,6 +8,8 @@
 # Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
 
 -r server.txt
+# QTI exchange tests need the same optional parser the runtime extra uses.
+-r qti.txt
 
 pytest>=7.0.0
 pytest-asyncio>=0.23.0

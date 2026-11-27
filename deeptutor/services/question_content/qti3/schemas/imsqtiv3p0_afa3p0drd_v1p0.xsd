@@ -1,0 +1,437 @@
+<?xml version = "1.0" encoding = "UTF-8"?>
+<xs:schema xmlns="http://www.imsglobal.org/xsd/qti/qtiv3p0/imsafa3p0drd_v1p0"
+     targetNamespace="http://www.imsglobal.org/xsd/qti/qtiv3p0/imsafa3p0drd_v1p0"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     version="IMS AFA DRD 3.0 QTI 3.0"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified">
+
+    <xs:annotation>
+        <xs:documentation>
+            XSD Data File Information
+            =========================
+            Author:         Colin Smythe (IMS Global, UK)
+            Date:           2nd April, 2019
+            Version:        1.0
+            Status:         IMS Candidate Final
+            Description:    This is the PSM for the QTI 3.0 Profile for the Access For All Digital Resource Description (DRD) data model.
+
+            History:        The original Final Release.
+
+            PROFILE:        This is the "QTIv3p0-AFADRD". THIS IS A PROFILE OF THE BASE SPECIFICATION.
+                            The changes to the base specification are:
+                            * The schema namespace has been changed to "http://www.imsglobal.org/xsd/qti/qtiv3p0/imsafa3p0drd_v1p0".
+                            * The schema version has been changed to "IMS AFA DRD 3.0 QTI 3.0".
+
+            License:        IPR and Distribution Notices
+
+                            This machine readable file is derived from IMS Global specification IMS Question and Test Interoperability 3.0 Access for All (AfA) Digital Resource Description (DRD) Profile Version 1.0
+                            found at http://www.imsglobal.org/afa and the original IMS Global schema binding or code base
+                            http://www.imsglobal.org/afa.
+
+                            Recipients of this document are requested to submit, with their comments, notification of any relevant 
+                            patent claims or other intellectual property rights of which they may be aware that might be infringed by
+                            any implementation of the specification set forth in this document, and to provide supporting documentation.
+
+                            IMS takes no position regarding the validity or scope of any intellectual property or other rights that might
+                            be claimed to pertain to the implementation or use of the technology described in this document or the extent 
+                            to which any license under such rights might or might not be available; neither does it represent that it has 
+                            made any effort to identify any such rights. Information on IMS procedures with respect to rights in IMS 
+                            specifications can be found at the IMS Global Intellectual Property Rights web page: http://www.imsglobal.org/ipr/imsipr_policyFinal.pdf.
+
+                            Copyright (c) IMS Global Learning Consortium 1999-2019. All Rights Reserved.
+
+                            Use of this specification to develop products or services is governed by the license with IMS found on the IMS website: http://www.imsglobal.org/license.html.
+
+                            Permission is granted to all parties to use excerpts from this document as needed in producing requests for proposals.
+
+                            The limited permissions granted above are perpetual and will not be revoked by IMS or its successors or assigns.
+
+                            THIS SPECIFICATION IS BEING OFFERED WITHOUT ANY WARRANTY WHATSOEVER, AND IN PARTICULAR, ANY WARRANTY OF NONINFRINGEMENT IS
+                            EXPRESSLY DISCLAIMED. ANY USE OF THIS SPECIFICATION SHALL BE MADE ENTIRELY AT THE IMPLEMENTERS OWN RISK, AND NEITHER THE CONSORTIUM
+                            NOR ANY OF ITS MEMBERS OR SUBMITTERS, SHALL HAVE ANY LIABILITY WHATSOEVER TO ANY IMPLEMENTER OR THIRD PARTY FOR ANY DAMAGES OF
+                            ANY NATURE WHATSOEVER, DIRECTLY OR INDIRECTLY, ARISING FROM THE USE OF THIS SPECIFICATION.
+
+            Source UML File Information
+            ===========================
+            The source file information must be supplied as an XMI file (without diagram layout information).
+            The supported UML authoring tools are:
+            (a) Poseidon - v6 (and later)
+            (b) Papyrus - v1.1.3 (and later)
+
+            Source XSLT File Information
+            ============================
+            XSL Generator:    Specificationv1p0_GenerationToolv1.xsl
+            XSLT Processor:   Saxon
+            Release:          1.0
+            Date:             31st July, 2017
+            Autogen Engineer: Colin Smythe (IMS Global, UK)
+            Autogen Date:     2019-04-01
+
+            IMS Global Auto-generation Binding Tool-kit (I-BAT)
+            ===================================================
+            This file was auto-generated using the IMS Global Binding Auto-generation Tool-kit (I-BAT).  While every
+            attempt has been made to ensure that this tool auto-generates the files correctly, users should be aware
+            that this is an experimental tool.  Permission is given to make use of this tool.  IMS Global makes no
+            claim on the materials created by third party users of this tool.  Details on how to use this tool
+            are contained in the IMS Global "I-BAT" documentation available at the IMS Global web-site:
+            http://www.imsglobal.org.
+
+            Tool Copyright:  2012-2019  (c) IMS Global Learning Consortium Inc.  All Rights Reserved.
+        </xs:documentation>
+    </xs:annotation>
+
+    <!-- Generate Global Attributes (non-assigned) ******************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global Attributes *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global List Types *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Namespaced extension Group  ************************************************************* -->
+
+    <xs:group name="grpStrict.any">
+        <xs:annotation>
+            <xs:documentation>
+                Any namespaced element from any namespace, other than the target namespace, may be included within an "any" element.
+                The namespace for the imported element must be defined in the instance, and the schema must be imported.
+                The extension has a definition of "strict" i.e. they must have their own namespace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:any namespace = "##other" processContents = "strict" minOccurs = "0" maxOccurs = "unbounded" />
+        </xs:sequence>
+    </xs:group>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Special DataTypes  ********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the enumerated simpleType declarations ************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Parameter) ***************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Derived) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Union) ********************************* -->
+
+    <xs:element name="accessMode">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="auditory" />
+                        <xs:enumeration value="colour" />
+                        <xs:enumeration value="itemSize" />
+                        <xs:enumeration value="olfactory" />
+                        <xs:enumeration value="orientation" />
+                        <xs:enumeration value="position" />
+                        <xs:enumeration value="tactile" />
+                        <xs:enumeration value="textOnImage" />
+                        <xs:enumeration value="textual" />
+                        <xs:enumeration value="visual" />
+                    </xs:restriction>
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="accessModeAdapted">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="auditory" />
+                        <xs:enumeration value="colour" />
+                        <xs:enumeration value="itemSize" />
+                        <xs:enumeration value="olfactory" />
+                        <xs:enumeration value="orientation" />
+                        <xs:enumeration value="position" />
+                        <xs:enumeration value="tactile" />
+                        <xs:enumeration value="textOnImage" />
+                        <xs:enumeration value="textual" />
+                        <xs:enumeration value="visual" />
+                    </xs:restriction>
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="adaptationDetail">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="enhanced" />
+                        <xs:enumeration value="verbatim" />
+                        <xs:enumeration value="realTime" />
+                        <xs:enumeration value="symbolic" />
+                        <xs:enumeration value="recorded" />
+                        <xs:enumeration value="synthesized" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="adaptationMediaType">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="Daisy" />
+                        <xs:enumeration value="braille" />
+                        <xs:enumeration value="NIMAS" />
+                        <xs:enumeration value="MathML" />
+                        <xs:enumeration value="ChemML" />
+                        <xs:enumeration value="LaTeX" />
+                        <xs:enumeration value="OEBPS" />
+                        <xs:enumeration value="PDF" />
+                        <xs:enumeration value="LIT" />
+                        <xs:enumeration value="Nemeth" />
+                        <xs:enumeration value="EPUB3" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="adaptationType">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="alternativeText" />
+                        <xs:enumeration value="audioDescription" />
+                        <xs:enumeration value="captions" />
+                        <xs:enumeration value="e-book" />
+                        <xs:enumeration value="haptic" />
+                        <xs:enumeration value="highContrast" />
+                        <xs:enumeration value="longDescription" />
+                        <xs:enumeration value="signLanguage" />
+                        <xs:enumeration value="transcript" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="apiInteroperable">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="AndroidAccessibility" />
+                        <xs:enumeration value="ARIA" />
+                        <xs:enumeration value="ATK" />
+                        <xs:enumeration value="AT-SPI" />
+                        <xs:enumeration value="BlackberryAccessibility" />
+                        <xs:enumeration value="iAccessible2" />
+                        <xs:enumeration value="JavaAccessibility" />
+                        <xs:enumeration value="MacOSXAccessibility" />
+                        <xs:enumeration value="MSAA" />
+                        <xs:enumeration value="UIAutomation" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="controlFlexibility">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="fullKeyboardControl" />
+                        <xs:enumeration value="fullMouseControl" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="displayTransformability">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="backgroundColour" />
+                        <xs:enumeration value="cursorPresentation" />
+                        <xs:enumeration value="fontFace" />
+                        <xs:enumeration value="fontSize" />
+                        <xs:enumeration value="fontWeight" />
+                        <xs:enumeration value="foregroundColour" />
+                        <xs:enumeration value="highlightPresentation" />
+                        <xs:enumeration value="layout" />
+                        <xs:enumeration value="letterSpacing" />
+                        <xs:enumeration value="lineHeight" />
+                        <xs:enumeration value="structurePresentation" />
+                        <xs:enumeration value="wordSpacing" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="educationalComplexityOfAdaptation">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="enriched" />
+                        <xs:enumeration value="simplified" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="hazard">
+        <xs:simpleType>
+            <xs:union>
+                <xs:simpleType>
+                    <xs:restriction base="ExtensionString.Type" />
+                </xs:simpleType>
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="flashing" />
+                        <xs:enumeration value="sound" />
+                        <xs:enumeration value="olfactoryHazard" />
+                        <xs:enumeration value="motionSimulation" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:union>
+        </xs:simpleType>
+    </xs:element>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Complex) ******************************* -->
+
+    <xs:element name="atInteroperable" type="xs:boolean" />
+
+    <xs:element name="educationalLevelOfAdaptation" type="xs:normalizedString" />
+
+    <xs:element name="hasAdaptation" type="xs:anyURI" />
+
+    <xs:element name="isAdaptationOf" type="xs:anyURI" />
+
+    <xs:element name="isFullAdaptationOf" type="xs:anyURI" />
+
+    <xs:element name="isPartialAdaptationOf" type="xs:anyURI" />
+
+    <xs:element name="languageOfAdaptation" type="xs:normalizedString" />
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon simpleType ************************************ -->
+
+    <xs:simpleType name="ExtensionString.Type">
+        <xs:restriction base="xs:string">
+            <xs:pattern value="(ext:)[ a-z | A-Z | 0-9 | . | _ ]+" />
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon derived simpleType **************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the ComplexTypes ************************************************************************ -->
+
+    <xs:complexType name="Access_For_All_Resource.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Access_for_All_Resource complexType is the container for a collection of information  
+                that states how a digital learning resource can be perceived, understood or interacted wi-
+                th by users.                                                                              
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element ref="accessMode" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="accessModeAdapted" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="adaptationType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="atInteroperable" minOccurs="0" maxOccurs="1" />
+            <xs:element ref="controlFlexibility" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="displayTransformability" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="educationalComplexityOfAdaptation" minOccurs="0" maxOccurs="1" />
+            <xs:element ref="hasAdaptation" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="hazard" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="isAdaptationOf" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="languageOfAdaptation" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="adaptationDetail" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="adaptationMediaType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="apiInteroperable" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="educationalLevelOfAdaptation" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="isFullAdaptationOf" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element ref="isPartialAdaptationOf" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpStrict.any" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the SOAP Binding ComplexTypes *********************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived ComplexTypes **************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Complex) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Derived) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the root element(s) *************************************************************** -->
+
+    <xs:element name="accessForAllResource" type="Access_For_All_Resource.Type" />
+
+    <!-- ================================================================================================== -->
+
+</xs:schema>

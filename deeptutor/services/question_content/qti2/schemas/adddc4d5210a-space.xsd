@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is the XML Schema module for the MathML "mspace" element.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<xs:attributeGroup name="mspace.attlist">
+  <xs:attribute name="width" default="0em">
+    <xs:simpleType>
+      <xs:union memberTypes="length-with-unit named-space"/>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="height" type="length-with-unit" default="0ex"/>
+  <xs:attribute name="depth" type="length-with-unit" default="0ex"/>
+  <xs:attribute name="linebreak" default="auto">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+        <xs:enumeration value="auto"/>
+        <xs:enumeration value="newline"/>
+        <xs:enumeration value="indentingnewline"/>
+        <xs:enumeration value="nobreak"/>
+        <xs:enumeration value="goodbreak"/>
+        <xs:enumeration value="badbreak"/>
+     </xs:restriction>
+   </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mspace.type">
+  <xs:attributeGroup ref="mspace.attlist"/>
+</xs:complexType>
+
+<xs:element name="mspace" type="mspace.type"/>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

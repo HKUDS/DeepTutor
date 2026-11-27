@@ -1,0 +1,138 @@
+{
+  "profile": "QTI 3.0.1 item + QTI 3.0 package",
+  "license": "1EdTech/IMS IPR and distribution notice embedded in XSD annotations; use governed by https://www.imsglobal.org/license.html; XML/MathML/SSML dependencies retain their notices",
+  "files": [
+    {
+      "file": "XInclude.xsd",
+      "sha256": "932d82c0d568968b329f21a06be80bbc025bb22a85ef7042a376f528dfe232b4",
+      "sourceUrl": "https://purl.imsglobal.org/spec/w3/2001/schema/xsd/XInclude.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "b72e1d2a0ab90aca502b827ce12572bfb4ef787fee89b4dcc1ce474dd3c00df0",
+      "officialBytes": 3818,
+      "normalizedGrammarSha256": "2ff4a316a4eb4be6a5efecba4088ef83370b72c85d76bfe007f9a620b463ae84"
+    },
+    {
+      "file": "imsmd_loose_v1p3p2.xsd",
+      "sha256": "1ae9e77aba63b6789574631213c97fd00a3d43aeffb58050ac7befb665fba9f6",
+      "sourceUrl": "https://purl.imsglobal.org/spec/md/v1p3/schema/xsd/imsmd_loose_v1p3p2.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "imsqti_itemv3p0p1_v1p0.xsd",
+      "sha256": "c3cf30ad9359fdd04436b61d5951fe15cca475dc8152f9f6710e235d07e65c55",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqti_itemv3p0p1_v1p0.xsd",
+      "retrieval": "official PURL complete bytes; only four schemaLocation URLs rewritten to existing local basenames (xml.xsd, XInclude.xsd, mathml3.xsd, ssmlv1p1-core.xsd); all schema facets and original annotations/comments retained",
+      "officialSha256": "eddc7e78d16cd077deb60b182cf40a326523070b126610bad854868d0e6a8c8c",
+      "officialBytes": 18364422
+    },
+    {
+      "file": "imsqti_metadatav3p0_v1p0.xsd",
+      "sha256": "448c18d65607695d2a60ce96c42003df98f28630fb044ca14ccc609bad384c8b",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqti_metadatav3p0_v1p0.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "imsqtiv3p0_afa3p0drd_v1p0.xsd",
+      "sha256": "dd3822a3fe0f42af9a25b33be56d11d1a1f3c54ea791bcc355965ceb8f41b064",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqtiv3p0_afa3p0drd_v1p0.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "imsqtiv3p0_cpextv1p2_v1p0.xsd",
+      "sha256": "08122936bfeceac80c6762f1dfbdacaa75593b1519308713d54d06b646e3d85a",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqtiv3p0_cpextv1p2_v1p0.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "imsqtiv3p0_csmv1p1_v1p0.xsd",
+      "sha256": "caa7ddf900afa66fd5efb212a8834b42480f675de092ae927ce0c95b74443d2e",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqtiv3p0_csmv1p1_v1p0.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "imsqtiv3p0_imscpv1p2_v1p0.xsd",
+      "sha256": "242472f6b90e0f1e3589c2796da1cd25e05be2eb214bcedbab192f7a52ad0fe2",
+      "sourceUrl": "https://purl.imsglobal.org/spec/qti/v3p0/schema/xsd/imsqtiv3p0_imscpv1p2_v1p0.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "mathml3-common.xsd",
+      "sha256": "5670ba5dede0c7a777ac1e7f34c0ae9ad820d6c0a6ee72c9cd3f4acb0ec4e0ed",
+      "sourceUrl": "https://purl.imsglobal.org/spec/mathml/v3p0/schema/xsd/mathml3-common.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "94007301de9c8ed29ffed4a5eba6ca6b1e2e7511eda8d2b39e01b97d7d7e5d06",
+      "officialBytes": 4056,
+      "normalizedGrammarSha256": "205045e7e1aefd32795081e2a2292291c095b02b5c99b6e532624c04fe146d74"
+    },
+    {
+      "file": "mathml3-content.xsd",
+      "sha256": "1b42d23d65f49b8c04fd77f73cb0d9e3014a193c2cd6e4ffaa3283f560935b5f",
+      "sourceUrl": "https://purl.imsglobal.org/spec/mathml/v3p0/schema/xsd/mathml3-content.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "922b4082d00559df86b0389842b1d1ba9537db0050ab229d64ad313ddfb44098",
+      "officialBytes": 28446,
+      "normalizedGrammarSha256": "1a39c937e4c3638ba72f8cfc391ba76a562fed4de83d4821cf15c0d19ceef1e5"
+    },
+    {
+      "file": "mathml3-presentation.xsd",
+      "sha256": "d1ad7b57de4ffaced914f2ae9842da7e7b47257855dd54e65169881aeb2c055a",
+      "sourceUrl": "https://purl.imsglobal.org/spec/mathml/v3p0/schema/xsd/mathml3-presentation.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "74d605b09528b7c55a4ae803debc429c27a2afa6cd34607d28df79bcc7f3575b",
+      "officialBytes": 84118,
+      "normalizedGrammarSha256": "5b8858d936876573f9e61643316a00f1a60311005cfa7db9c50b9c181043732d"
+    },
+    {
+      "file": "mathml3-strict-content.xsd",
+      "sha256": "8e312c0ab4fbc35916de9c45c261c3a7ac0949de8b09f95ab3d1e2b191764696",
+      "sourceUrl": "https://purl.imsglobal.org/spec/mathml/v3p0/schema/xsd/mathml3-strict-content.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "cd0da554afbe2d1570c4e548a29ee5eb0b25aea1d6455bacf664080cb5982640",
+      "officialBytes": 6835,
+      "normalizedGrammarSha256": "41bb03916d5bf3b4bc4ca379785e38ff140e930bff58e8fcb79c8b30f906df8f"
+    },
+    {
+      "file": "mathml3.xsd",
+      "sha256": "169ae7473fb035ae448c9681e8b66e7407c8416bb3d2141f0c3adab81b17f580",
+      "sourceUrl": "https://purl.imsglobal.org/spec/mathml/v3p0/schema/xsd/mathml3.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "af49edc2c29c4976d6a9d8860388c026b94ca75edfbd67bbaf67448da9990656",
+      "officialBytes": 425,
+      "normalizedGrammarSha256": "f4b64cd6dfe577c21ba8c258dcc72db97ef7ac7c3f82587d92bd70d94e305d58"
+    },
+    {
+      "file": "ssmlv1p1-core.xsd",
+      "sha256": "32be6d4dfe28f936dc8ec915dd8b6ef4c6ea4433f53464304460ab166627c4ae",
+      "sourceUrl": "https://purl.imsglobal.org/spec/ssml/v1p1/schema/xsd/ssmlv1p1-core.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "f5e6d5ca575722c5ee1de50aefbe483bb8c88d2c46e65f4d7eecb713b8c1f485",
+      "officialBytes": 3410,
+      "normalizedGrammarSha256": "5927f2b5ee4aa0fc7f30d7a67960f08998505f083f4d31a5d12351e64de70eae"
+    },
+    {
+      "file": "synthesis-nonamespace.xsd",
+      "sha256": "7e93703f55e2ceb3854f7d4e964b66345212ac53b6b0eee7cdae21a9509785fd",
+      "sourceUrl": "https://purl.imsglobal.org/spec/ssml/v1p1/schema/xsd/synthesis-nonamespace.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "10608b0b9ad809f78be41e84c655d210fcf27ccc84996ef97cd6dc80b00ace5c",
+      "officialBytes": 36614,
+      "normalizedGrammarSha256": "6e17d1e8945d7fba048cdf2e2fe0e4911fea9a2fc8f0ebd4fb1a966a9e3b5ddd"
+    },
+    {
+      "file": "xlink.xsd",
+      "sha256": "b6956ce4ea55a0e9cb43d59050efc46bd7ab59953a3a497b96bfd51686e71315",
+      "sourceUrl": "https://purl.imsglobal.org/spec/w3/1999/schema/xsd/xlink.xsd",
+      "retrieval": "official PURL; local schemaLocation rewrites"
+    },
+    {
+      "file": "xml.xsd",
+      "sha256": "c5f52be07fafca6c606e75d6ef1f04e1e5356163caec7c99921e5fa3e982a4d5",
+      "sourceUrl": "https://purl.imsglobal.org/spec/w3/2001/schema/xsd/xml.xsd",
+      "retrieval": "official PURL compared with pinned mirror; local schemaLocation rewrites; grammar-equivalent after normalization",
+      "officialSha256": "4c637d0381d988dbf24b680becde6e1c8301b4c4ceef8bfa45a1ee130e77a682",
+      "officialBytes": 9061,
+      "normalizedGrammarSha256": "22787bc1adda827aae70f3c2b525133bb87009e15a547f61e0624032dfbee4c9"
+    }
+  ],
+  "comparisonMethod": "For normalizedGrammarSha256: parse XML with DTD/entities/network disabled and blank text removed; recursively omit XSD annotation and XML comment nodes; compare expanded element names, sorted attributes, significant stripped text and child order; normalize schemaLocation values to the final path basename. SHA-256 is over UTF-8 repr of that recursive tuple."
+}

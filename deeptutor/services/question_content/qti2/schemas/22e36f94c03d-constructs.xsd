@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the basic constructs of content MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "apply" -->
+
+<xs:attributeGroup name="apply.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="apply.content">
+  <xs:sequence>
+     <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="apply.type">
+  <xs:group ref="apply.content"  minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="apply.attlist"/>
+</xs:complexType>
+
+<xs:element name="apply" type="apply.type"/>
+
+<!-- "interval" -->
+
+<xs:attributeGroup name="interval.attlist">
+  <xs:attribute name="closure" default="closed">
+    <xs:simpleType>
+       <xs:restriction base="xs:string">
+          <xs:enumeration value="closed"/>
+          <xs:enumeration value="open"/>
+          <xs:enumeration value="open-closed"/>
+          <xs:enumeration value="closed-open"/>
+       </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<!--
+<xs:group name="interval.content">
+  <xs:choice>
+    <xs:group ref="Content-expr.class" minOccurs="2" maxOccurs="2"/>
+    <xs:element ref="condition"/>
+  </xs:choice>
+</xs:group>
+-->
+
+<xs:complexType name="interval.type">
+<!--  <xs:group ref="interval.content"/> -->
+  <xs:group ref="Content-expr.class" maxOccurs="2"/>
+  <xs:attributeGroup ref="interval.attlist"/>
+</xs:complexType>
+
+<xs:element name="interval" type="interval.type"/>
+
+<!-- "inverse" -->
+
+<xs:attributeGroup name="inverse.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="inverse.type">
+  <xs:attributeGroup ref="inverse.attlist"/>
+</xs:complexType>
+
+<xs:element name="inverse" type="inverse.type"/>
+
+<!-- "condition" -->
+
+<xs:attributeGroup name="condition.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="condition.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="condition.type">
+  <xs:group ref="condition.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="condition.attlist"/>
+</xs:complexType>
+
+<xs:element name="condition" type="condition.type"/>
+
+<!-- "declare" -->
+
+<xs:attributeGroup name="declare.attlist">
+  <xs:attribute name="type" type="xs:string"/>
+  <xs:attribute name="scope" type="xs:string"/>
+  <xs:attribute name="nargs" type="xs:nonNegativeInteger"/>
+  <xs:attribute name="occurrence">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+        <xs:enumeration value="prefix"/>
+        <xs:enumeration value="infix"/>
+        <xs:enumeration value="function-model"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Definition.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="declare.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="declare.type">
+  <xs:group ref="declare.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="declare.attlist"/>
+</xs:complexType>
+
+<xs:element name="declare" type="declare.type"/>
+
+<!-- "lambda" -->
+
+<xs:attributeGroup name="lambda.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="lambda.content">
+    <xs:sequence>
+      <xs:group ref="Content-expr.class"/>
+    </xs:sequence>
+</xs:group>
+
+<xs:complexType name="lambda.type">
+  <xs:group ref="lambda.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="lambda.attlist"/>
+</xs:complexType>
+
+<xs:element name="lambda" type="lambda.type"/>
+
+<!-- "piecewise" and its inner elements -->
+
+<xs:group name="otherwise.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="otherwise.type">
+  <xs:group ref="otherwise.content"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<xs:element name="otherwise" type="otherwise.type"/>
+
+<xs:group name="piece.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="piece.type">
+  <xs:group ref="piece.content" minOccurs="1" maxOccurs="unbounded"/>
+</xs:complexType>
+
+<xs:element name="piece" type="piece.type"/>
+
+<xs:attributeGroup name="piecewise.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="piecewise.content">
+  <xs:sequence>
+    <xs:element ref="piece" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:sequence minOccurs="0">
+      <xs:element ref="otherwise"/>
+      <xs:element ref="piece" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="piecewise.type">
+  <xs:group ref="piecewise.content"/>
+  <xs:attributeGroup ref="piecewise.attlist"/>
+</xs:complexType>
+
+<xs:element name="piecewise" type="piecewise.type"/>
+
+<!-- "bvar" -->
+
+<xs:attributeGroup name="bvar.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="bvar.content">
+    <xs:sequence>
+      <xs:group ref="Content-expr.class"/>
+    </xs:sequence>
+</xs:group>
+
+<xs:complexType name="bvar.type">
+  <xs:group ref="bvar.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="bvar.attlist"/>
+</xs:complexType>
+
+<xs:element name="bvar" type="bvar.type"/>
+
+<!-- "degree" -->
+
+<xs:attributeGroup name="degree.attlist">
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="degree.content">
+    <xs:sequence>
+      <xs:group ref="Content-expr.class"/>
+    </xs:sequence>
+</xs:group>
+
+<xs:complexType name="degree.type">
+  <xs:group ref="degree.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="degree.attlist"/>
+</xs:complexType>
+
+<xs:element name="degree" type="degree.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-constructs.class">
+  <xs:choice>
+    <xs:element ref="apply"/>
+    <xs:element ref="interval"/>
+    <xs:element ref="inverse"/>
+    <xs:element ref="condition"/>
+    <xs:element ref="declare"/>
+    <xs:element ref="lambda"/>
+    <xs:element ref="piecewise"/>
+    <xs:element ref="bvar"/>
+    <xs:element ref="degree"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->
