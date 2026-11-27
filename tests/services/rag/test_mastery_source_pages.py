@@ -748,6 +748,22 @@ def test_useful_partial_lesson_is_cached_but_not_assessment_permission(material,
     assert not progress.mastery_levels and not progress.quiz_attempts
 
 
+def test_incomplete_objective_packet_does_not_suggest_focusless_repreparation(
+    material, monkeypatch
+):
+    _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert evidence["coverage"]["scope"] == "objective"
+    assert evidence["coverage"]["complete"] is False
+
+    with pytest.raises(lessons.LessonUnavailable, match="assessment") as exc:
+        lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+
+    message = str(exc.value)
+    assert "without a focus" not in message
+    assert "later mechanism" in message
+
+
 def test_final_repair_gap_preserves_already_inspected_useful_sources(material, monkeypatch):
     calls = _install_preparation(
         material, monkeypatch, rankings=[_partial_selection(repair=True), _partial_selection()]
