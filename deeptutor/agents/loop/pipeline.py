@@ -1918,6 +1918,7 @@ class AgenticLoopPipeline:
             max_tokens=max_tokens,
             binding=self.binding,
             reasoning_effort=self.reasoning_effort,
+            context_window=getattr(self.llm_config, "context_window", None),
         )
 
     def _can_use_native_tool_calling(self) -> bool:

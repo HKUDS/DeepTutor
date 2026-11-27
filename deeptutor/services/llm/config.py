@@ -313,17 +313,24 @@ def uses_max_completion_tokens(model: str) -> bool:
     return False
 
 
-def get_token_limit_kwargs(model: str, max_tokens: int) -> dict[str, int]:
+def get_token_limit_kwargs(
+    model: str, max_tokens: int, *, context_window: int | None = None
+) -> dict[str, int]:
     """
     Get the appropriate token limit parameter for the model.
 
     Args:
         model: The model name
-        max_tokens: The desired token limit
+        max_tokens: The desired token limit; lowered to the model's known output
+            limit and to half of ``context_window`` (see ``output_limits``)
+        context_window: The configured or detected context window, if any
 
     Returns:
         Dictionary with either {"max_tokens": value} or {"max_completion_tokens": value}
     """
+    from deeptutor.services.llm.output_limits import cap_output_tokens
+
+    max_tokens = cap_output_tokens(max_tokens, model=model, context_window=context_window)
     if uses_max_completion_tokens(model):
         return {"max_completion_tokens": max_tokens}
     return {"max_tokens": max_tokens}

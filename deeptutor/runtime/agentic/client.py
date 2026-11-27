@@ -778,11 +778,12 @@ def build_completion_kwargs(
     max_tokens: int,
     binding: str | None = None,
     reasoning_effort: str | None = None,
+    context_window: int | None = None,
 ) -> dict[str, Any]:
     """Compose temperature + per-model token-limit kwargs into one dict."""
     kwargs: dict[str, Any] = {"temperature": temperature}
     if model:
-        kwargs.update(get_token_limit_kwargs(model, max_tokens))
+        kwargs.update(get_token_limit_kwargs(model, max_tokens, context_window=context_window))
     kwargs.update(
         build_provider_extra_kwargs(
             binding=binding,
