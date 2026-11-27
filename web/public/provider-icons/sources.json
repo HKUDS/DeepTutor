@@ -123,6 +123,11 @@
       "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
       "source": "Official website asset"
     },
+    "straitly.svg": {
+      "url": "https://straitly.ai/favicon.svg",
+      "sha256": "5e2d1971421b495ecbe806cdee6a51ab448c2e4b7d18a3e04094e9217fb9d8d2",
+      "source": "Official website favicon; verified 2026-11-27"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",

@@ -421,6 +421,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.stdcmpt.com/v1",
     ),
     ProviderSpec(
+        name="straitly",
+        keywords=("straitly",),
+        env_key="STRAITLY_API_KEY",
+        display_name="Straitly",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="straitly",
+        default_api_base="https://api.straitly.ai/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
