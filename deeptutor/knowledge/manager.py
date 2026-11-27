@@ -1537,11 +1537,12 @@ class KnowledgeBaseManager:
             default_name: A pre-resolved default name for bulk callers. This
                 avoids rescanning the knowledge-base list for every item.
         """
-        config = self._load_config() if refresh_config else self.config
-
         resolved_default = default_name
         if resolved_default is None:
             resolved_default = self.get_default()
+
+        # Finding the default can auto-register on-disk indexes.
+        config = self._load_config() if refresh_config else self.config
 
         kb_name = name or resolved_default
         if kb_name is None:
