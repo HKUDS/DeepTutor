@@ -189,16 +189,23 @@ async def get_source_library(kind: str, limit: int = 50, offset: int = 0, search
         # The workspace's own knowledge bases plus the ones assigned to it.
         from deeptutor.multi_user.knowledge_access import list_visible_knowledge_bases
         from deeptutor.services.workspace.context import current_workspace_id
-        from deeptutor.services.workspace.knowledge import parse_kb_id
+        from deeptutor.services.workspace.knowledge import parse_kb_id, qualified_kb_id
 
         items = []
         for row in list_visible_knowledge_bases():
             # Own bases carry a local id; assigned ones name their home store.
-            parsed = parse_kb_id(str(row.get("id") or ""))
+            resource_id = str(row.get("id") or "")
+            parsed = parse_kb_id(resource_id)
             origin = parsed[0] if parsed is not None else current_workspace_id()
+            # File pickers use resource_library=true, which resolves outside
+            # the request workspace. Pin local resources to their owned store;
+            # preserve assigned references and their existing access checks.
+            if parsed is None and not row.get("assigned"):
+                resource_id = qualified_kb_id(str(row["name"]), origin)
             items.append(
                 {
                     **row,
+                    "id": resource_id,
                     "content_workspace_id": origin,
                     "content_workspace_name": row.get("provenance_label", ""),
                 }
