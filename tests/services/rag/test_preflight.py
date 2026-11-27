@@ -4,6 +4,7 @@ import pytest
 
 import deeptutor.services.config as config_module
 from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+from deeptutor.services.rag.factory import KNOWN_PROVIDERS
 from deeptutor.services.rag.preflight import engine_preflight
 
 
@@ -53,3 +54,31 @@ def test_ima_preflight_needs_both_halves(ima_settings: RuntimeSettingsService) -
     ima_settings.save_ima({"client_id": "cid-1", "api_key": ""})
 
     assert engine_preflight("ima")["ok"] is False
+
+
+def test_connected_engines_report_ready_without_global_config() -> None:
+    """WeKnora and Kiwix carry their settings per knowledge base."""
+    for provider in ("weknora", "kiwix"):
+        report = engine_preflight(provider)
+
+        assert report["ok"] is True
+        assert report["checks"] == [
+            {
+                "key": "connection",
+                "label": "Connection details are supplied per knowledge base",
+                "ok": True,
+                "detail": (
+                    "Enter the server URL and credentials when connecting a knowledge base."
+                ),
+                "optional": False,
+            }
+        ]
+
+
+def test_every_known_provider_returns_a_preflight_report() -> None:
+    """The engine page asks for every provider; a missing entry becomes a 500."""
+    for provider in sorted(KNOWN_PROVIDERS):
+        report = engine_preflight(provider)
+
+        assert isinstance(report["ok"], bool)
+        assert isinstance(report["checks"], list)

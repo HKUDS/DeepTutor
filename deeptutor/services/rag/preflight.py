@@ -16,10 +16,12 @@ from .factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
     IMA_PROVIDER,
+    KIWIX_PROVIDER,
     LIGHTRAG_PROVIDER,
     LIGHTRAG_SERVER_PROVIDER,
     PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
+    WEKNORA_PROVIDER,
     normalize_provider_name,
 )
 
@@ -250,6 +252,28 @@ def _ima_preflight() -> dict:
     )
 
 
+def _connected_preflight() -> dict:
+    """Connected engines are configured per knowledge base, not account-wide.
+
+    ``weknora`` and ``kiwix`` are pointers: each knowledge base carries its own
+    server URL, credentials and remote identifier, validated by the connect
+    probe before the knowledge base is registered. Nothing is installed or
+    configured globally, so the engine reports ready. Registering them here also
+    keeps ``_PREFLIGHTS`` covering every ``KNOWN_PROVIDERS`` entry; a missing
+    entry turns the engine page's readiness check into a 500.
+    """
+    return _finalize(
+        [
+            _check(
+                "connection",
+                "Connection details are supplied per knowledge base",
+                True,
+                "Enter the server URL and credentials when connecting a knowledge base.",
+            )
+        ]
+    )
+
+
 def _finalize(checks: list[dict]) -> dict:
     ok = all(c["ok"] for c in checks if not c["optional"])
     return {"ok": ok, "checks": checks}
@@ -263,6 +287,8 @@ _PREFLIGHTS = {
     LIGHTRAG_PROVIDER: _lightrag_preflight,
     LIGHTRAG_SERVER_PROVIDER: _lightrag_server_preflight,
     IMA_PROVIDER: _ima_preflight,
+    WEKNORA_PROVIDER: _connected_preflight,
+    KIWIX_PROVIDER: _connected_preflight,
 }
 
 
