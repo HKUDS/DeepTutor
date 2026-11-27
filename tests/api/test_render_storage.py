@@ -285,6 +285,7 @@ def test_chat_output_actions_reject_symlinked_paths(chat_output_api, tmp_path: P
     assert client.get(item.url + "/file-storage").status_code == 404
     assert external.read_text() == "leave intact"
 
+
 @pytest.fixture
 def visualize_render_api(workspace_api, monkeypatch: pytest.MonkeyPatch):
     """Same layout as the render fixture, but under the current ``visualize``
