@@ -251,6 +251,18 @@ async def call_tutor(path_id: str, body: TutorRequest) -> dict:
         arguments["_bind_active_path"] = lambda value: arguments.update(_mastery_path_id=value)
         arguments["_bind_active_mode"] = lambda value: arguments.update(_mastery_session_mode=value)
         arguments["_end_turn_on_card"] = lambda: None
+        if body.tool == "mastery_assess":
+            messages = await sessions.get_messages(session_id)
+            arguments["_learner_message"] = next(
+                (
+                    message["content"]
+                    for message in messages
+                    if message.get("role") == "user"
+                    and (message.get("metadata") or {}).get("external_tutor", {}).get("turn_id")
+                    == body.turn_id
+                ),
+                "",
+            )
         if tool is None:
             result = {"success": True, "content": "Conversation turn saved", "metadata": {}}
         else:
