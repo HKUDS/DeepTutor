@@ -215,7 +215,7 @@ export default function FilePreviewDrawer({
       // Full-screen sheet below the drawer breakpoint, matching
       // SessionViewerPanel — a 92vw overlay on a phone is an awkward
       // near-miss rather than a usable second column.
-      className={`fixed right-0 top-0 z-[30] flex h-dvh w-full flex-col border-l border-[var(--border)] bg-[var(--card)] md:w-[min(560px,92vw)] ${
+      className={`fixed end-0 top-0 z-[30] flex h-dvh w-full flex-col border-l border-[var(--border)] bg-[var(--card)] md:w-[min(560px,92vw)] ${
         // shadow-2xl only while visible — parked off-screen at translate-x-full,
         // the blurred shadow still bleeds ~38px back onto the viewport's right
         // edge. Dropping it off-screen kills that stray sliver.
@@ -253,7 +253,7 @@ export default function FilePreviewDrawer({
                   onClick={() => void handleOpenInReading()}
                   disabled={openingInReader}
                   aria-label={t("Open in Immersive Reading")}
-                  className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
+                  className="me-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/15 disabled:opacity-50"
                 >
                   {openingInReader ? (
                     <Loader2 size={12} className="animate-spin" />

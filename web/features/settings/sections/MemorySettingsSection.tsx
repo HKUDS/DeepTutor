@@ -330,7 +330,7 @@ function NumberRow({
             const n = isFloat ? parseFloat(raw) : parseInt(raw, 10);
             if (!Number.isNaN(n)) onChange(n);
           }}
-          className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-right text-[12px] outline-none focus:border-[var(--primary)]"
+          className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-end text-[12px] outline-none focus:border-[var(--primary)]"
         />
       }
     />

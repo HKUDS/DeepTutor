@@ -134,7 +134,7 @@ export function WorkspaceResourcePicker({
                       />
                       <span className="min-w-0 text-xs">
                         <span className="break-words font-medium">{item.name}</span>
-                        <span className="ml-2 text-[var(--muted-foreground)]">
+                        <span className="ms-2 text-[var(--muted-foreground)]">
                           {item.provenance_label || t(item.source || 'account')}
                         </span>
                         {item.description && (
@@ -143,7 +143,7 @@ export function WorkspaceResourcePicker({
                           </span>
                         )}
                         {item.available === false && (
-                          <span className="ml-2 text-[var(--muted-foreground)]">
+                          <span className="ms-2 text-[var(--muted-foreground)]">
                             {t('Currently unavailable')}
                           </span>
                         )}

@@ -116,7 +116,7 @@ function ActionCard({
         </Tooltip>
       </header>
       {card.quote ? (
-        <blockquote className="mx-3 mt-1 line-clamp-3 border-l-2 border-[var(--primary)] pl-2.5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
+        <blockquote className="mx-3 mt-1 line-clamp-3 border-s-2 border-[var(--primary)] ps-2.5 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
           {card.quote}
         </blockquote>
       ) : null}

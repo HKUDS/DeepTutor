@@ -278,13 +278,13 @@ function ListView({
         <div className="relative">
           <Search
             size={14}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
           />
           <input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={tr("搜索技能名称或描述…", "Search skills…")}
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 pl-9 pr-3 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--foreground)]/30"
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 ps-9 pe-3 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--foreground)]/30"
           />
         </div>
       </div>

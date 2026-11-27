@@ -200,7 +200,7 @@ export function TaskDetails({
         <nav aria-label={t('Linked conversations')} className="dt-cal-detail-links">
           {sessionIds.map((id, index) => (
             <Link
-              className="dt-cal-text-button mr-3"
+              className="dt-cal-text-button me-3"
               key={id}
               href={`/chat/${encodeURIComponent(id)}`}
             >

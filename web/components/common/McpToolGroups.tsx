@@ -107,7 +107,7 @@ export default function McpToolGroups<T extends ProviderToolLike>({
               </button>
             </div>
             {open && (
-              <div className={`pl-4 ${rowsClassName ?? "space-y-1.5"}`}>
+              <div className={`ps-4 ${rowsClassName ?? "space-y-1.5"}`}>
                 {group.tools.map((tool) =>
                   renderTool({
                     tool,

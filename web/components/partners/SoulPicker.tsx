@@ -176,7 +176,7 @@ export default function SoulPicker({
             >
               {soul.name}
               {savedId === soul.id && (
-                <Check className="ml-1 inline h-3.5 w-3.5 text-[var(--primary)]" />
+                <Check className="ms-1 inline h-3.5 w-3.5 text-[var(--primary)]" />
               )}
             </button>
           ))}

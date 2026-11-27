@@ -335,14 +335,14 @@ export default function ReadingReferencePicker({
         ) : null}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col border-b border-[var(--border)] bg-[var(--background)]/40 p-4 md:border-b-0 md:border-r">
+          <aside className="flex min-h-0 flex-col border-b border-[var(--border)] bg-[var(--background)]/40 p-4 md:border-b-0 md:border-e">
             <div className="relative mb-3">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("Search reading materials")}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-9 pr-3 text-[13px] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 ps-9 pe-3 text-[13px] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
               />
             </div>
             <div className="min-h-[130px] flex-1 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] md:min-h-0">

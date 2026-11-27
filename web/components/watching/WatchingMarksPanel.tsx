@@ -81,7 +81,7 @@ export function WatchingMarksPanel({
                 <button
                   type="button"
                   onClick={() => onSeek(suggestion.start_seconds)}
-                  className="ml-auto font-mono text-xs text-blue-600"
+                  className="ms-auto font-mono text-xs text-blue-600"
                 >
                   {formatMarkRange(suggestion)}
                 </button>
@@ -156,7 +156,7 @@ export function WatchingMarksPanel({
                   <button
                     type="button"
                     onClick={() => onSeek(mark.start_seconds)}
-                    className="ml-auto inline-flex items-center gap-1 font-mono text-xs text-blue-600"
+                    className="ms-auto inline-flex items-center gap-1 font-mono text-xs text-blue-600"
                   >
                     <Play className="h-3 w-3" />
                     {formatMarkRange(mark)}

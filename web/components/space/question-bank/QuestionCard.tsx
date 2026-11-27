@@ -305,7 +305,7 @@ export default function QuestionCard({
       </div>
 
       <div
-        className="mt-3 min-w-0 text-[14px] text-foreground sm:pl-[1.625rem]"
+        className="mt-3 min-w-0 text-[14px] text-foreground sm:ps-[1.625rem]"
         data-testid="question-stem"
       >
         <MarkdownRenderer
@@ -440,7 +440,7 @@ export default function QuestionCard({
             {filed.map(category => (
               <span
                 key={category.id}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 py-0.5 pl-2 pr-1 text-[var(--muted-foreground)]"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 py-0.5 ps-2 pe-1 text-[var(--muted-foreground)]"
               >
                 {category.name}
                 <Tooltip label={t("Remove tag")}>

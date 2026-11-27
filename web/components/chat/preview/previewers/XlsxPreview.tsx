@@ -117,7 +117,7 @@ export default function XlsxPreview({ url }: { url: string }) {
           <tbody>
             {sheet.rows.map((cells, r) => (
               <tr key={r}>
-                <td className="sticky left-0 z-10 border border-[var(--border)]/50 bg-[var(--muted)]/55 px-2 py-1 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]/70">
+                <td className="sticky start-0 z-10 border border-[var(--border)]/50 bg-[var(--muted)]/55 px-2 py-1 text-end text-[10px] tabular-nums text-[var(--muted-foreground)]/70">
                   {r + 1}
                 </td>
                 {cells.map((cell, c) => (

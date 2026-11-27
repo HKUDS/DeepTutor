@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "84b32b4e8b62593aa60832766334416c7b2eb2f73f7d8ce4cb96593ee2ac042f",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -243,11 +243,61 @@
         ]
       },
       {
+        "path": "/users/{username}/disabled",
+        "name": "set_user_disabled",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{username}/revoke-sessions",
+        "name": "revoke_user_sessions_endpoint",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/profile/phone",
+        "name": "update_profile_phone",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
         "path": "/users/{username}/password",
         "name": "admin_reset_password",
         "kind": "http",
         "methods": [
           "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.auth_otp:router": [
+      {
+        "path": "/otp/request",
+        "name": "request_code",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/otp/resend",
+        "name": "resend_code",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/otp/verify",
+        "name": "verify_code",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       }
     ],
@@ -5927,6 +5977,780 @@
         "kind": "http",
         "methods": [
           "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.platform_health:router": [
+      {
+        "path": "/health/live",
+        "name": "liveness_probe",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/health/ready",
+        "name": "readiness_probe",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.platform_health:admin_router": [
+      {
+        "path": "/health/backup",
+        "name": "backup_evidence",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/health/migrations",
+        "name": "migration_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.catalog:router": [
+      {
+        "path": "/grades",
+        "name": "get_grades",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/majors",
+        "name": "get_majors",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/subjects",
+        "name": "get_subjects",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/enrolment",
+        "name": "get_enrolment",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.catalog:admin_router": [
+      {
+        "path": "/systems",
+        "name": "create_system",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/systems",
+        "name": "list_systems",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/grades",
+        "name": "create_grade",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tracks",
+        "name": "create_track",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/majors",
+        "name": "create_major",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/subjects",
+        "name": "create_subject",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/versions",
+        "name": "create_version",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources",
+        "name": "create_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources",
+        "name": "list_sources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/duplicates",
+        "name": "find_duplicates",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}",
+        "name": "get_source",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}/review",
+        "name": "review_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}/history",
+        "name": "source_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.ingestion:router": [
+      {
+        "path": "/search",
+        "name": "search",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/validate",
+        "name": "validate",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/browse",
+        "name": "browse",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalogue",
+        "name": "catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.ingestion:admin_router": [
+      {
+        "path": "/ingest",
+        "name": "ingest",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs",
+        "name": "list_runs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}",
+        "name": "get_run",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recover",
+        "name": "recover",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:router": [
+      {
+        "path": "/exams",
+        "name": "list_published",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}",
+        "name": "get_published_exam",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/submit",
+        "name": "submit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}",
+        "name": "get_attempt",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts",
+        "name": "list_my_attempts",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/mistakes",
+        "name": "get_mistakes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:admin_router": [
+      {
+        "path": "/questions",
+        "name": "create_question",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/questions",
+        "name": "list_questions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/questions/{question_id}/review",
+        "name": "review_question",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/policies",
+        "name": "create_policy",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/policies",
+        "name": "list_policies",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams",
+        "name": "create_exam",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/exams",
+        "name": "list_all_exams",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/publish",
+        "name": "publish_exam",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/validate",
+        "name": "validate_exam",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts",
+        "name": "list_attempts",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:review_router": [
+      {
+        "path": "/attempts/{attempt_id}/regrade",
+        "name": "regrade",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/override",
+        "name": "override",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/changes",
+        "name": "changes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.flashcards:router": [
+      {
+        "path": "/decks",
+        "name": "list_decks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks",
+        "name": "create_deck",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}",
+        "name": "get_deck",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}",
+        "name": "delete_deck",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/cards",
+        "name": "list_cards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/cards",
+        "name": "add_cards",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/from-mistakes",
+        "name": "cards_from_mistakes",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "get_card",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "patch_card",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "archive_card",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/review/queue",
+        "name": "review_queue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}/review",
+        "name": "review_card",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}/history",
+        "name": "card_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/summary",
+        "name": "summary",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/mastery",
+        "name": "mastery_dashboard",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.studio:router": [
+      {
+        "path": "/kinds",
+        "name": "list_kinds",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/kinds/{kind}/checklist",
+        "name": "kind_checklist",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/script",
+        "name": "draft_script",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/jobs",
+        "name": "submit_job",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/jobs/{job_id}",
+        "name": "get_job",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/jobs/{job_id}/cancel",
+        "name": "cancel_job",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets",
+        "name": "list_assets",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}",
+        "name": "get_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}",
+        "name": "delete_asset",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/content",
+        "name": "asset_content",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants",
+        "name": "create_grant",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants/{grantee_id}",
+        "name": "delete_grant",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants",
+        "name": "list_grants",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/shared",
+        "name": "shared_with_me",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "create_review",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "get_reviews",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/quota",
+        "name": "quota",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/licences",
+        "name": "licence_catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/pricing",
+        "name": "price_list",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cost/method",
+        "name": "cost_method",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.studio:admin_router": [
+      {
+        "path": "/queue",
+        "name": "queue_health",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/costs",
+        "name": "cost_rows",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets",
+        "name": "admin_assets",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.usage:router": [
+      {
+        "path": "",
+        "name": "my_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recent",
+        "name": "my_recent",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/reconciliation",
+        "name": "my_reconciliation",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.usage:admin_router": [
+      {
+        "path": "",
+        "name": "all_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.providers:router": [
+      {
+        "path": "",
+        "name": "list_providers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "create_provider",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{provider_id}",
+        "name": "delete_provider",
+        "kind": "http",
+        "methods": [
+          "DELETE"
         ]
       }
     ],

@@ -517,7 +517,7 @@ function AgentCard({
             <div
               role="menu"
               onClick={(e) => e.stopPropagation()}
-              className="animate-fade-in absolute right-0 top-full z-20 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-[0_14px_44px_rgba(0,0,0,0.16)]"
+              className="animate-fade-in absolute end-0 top-full z-20 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-[0_14px_44px_rgba(0,0,0,0.16)]"
             >
               <MenuItem
                 icon={<Pencil size={14} />}

@@ -21,7 +21,7 @@
   z-index: 5;
 }
 .dt-note-companion-head > .min-w-0 {
-  margin-left: 4px;
+  margin-inline-start: 4px;
 }
 .dt-note-companion-head h2 {
   font-size: 13.5px;
@@ -70,7 +70,7 @@
   border-radius: 8px;
   font-size: 13.5px;
   color: var(--foreground);
-  text-align: left;
+  text-align: start;
   transition: background-color 120ms;
 }
 .dt-note-starters button svg {
@@ -115,7 +115,7 @@
   color: var(--muted-foreground);
   font-size: 12.5px;
   line-height: 1.55;
-  text-align: left;
+  text-align: start;
   transition:
     background-color 120ms,
     color 120ms;
@@ -330,7 +330,7 @@
   border-radius: 8px;
   color: var(--foreground);
   font-size: 12.5px;
-  text-align: left;
+  text-align: start;
 }
 .dt-note-composer-focus-ask svg {
   flex: none;
@@ -407,7 +407,7 @@
   justify-content: center;
   width: 30px;
   height: 30px;
-  margin-left: 4px;
+  margin-inline-start: 4px;
   border-radius: 999px;
   background: var(--foreground);
   color: var(--background);

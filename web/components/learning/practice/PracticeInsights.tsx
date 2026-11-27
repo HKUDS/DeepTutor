@@ -192,7 +192,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
               style={style}
             />
           </div>
-          <div className="border-t border-border px-5 py-4 lg:border-l lg:border-t-0">
+          <div className="border-t border-border px-5 py-4 lg:border-s lg:border-t-0">
             <div className="mb-4 flex items-center justify-between gap-2 text-xs">
               <h3 className="font-medium">{t("Sources in this period")}</h3>
               <span className="text-muted-foreground">{t(metric.label)}</span>
@@ -205,7 +205,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
                       <span>{t(SOURCES[source.source] || "Other")}</span>
                       <span className="whitespace-nowrap tabular-nums">
                         {number(source[metric.key])}
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ms-2 text-muted-foreground">
                           {Math.round((source[metric.key] / total) * 100)}%
                         </span>
                       </span>
@@ -248,11 +248,11 @@ export function PracticeInsights({ revision }: { revision: number }) {
               {t("View daily data")}
             </summary>
             <div className="mt-2 max-h-60 overflow-auto">
-              <table className="w-full text-right tabular-nums">
+              <table className="w-full text-end tabular-nums">
                 <caption className="sr-only">{t("Daily practice data")}</caption>
                 <thead className="sticky top-0 bg-card">
                   <tr>
-                    <th scope="col" className="py-2 text-left">
+                    <th scope="col" className="py-2 text-start">
                       {t("Date")}
                     </th>
                     {METRICS.map(item => (
@@ -265,7 +265,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
                 <tbody>
                   {data.daily.map(row => (
                     <tr key={row.date} className="border-t border-border/60">
-                      <th scope="row" className="py-2 text-left font-normal">
+                      <th scope="row" className="py-2 text-start font-normal">
                         {row.date}
                       </th>
                       {METRICS.map(item => (
@@ -334,7 +334,7 @@ function DailyChart({
         <span className="text-muted-foreground">{dateLabel(active.date)}</span>
         <span className="font-medium tabular-nums">
           {label}
-          <span className="ml-2">{number(active[metric])}</span>
+          <span className="ms-2">{number(active[metric])}</span>
         </span>
       </div>
       <div

@@ -90,7 +90,7 @@ export default function NoteFavoriteBlock({
           onClick={toggle}
         >
           <FavoriteKindIcon kind={kind} size={17} />
-          <span className="min-w-0 flex-1 text-left">
+          <span className="min-w-0 flex-1 text-start">
             <span className="dt-note-favorite-kind">
               {t(favoriteLabel(kind))}
               {collection ? (

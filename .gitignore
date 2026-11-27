@@ -7,10 +7,25 @@
 # ============================================
 # Runtime data (knowledge bases, partner workspaces, memory, etc.)
 data/
+# Exception: the token-count reference the cost tests are calibrated against.
+# It is a fixture, not runtime output, and without it the calibration test
+# would skip in CI -- a test that cannot run is not evidence.
+!tests/data/
+!tests/data/cl100k_reference.json
+# Generated review packages: the artefacts are output, rebuilt on demand by
+# scripts/build_review_package.py. Committing a 1.4 MB WAV to hand a reviewer a
+# file they will not read from git is the wrong trade.
+review-package/
 /multi-user/
 # Developer and agent documentation is tracked in docs-for-dev/.
 # Keep obsolete local notes and downloaded references out of the repository.
-/docs/
+# Exception: docs/darsyar/ holds the Darsyar roadmap, phase reports and ADRs.
+# These are deliverables, not scratch notes, so they must be versioned. The
+# rule has to target the contents (/docs/*) rather than the directory (/docs/),
+# because git never descends into an excluded directory and a re-inclusion
+# below it would be silently ignored.
+/docs/*
+!/docs/darsyar/
 /docs-for-use/
 /docs-for-user/
 /design-qa.md

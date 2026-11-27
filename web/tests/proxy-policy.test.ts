@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { config as proxyConfig } from "../proxy";
@@ -17,9 +17,11 @@ import {
   classifyToken,
   isAuthExempt,
   isBackendPath,
+  isAdminPagePath,
   isCodexCallbackPath,
   isRetiredPagePath,
   isWebSocketPath,
+  tokenRole,
 } from "../lib/proxy-policy";
 import { prepareBackendForwardHeaders } from "../lib/backend-forward";
 
@@ -227,4 +229,79 @@ test("classifyToken honors expiry and accepts unexpired / expiry-less tokens", (
   assert.equal(classifyToken(makeToken({ exp: nowSec + 3600 }), now), "valid");
   assert.equal(classifyToken(makeToken({ exp: nowSec - 1 }), now), "expired");
   assert.equal(classifyToken(makeToken({}), now), "valid"); // no exp claim
+});
+
+// --- Admin surface protection (DECISIONS.md F-1) ---------------------------
+//
+// Before this gate existed, /admin/users was protected only by a `useEffect`
+// inside the page that called `router.replace`. That runs *after* the document
+// has been handed to the browser, so the shell of the admin page was served to
+// anyone who asked for it. These tests pin the server-side decision.
+
+test("isAdminPagePath covers the admin surface and nothing adjacent", () => {
+  assert.equal(isAdminPagePath("/admin"), true);
+  assert.equal(isAdminPagePath("/admin/users"), true);
+  assert.equal(isAdminPagePath("/admin/settings/billing"), true);
+  // Near-misses must not be gated: a prefix check that is too eager would
+  // lock ordinary users out of an unrelated page.
+  assert.equal(isAdminPagePath("/administrator"), false);
+  assert.equal(isAdminPagePath("/admin-panel"), false);
+  assert.equal(isAdminPagePath("/chat"), false);
+  assert.equal(isAdminPagePath("/"), false);
+});
+
+test("tokenRole reads the role claim", () => {
+  assert.equal(tokenRole(makeToken({ role: "admin" })), "admin");
+  assert.equal(tokenRole(makeToken({ role: "student" })), "student");
+  assert.equal(tokenRole(makeToken({ role: "teacher" })), "teacher");
+});
+
+test("tokenRole fails closed", () => {
+  // Every one of these must deny, not allow: an unreadable token is not a
+  // reason to hand out the admin shell.
+  assert.equal(tokenRole(undefined), null);
+  assert.equal(tokenRole(""), null);
+  assert.equal(tokenRole("not-a-jwt"), null);
+  assert.equal(tokenRole("a.b"), null);
+  assert.equal(tokenRole(makeToken({})), null); // no role claim
+  assert.equal(tokenRole(makeToken({ role: 42 })), null); // wrong type
+  assert.equal(
+    tokenRole(`h.${Buffer.from("not-json").toString("base64url")}.s`),
+    null,
+  );
+});
+
+test("a token whose payload claims admin is read as admin", () => {
+  // Documents the deliberate design: the middleware does not verify the
+  // signature. Authorisation of *data* happens on the backend for every API
+  // call; this gate only decides whether to render the shell at all. If that
+  // assumption ever changes, this test is where it should fail.
+  const forged = makeToken({ role: "admin" });
+  assert.equal(tokenRole(forged), "admin");
+  assert.equal(classifyToken(forged, Date.now()), "valid");
+});
+
+test("the middleware consults the admin gate before serving a page", () => {
+  // The node harness runs compiled output under dist/node-tests, so walk up to
+  // the real source tree rather than resolving relative to __dirname.
+  let webRoot = __dirname;
+  while (!existsSync(path.join(webRoot, "proxy.ts"))) {
+    const parent = path.dirname(webRoot);
+    if (parent === webRoot) throw new Error("could not locate web root");
+    webRoot = parent;
+  }
+  const source = readFileSync(path.join(webRoot, "proxy.ts"), "utf-8");
+  // Guard against the gate being dropped in a refactor: the call must exist and
+  // must compare against the admin role.
+  assert.match(source, /isAdminPagePath\(pathname\)/);
+  assert.match(source, /tokenRole\(token\)\s*!==\s*"admin"/);
+});
+
+test("the admin sign-in page is reachable and does not loop", () => {
+  // A sign-in page behind the gate it serves redirects to itself forever.
+  // Both halves matter: the page must be exempt from the admin check AND from
+  // the auth gate, or an unauthenticated visitor never sees a form.
+  assert.equal(isAdminPagePath("/admin/login"), false);
+  assert.equal(isAuthExempt("/admin/login"), true);
+  assert.equal(isAuthExempt("/admin/users"), false);
 });

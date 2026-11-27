@@ -6,7 +6,7 @@ import Tooltip from "@/shared/ui/Tooltip";
 
 /** The rule-and-words look every quoted passage shares, sent or not. */
 export const QUOTE_RULE_CLASS =
-  "border-l-2 border-[color-mix(in_srgb,var(--primary)_45%,transparent)] pl-2.5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]";
+  "border-s-2 border-[color-mix(in_srgb,var(--primary)_45%,transparent)] ps-2.5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]";
 
 /**
  * A passage the next message is about, inside the box it will be sent from.
@@ -34,7 +34,7 @@ export function QuotedPassage({
           type="button"
           aria-label={t("Remove quoted passage")}
           onClick={onRemove}
-          className="-mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          className="-me-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
         >
           <X size={12} />
         </button>

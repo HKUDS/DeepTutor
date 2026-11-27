@@ -202,7 +202,7 @@ function Preview({ service, profile, model }: Props) {
               type="file"
               accept=".wav,.mp3,.m4a,.webm,.ogg,.flac,audio/*"
               disabled={running}
-              className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-xs`}
+              className={`${inputClass} file:me-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-xs`}
               onChange={e => {
                 clearResult()
                 const next = e.target.files?.[0] || null

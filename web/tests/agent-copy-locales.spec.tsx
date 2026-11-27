@@ -45,7 +45,7 @@ it("keeps the Chinese text of the three interpolated strings unchanged", async (
       { name: "Codex" },
     ),
   ).toBe(
-    "DeepTutor 通过 consult_subagent 调用本机 Codex 时使用的模型、推理强度与运行参数。设置后即覆盖 CLI 的默认值；留空表示沿用 CLI 默认。",
+    "Darsyar 通过 consult_subagent 调用本机 Codex 时使用的模型、推理强度与运行参数。设置后即覆盖 CLI 的默认值；留空表示沿用 CLI 默认。",
   );
   expect(i18n.t("Last synced: {{when}}", { when: "2026年11月1日" })).toBe(
     "上次同步：2026年11月1日",

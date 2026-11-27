@@ -4,8 +4,15 @@ import { initReactI18next } from "react-i18next";
 import enApp from "@/locales/en/app.json";
 import { normalizeLanguage, type AppLanguage } from "./languages";
 
-export { APP_LANGUAGES, isAppLanguage, normalizeLanguage } from "./languages";
-export type { AppLanguage } from "./languages";
+export {
+  APP_LANGUAGES,
+  RTL_LANGUAGES,
+  isAppLanguage,
+  normalizeLanguage,
+  regionalLocale,
+  textDirection,
+} from "./languages";
+export type { AppLanguage, TextDirection } from "./languages";
 
 let _initialized = false;
 
@@ -96,5 +103,8 @@ export async function ensureLanguage(language: AppLanguage) {
     const huApp = (await import("@/locales/hu/app.json")).default;
     i18n.addResourceBundle("hu", "app", huApp, true, true);
   }
-
+  if (language === "fa") {
+    const faApp = (await import("@/locales/fa/app.json")).default;
+    i18n.addResourceBundle("fa", "app", faApp, true, true);
+  }
 }

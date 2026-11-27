@@ -70,7 +70,7 @@ export default function AnimationBlock({ block }: AnimationBlockProps) {
           />
         )}
         {primary && (
-          <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+          <div className="absolute end-2 top-2 z-10 flex items-center gap-1">
             <Tooltip label={t("Open in new tab")}>
               <a
                 href={primary}

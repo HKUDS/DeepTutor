@@ -111,3 +111,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Self-hosted webfonts
+
+`web/public/fonts/` vendors three variable font families so the production
+build never fetches from `fonts.googleapis.com`. All three are licensed under
+the SIL Open Font License 1.1; the full license text ships alongside each
+family in `web/public/fonts/licenses/`.
+
+| Family | Upstream | Package version | License |
+| --- | --- | --- | --- |
+| Geist Variable | [vercel/geist-font](https://github.com/vercel/geist-font) | `@fontsource-variable/geist@5.3.0` | OFL-1.1 |
+| Lora Variable | [cyrealtype/Lora-Cyrillic](https://github.com/cyrealtype/Lora-Cyrillic) | `@fontsource-variable/lora@5.3.0` | OFL-1.1 |
+| Vazirmatn Variable | [rastikerdar/vazirmatn](https://github.com/rastikerdar/vazirmatn) | `@fontsource-variable/vazirmatn@5.3.0` | OFL-1.1 |
+
+The `.woff2` files are the unmodified upstream subsets (Latin, Latin-ext,
+Arabic script, plus Lora's math and symbol slices). The `@font-face` blocks
+that reference them live in `web/app/fonts.css`.

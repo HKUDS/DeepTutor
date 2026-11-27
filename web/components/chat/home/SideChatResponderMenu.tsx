@@ -74,7 +74,7 @@ export default function SideChatResponderMenu({
       value={name}
       active={value.kind !== "dito"}
       placement={placement}
-      align="end"
+      align="right"
     >
       {(close) => {
         const pick = (responder: SideChatResponder) => {

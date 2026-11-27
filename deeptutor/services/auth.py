@@ -75,6 +75,11 @@ class TokenPayload:
     user_id: str = ""
     device_credential_id: str = ""
     device_session_nonce: str = ""
+    # Session generation. Bumped on the user record to revoke every token that
+    # predates the bump; see ``ADR-002`` D2-4. Tokens minted before this claim
+    # existed carry 0, which matches every existing record, so nobody is signed
+    # out by deploying the change.
+    token_version: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +262,37 @@ def set_learner_profile(username: str, profile: dict[str, Any] | None) -> dict[s
 # ---------------------------------------------------------------------------
 
 
+def _as_int(value: Any, default: int = 0) -> int:
+    """Coerce a JWT claim or stored field to int without raising.
+
+    Claims come from the network and records come from a file a human may have
+    edited, so neither may be trusted to hold an int.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _current_token_version(username: str) -> int:
+    """Session generation for ``username``, 0 when the record has none."""
+    record = _load_users().get(username) or {}
+    return _as_int(record.get("token_version"))
+
+
+def revoke_user_sessions(username: str) -> bool:
+    """Invalidate every token already minted for ``username``.
+
+    Bumps the record's generation; ``decode_token`` refuses any token whose
+    ``tv`` no longer matches. Returns False when the user does not exist.
+    The caller must handle that as "nothing to revoke", not as success, so a
+    typo in an admin action does not read as having worked.
+    """
+    from deeptutor.multi_user.identity import bump_token_version
+
+    return bump_token_version(username)
+
+
 def create_token(
     username: str,
     role: str = "user",
@@ -277,6 +313,7 @@ def create_token(
         "uid": user_id,
         "dcid": device_credential_id,
         "dcs": device_session_nonce,
+        "tv": _current_token_version(username),
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
         "iat": datetime.now(timezone.utc),
     }
@@ -334,12 +371,22 @@ def decode_token(token: str) -> TokenPayload | None:
                 device_session_nonce,
             ):
                 return None
+        record = _load_users().get(str(username)) or {}
+        if record.get("disabled"):
+            # Disabled after the token was minted. Checked here rather than in
+            # the endpoints so every caller inherits it, including WebSocket.
+            return None
+        presented = _as_int(payload.get("tv"))
+        if presented != _as_int(record.get("token_version")):
+            # The session was revoked after this token was minted.
+            return None
         return TokenPayload(
             username=username,
             role=payload.get("role", "user"),
             user_id=user_id,
             device_credential_id=device_credential_id,
             device_session_nonce=device_session_nonce,
+            token_version=presented,
         )
     except JWTError:
         return None
@@ -434,13 +481,20 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
     if not record:
         return None
 
+    # A disabled account is refused before the password is even checked, so
+    # the answer is the same whether or not the guess was right.
+    if isinstance(record, dict) and record.get("disabled"):
+        logger.info("Login refused for disabled account")
+        return None
+
     hashed = record.get("hash", "") if isinstance(record, dict) else record
     if not verify_password(password, hashed):
         return None
 
     role = record.get("role", "user") if isinstance(record, dict) else "user"
     user_id = str(record.get("id") or "") if isinstance(record, dict) else ""
-    return TokenPayload(username=username, role=role, user_id=user_id)
+    token_version = _as_int((record or {}).get("token_version")) if isinstance(record, dict) else 0
+    return TokenPayload(username=username, role=role, user_id=user_id, token_version=token_version)
 
 
 def authenticate_device(pairing_code: str, pin: str) -> TokenPayload | None:

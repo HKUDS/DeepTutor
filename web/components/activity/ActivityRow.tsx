@@ -176,7 +176,7 @@ export function ActivityRow({
           // column, so the detail visibly hangs from its own row. This is the
           // only rule in the stack — level one needs none, since the dots
           // already form an aligned axis.
-          className="dt-detail-in ml-[7px] mr-2 mt-1.5 max-h-[520px] overflow-y-auto border-l border-[var(--border)]/40 pl-[17px] pr-1"
+          className="dt-detail-in ms-[7px] me-2 mt-1.5 max-h-[520px] overflow-y-auto border-s border-[var(--border)]/40 ps-[17px] pe-1"
         >
           {children}
         </StickyScroll>

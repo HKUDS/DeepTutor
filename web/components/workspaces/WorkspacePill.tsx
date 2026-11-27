@@ -146,7 +146,7 @@ export function WorkspacePill({
             <ChevronDown
               size={12}
               strokeWidth={2}
-              className={`-mr-0.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+              className={`-me-0.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
             />
           </ToolbarLabel>
         </button>
@@ -168,7 +168,7 @@ export function WorkspacePill({
         <div
           ref={menuRef}
           role="menu"
-          className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[248px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+          className="dt-popup-up absolute bottom-full start-0 z-50 mb-1.5 w-[248px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
         >
           <div className="max-h-[280px] overflow-y-auto [&>span]:w-full">
             {selectable.length === 0 ? (
@@ -193,7 +193,7 @@ export function WorkspacePill({
                       onSelect(row.workspace_id);
                       setOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
                   >
                     <Folder
                       size={13}
@@ -219,14 +219,14 @@ export function WorkspacePill({
                 onSelect("");
                 setOpen(false);
               }}
-              className="mt-1 flex w-full items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-3 py-1.5 pt-2 text-left text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] hover:text-[var(--foreground)]"
+              className="mt-1 flex w-full items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-3 py-1.5 pt-2 text-start text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] hover:text-[var(--foreground)]"
             >
               {t("Default workspace")}
             </button>
           ) : null}
 
           <button type="button" role="menuitem" onClick={() => { setOpen(false); setBrowsing(true); }}
-            className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-xs hover:bg-[var(--muted)]">
+            className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-start text-xs hover:bg-[var(--muted)]">
             <FolderOpen size={15} />{t("Choose a server folder")}
           </button>
           {creating ? (

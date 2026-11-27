@@ -41,5 +41,7 @@
   "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Örneğin: Doğrusal cebir öğreniyorum. Formülleri tanıtmadan önce geometrik sezgiyi açıklayın, tam çözümlerden önce ipuçları verin.",
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.": "Sohbet, Çözüm, Soru Sor, Rehberli Öğrenme, Okuma ve standart görselleştirmeler için geçerlidir. Değişiklikler bir sonraki turda etkili olur.",
   "Clear instructions": "Yönergeleri temizle",
-  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} karakter"
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} karakter",
+  "language.persian": "فارسی",
+  "language.korean": "한국어 (일부 번역)"
 }

@@ -28,7 +28,7 @@ from deeptutor.co_writer.storage import (
     get_co_writer_storage,
 )
 from deeptutor.runtime.stream_bus import StreamBus
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import load_main_config
 from deeptutor.services.model_selection.runtime import (
     activate_llm_selection,
     reset_llm_selection,
@@ -40,17 +40,30 @@ if TYPE_CHECKING:
 
 router = APIRouter()
 
-# Initialize logger with config
-config = load_config_with_main("main.yaml", PROJECT_ROOT)
-log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
+
+
+def _main_config() -> dict:
+    """Load ``main.yaml`` on demand.
+
+    Import time must stay side-effect free (R-12): a runtime home that has not
+    been initialized yet is an operator action, not an import crash. Callers
+    that need the file get :class:`SetupRequiredError` with an actionable
+    message instead of a bare ``FileNotFoundError``.
+    """
+    return load_main_config()
+
 
 _edit_agent: "EditAgent | None" = None
 
 
 def _current_language() -> str:
     # Prefer UI settings, fall back to main.yaml system.language
-    return get_response_language(default=config.get("system", {}).get("language", "en"))
+    try:
+        default_language = _main_config().get("system", {}).get("language", "en")
+    except Exception:
+        default_language = "en"
+    return get_response_language(default=default_language)
 
 
 def get_edit_agent() -> EditAgent:

@@ -189,6 +189,6 @@ export async function sendPrompt(page: Page, prompt: string): Promise<void> {
 export function assistantActivity(page: Page) {
   return page.locator('[aria-live="polite"]').filter({
     hasText:
-      /DeepTutor (?:Exploring|Reasoning|Planning|Quizzing|Reflecting|responded)|Tool Calling/i,
+      /(?:Darsyar|درسیار|DeepTutor) (?:Exploring|Reasoning|Planning|Quizzing|Reflecting|responded)|Tool Calling/i,
   });
 }

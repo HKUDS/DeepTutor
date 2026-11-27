@@ -345,7 +345,7 @@ export default function SpineEditor({
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-3 pl-8 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 ps-8 sm:grid-cols-2">
                 <label className="text-xs text-[var(--muted-foreground)]">
                   <span className="flex items-center gap-1">
                     {t("Content type")}
@@ -400,7 +400,7 @@ export default function SpineEditor({
                 </label>
               </div>
 
-              <label className="mt-3 block pl-8 text-xs text-[var(--muted-foreground)]">
+              <label className="mt-3 block ps-8 text-xs text-[var(--muted-foreground)]">
                 {t("Learning objectives (one per line)")}
                 <textarea
                   value={chapter.learning_objectives.join("\n")}
@@ -480,7 +480,7 @@ export default function SpineEditor({
                   />
                 </button>
                 {typesOpen && (
-                  <div className="dt-detail-in absolute bottom-full right-0 z-40 mb-1.5 w-64 rounded-xl border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg">
+                  <div className="dt-detail-in absolute bottom-full end-0 z-40 mb-1.5 w-64 rounded-xl border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg">
                     <p className="px-1.5 pb-1.5 text-[11px] leading-snug text-[var(--muted-foreground)]">
                       {t(
                         "Kinds of content the chapters may contain. Each one is a separate model call per chapter.",
@@ -497,7 +497,7 @@ export default function SpineEditor({
                         <span className="text-[var(--foreground)]">
                           {t(ALWAYS_ON_TYPE)}
                         </span>
-                        <span className="ml-auto text-[10.5px] opacity-70">
+                        <span className="ms-auto text-[10.5px] opacity-70">
                           {t("always")}
                         </span>
                       </li>
