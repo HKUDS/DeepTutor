@@ -133,7 +133,7 @@ The command attaches to the DeepTutor UI already running at `http://localhost:37
 
 ## Local development
 
-Use Node.js 22, the version CI installs.
+CI uses Node.js 22. For local builds on Node.js 22, use version 22.23.4 or later.
 
 ```bash
 cd docs
