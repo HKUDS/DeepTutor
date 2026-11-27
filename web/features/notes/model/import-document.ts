@@ -3,9 +3,32 @@ import { importCoWriterDocx } from '@/lib/co-writer-api'
 import { noteRequest, type NoteBlock, type NotePage } from '@/lib/notes-api'
 import { loadPdfjs, pdfjsCMapUrl, pdfjsWasmUrl } from '@/lib/pdfjs-loader'
 import { activeWorkspaceId } from '@/lib/workspace-scope'
+import { safeNoteUrl } from './urls'
 
 export type ImportProgress = { label: string; page?: number; pages?: number }
 type ReportProgress = (progress: ImportProgress) => void
+
+// Local file imports have no base URL. Unwrap unresolved links, keeping their
+// styled text. BlockNote also stores inline content in nested blocks and table cells.
+function unwrapUnsupportedLinks(blocks: NoteBlock[]) {
+  const inline = (items: unknown[]) =>
+    items.flatMap(item => {
+      const link = item as { type: string; href?: string; content: unknown[] }
+      return link.type === 'link' && !safeNoteUrl(link.href) ? link.content : [item]
+    })
+  for (const block of blocks) {
+    if (Array.isArray(block.content)) block.content = inline(block.content)
+    if (block.type === 'table') {
+      const table = block.content as { rows: { cells: (unknown[] | { content: unknown[] })[] }[] }
+      for (const row of table.rows) {
+        row.cells = row.cells.map(cell =>
+          Array.isArray(cell) ? inline(cell) : { ...cell, content: inline(cell.content) }
+        )
+      }
+    }
+    if (block.children) unwrapUnsupportedLinks(block.children)
+  }
+}
 
 function pdfParagraphs(items: TextItem[]): string[] {
   const paragraphs: string[] = []
@@ -81,6 +104,7 @@ export async function importNoteDocument(
   } else if (extension === 'md' || extension === 'markdown') {
     const { parseLegacyNoteContent } = await import('../components/NoteEditor')
     blocks = parseLegacyNoteContent((await file.text()).replace(/\r\n?/g, '\n'))
+    unwrapUnsupportedLinks(blocks)
     if (!blocks.length) throw new Error(t('The Markdown file is empty.'))
   } else {
     throw new Error(t('Choose a Word, Markdown or PDF document.'))

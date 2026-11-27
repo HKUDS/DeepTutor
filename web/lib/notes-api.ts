@@ -48,7 +48,9 @@ export async function noteRequest<T>(path: string, body?: unknown, method = 'POS
   )
   if (!response.ok) {
     const detail = await response.json().catch(() => null)
-    throw new Error(detail?.detail || `Request failed (${response.status})`)
+    throw Object.assign(new Error(detail?.detail || `Request failed (${response.status})`), {
+      status: response.status,
+    })
   }
   return response.json()
 }

@@ -2,11 +2,12 @@
 
 import dynamic from 'next/dynamic'
 
-import { useCallback, useState, type MouseEvent } from 'react'
+import { useCallback, useMemo, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
-import { ChevronRight, FileText, MoreHorizontal, Plus } from 'lucide-react'
+import { ChevronRight, FileText, MoreHorizontal, Pin, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
+import type { NoteTreeView } from './useNoteNavigation'
 import type { NoteSummary } from '@/lib/notes-api'
 
 const TreeMenu = dynamic(() => import('./NotePageActions').then(module => module.TreeMenu), {
@@ -16,55 +17,70 @@ const TreeMenu = dynamic(() => import('./NotePageActions').then(module => module
 export default function NotePageTree({
   pages,
   currentId,
+  getView,
+  onViewChange,
   busy,
   embedded = false,
   onNavigate,
   onCreate,
   onDelete,
+  onPin,
 }: {
   pages: NoteSummary[]
   currentId: string
+  getView?: () => NoteTreeView
+  onViewChange?: (patch: Partial<NoteTreeView>) => void
   busy: boolean
   embedded?: boolean
   onNavigate: (event: MouseEvent<HTMLAnchorElement>, id: string) => void
   onClose?: () => void
   onCreate: (parentId: string | null) => void
   onDelete: (page: NoteSummary) => void
+  onPin?: (page: NoteSummary) => void
 }) {
   const { t } = useTranslation()
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [view] = useState(() => getView?.())
+  const [collapsed, setCollapsed] = useState(() => view?.collapsed ?? new Set<string>())
+  const restoreScroll = useCallback((node: HTMLDivElement | null) => {
+    if (node && view) node.scrollTop = view.scrollTop
+  }, [view])
   const [menu, setMenu] = useState<{
     id: string
     trigger: HTMLButtonElement
-    anchor: DOMRect
   } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
-  const rows = (parent: string | null, depth: number, ancestors = new Set<string>()): React.ReactNode => {
-    const children = pages
-      .filter(p => p.parent_id === parent && !ancestors.has(p.id))
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-    if (!children.length) return null
+  const childrenByParent = useMemo(() => {
+    const groups = new Map<string | null, NoteSummary[]>()
+    for (const page of pages) {
+      const siblings = groups.get(page.parent_id)
+      if (siblings) siblings.push(page)
+      else groups.set(page.parent_id, [page])
+    }
+    for (const siblings of groups.values()) {
+      siblings.sort((a, b) => Number(b.pinned) - Number(a.pinned))
+    }
+    return groups
+  }, [pages])
+  const rows = (parent: string | null, depth: number): React.ReactNode => {
+    const children = childrenByParent.get(parent)
+    if (!children) return null
     return (
       <ul className={parent ? 'dt-note-tree-children' : 'dt-note-tree-roots'}>
         {children.map(page => {
           const title = page.title || t('Untitled')
-          const hasChildren = pages.some(p => p.parent_id === page.id)
+          const hasChildren = childrenByParent.has(page.id)
           const expanded = !collapsed.has(page.id)
           return (
             <li key={page.id}>
               <div
-                className={`dt-note-tree-row ${page.id === currentId ? 'is-current' : ''}`}
+                className={`dt-note-tree-row ${page.pinned ? 'is-pinned' : ''} ${page.id === currentId ? 'is-current' : ''}`}
                 style={{ paddingLeft: depth * 14 }}
                 onContextMenu={event => {
                   event.preventDefault()
                   if (busy) return
                   const trigger =
                     event.currentTarget.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
-                  const anchor =
-                    event.clientX || event.clientY
-                      ? new DOMRect(event.clientX, event.clientY, 0, 0)
-                      : trigger.getBoundingClientRect()
-                  setMenu({ id: page.id, trigger, anchor })
+                  setMenu({ id: page.id, trigger })
                 }}
               >
                 {hasChildren ? (
@@ -74,14 +90,13 @@ export default function NotePageTree({
                       page: title,
                     })}
                     aria-expanded={expanded}
-                    onClick={() =>
-                      setCollapsed(previous => {
-                        const next = new Set(previous)
-                        if (expanded) next.add(page.id)
-                        else next.delete(page.id)
-                        return next
-                      })
-                    }
+                    onClick={() => {
+                      const next = new Set(collapsed)
+                      if (expanded) next.add(page.id)
+                      else next.delete(page.id)
+                      onViewChange?.({ collapsed: next })
+                      setCollapsed(next)
+                    }}
                   >
                     <ChevronRight size={13} className={expanded ? 'rotate-90' : ''} />
                   </button>
@@ -98,6 +113,19 @@ export default function NotePageTree({
                   </span>
                   <span className="truncate">{title}</span>
                 </Link>
+                {page.pinned && (
+                  <Tooltip label={t('Unpin')}>
+                    <button
+                      type="button"
+                      className="dt-note-tree-add dt-note-tree-unpin"
+                      aria-label={t('Unpin')}
+                      disabled={busy || !onPin}
+                      onClick={() => onPin?.(page)}
+                    >
+                      <Pin size={14} fill="currentColor" strokeWidth={2.5} aria-hidden />
+                    </button>
+                  </Tooltip>
+                )}
                 <Tooltip label={t('Add a page inside')}>
                   <button
                     className="dt-note-tree-add"
@@ -119,11 +147,7 @@ export default function NotePageTree({
                     setMenu(
                       menu?.id === page.id
                         ? null
-                        : {
-                            id: page.id,
-                            trigger,
-                            anchor: trigger.getBoundingClientRect(),
-                          }
+                        : { id: page.id, trigger }
                     )
                   }}
                 >
@@ -132,18 +156,22 @@ export default function NotePageTree({
               </div>
               {menu?.id === page.id && (
                 <TreeMenu
-                  anchor={menu.anchor}
                   trigger={menu.trigger}
                   onClose={closeMenu}
                   page={page}
                   hasChildren={hasChildren}
+                  pinned={page.pinned}
+                  onPin={onPin && (() => {
+                    closeMenu()
+                    onPin(page)
+                  })}
                   onDelete={() => {
                     closeMenu()
                     onDelete(page)
                   }}
                 />
               )}
-              {expanded && rows(page.id, depth + 1, new Set([...ancestors, page.id]))}
+              {expanded && hasChildren && rows(page.id, depth + 1)}
             </li>
           )
         })}
@@ -169,7 +197,14 @@ export default function NotePageTree({
           </button>
         </Tooltip>
       </div>
-      <div className="dt-note-tree-scroll" onScroll={closeMenu}>
+      <div
+        className="dt-note-tree-scroll"
+        ref={restoreScroll}
+        onScroll={event => {
+          onViewChange?.({ scrollTop: event.currentTarget.scrollTop })
+          closeMenu()
+        }}
+      >
         {rows(null, 0)}
       </div>
     </nav>

@@ -431,6 +431,19 @@ a.dt-note-crumb:hover {
   background: color-mix(in srgb, var(--foreground) 7%, transparent);
   font-weight: 500;
 }
+.dt-note-tree-row.is-pinned {
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  font-weight: 600;
+}
+.dt-note-tree-row.is-pinned:hover {
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+.dt-note-tree-row.is-pinned.is-current {
+  background: color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+.dt-note-tree-row.is-pinned .dt-note-tree-icon {
+  color: inherit;
+}
 .dt-note-tree-row a {
   display: flex;
   flex: 1;
@@ -477,6 +490,10 @@ button.dt-note-tree-toggle:hover {
   border-radius: 4px;
   color: var(--muted-foreground);
   opacity: 0;
+}
+.dt-note-tree-add.dt-note-tree-unpin {
+  opacity: 1;
+  color: inherit;
 }
 .dt-note-tree-row:hover .dt-note-tree-add,
 .dt-note-tree-row:focus-within .dt-note-tree-add,

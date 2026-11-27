@@ -1,10 +1,14 @@
 'use client'
 import dynamic from 'next/dynamic'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
 import { createNote } from '@/lib/notes-api'
-import { loadChatMarkdownNoteDraft, saveChatMarkdownNoteDraft } from '@/lib/chat-markdown-note'
+import {
+  EMPTY_CHAT_MARKDOWN_NOTE_DRAFT,
+  loadChatMarkdownNoteDraft,
+  saveChatMarkdownNoteDraft,
+} from '@/lib/chat-markdown-note'
 const NoteWorkspace = dynamic(() => import('@/features/notes/components/NoteWorkspace'), {
   ssr: false,
 })
@@ -25,6 +29,25 @@ export default function ChatMarkdownNoteTab({ sessionId }: { sessionId: string |
       !!draft.saved && (draft.content !== draft.saved.content || draft.title !== draft.saved.title)
     )
   }, [owner, sessionId])
+  const onPageRemoved = useCallback(
+    (id: string) => {
+      if (!owner) return
+      const draft = loadChatMarkdownNoteDraft(owner, sessionId)
+      if (draft.saved?.id === id) {
+        const dirty = draft.title !== draft.saved.title || draft.content !== draft.saved.content
+        saveChatMarkdownNoteDraft(
+          owner, sessionId, dirty ? { ...draft, saved: null } : EMPTY_CHAT_MARKDOWN_NOTE_DRAFT
+        )
+        setDocId(null)
+      } else {
+        setDocId(draft.saved?.id ?? null)
+      }
+      setRecoverable(false)
+      setError('')
+    },
+    [owner, sessionId]
+  )
+
   const create = async () => {
     if (!owner || busy) return
     setBusy(true)
@@ -58,7 +81,7 @@ export default function ChatMarkdownNoteTab({ sessionId }: { sessionId: string |
       </div>
     )
   return docId ? (
-    <NoteWorkspace key={`${owner}:${docId}`} docId={docId} embedded />
+    <NoteWorkspace key={`${owner}:${docId}`} docId={docId} embedded onPageRemoved={onPageRemoved} />
   ) : (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm">
       <p>{t('Keep your ideas beside the conversation.')}</p>

@@ -3,8 +3,7 @@
 import { useEffect, useState, type ComponentProps } from 'react'
 import { createPortal } from 'react-dom'
 import { useMenuPopover } from '@/shared/ui/useMenuPopover'
-import { placeMenu } from '@/lib/floating-menu'
-import { Trash2 } from 'lucide-react'
+import { Pin, PinOff, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import './note-page-actions.css'
 
@@ -56,19 +55,24 @@ export default function NotePageActions({
 }
 
 export function TreeMenu({
-  anchor,
   trigger,
   onClose,
+  onPin,
+  pinned,
   ...actions
 }: ComponentProps<typeof NotePageActions> & {
-  anchor: DOMRect
+  onPin?: () => void
+  pinned: boolean
   trigger: HTMLButtonElement
   onClose: () => void
 }) {
   const { t } = useTranslation()
   const panel = useMenuPopover<HTMLDivElement>(true, onClose, trigger)
+  const anchor = trigger.closest('.dt-note-tree-row')!.getBoundingClientRect()
   const width = 200
-  const position = placeMenu(anchor, width)
+  const below = window.innerHeight - anchor.bottom
+  const above = anchor.top
+  const openUpward = below < 140 && above > below
   useEffect(() => {
     window.addEventListener('resize', onClose)
     return () => window.removeEventListener('resize', onClose)
@@ -81,12 +85,18 @@ export function TreeMenu({
       aria-label={actions.page.title || t('Untitled')}
       style={{
         width,
-        left: position.left,
-        top: position.top,
-        maxHeight: position.maxHeight,
-        translate: position.openUpward ? '0 -100%' : undefined,
+        left: Math.max(0, Math.min(anchor.right - width, window.innerWidth - width)),
+        top: openUpward ? anchor.top : anchor.bottom,
+        maxHeight: openUpward ? above : below,
+        translate: openUpward ? '0 -100%' : undefined,
       }}
     >
+      {onPin && (
+        <button role="menuitem" className="dt-menu-item" onClick={onPin}>
+          {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+          {t(pinned ? 'Unpin' : 'Pin to top')}
+        </button>
+      )}
       <NotePageActions {...actions} />
     </div>,
     document.body

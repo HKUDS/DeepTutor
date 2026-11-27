@@ -28,7 +28,13 @@ export function restoreNoteDraft(doc: NotePage, key: string) {
   return { doc }
 }
 
+export type NoteTreeView = {
+  collapsed: Set<string>
+  scrollTop: number
+}
+
 type Destination = {
+  treeView?: NoteTreeView
   owner?: string
   restored?: boolean
   conflict?: Draft
