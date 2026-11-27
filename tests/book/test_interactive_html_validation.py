@@ -40,9 +40,18 @@ def _context() -> BlockContext:
     )
 
 
-async def _generate(response: str, monkeypatch: pytest.MonkeyPatch) -> Block:
+async def _generate(
+    response: str, monkeypatch: pytest.MonkeyPatch, *, max_tokens: int = 32768
+) -> Block:
     from deeptutor.agents.visualize import pipeline as pipeline_module
+    from deeptutor.services.config import capabilities_settings
     from deeptutor.services.llm import config as config_module
+
+    monkeypatch.setattr(
+        capabilities_settings,
+        "get_visualize_params",
+        lambda: {"temperature": 0.15, "max_tokens": max_tokens},
+    )
 
     pipeline = MagicMock()
     pipeline.run_analysis = AsyncMock(
@@ -122,6 +131,47 @@ async def test_incomplete_html_is_not_persisted_as_ready(
     assert result.payload == {}
     assert error in result.error
     assert result.metadata["failure"]["retryable"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    ["", "   \n", f"```html\n{_HTML[: _HTML.index('</script>')]}", _HTML.replace("</html>", "")],
+    ids=["empty", "whitespace", "truncated-inside-script", "missing-html-close"],
+)
+async def test_output_budget_failures_tell_the_user_what_to_change(
+    response: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reasoning model can spend the whole visualize budget on thinking and
+    # return nothing, or run out halfway through the page. Both are fixed by
+    # the same two settings, so the error has to name them.
+    result = await _generate(response, monkeypatch, max_tokens=12345)
+
+    assert result.status == BlockStatus.ERROR
+    assert "12345" in result.error
+    assert "Settings → Capabilities → Visualize" in result.error
+    assert "thinking" in result.error
+    assert result.metadata["failure"]["retryable"] is True
+
+
+@pytest.mark.asyncio
+async def test_empty_output_is_not_reported_as_a_missing_document_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = await _generate("", monkeypatch)
+
+    assert "returned no code" in result.error
+    assert "document start" not in result.error
+
+
+@pytest.mark.asyncio
+async def test_unpaired_scripts_do_not_blame_the_output_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = await _generate(_HTML.replace("</script>", ""), monkeypatch)
+
+    assert result.status == BlockStatus.ERROR
+    assert "Settings → Capabilities → Visualize" not in result.error
 
 
 @pytest.mark.asyncio
