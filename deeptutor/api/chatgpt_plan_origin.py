@@ -10,13 +10,26 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 _HEADER = b"x-deeptutor-desktop-session"
 _SCOPE_KEY = "deeptutor.desktop_plan_authenticated"
 _session_token: bytes | None = None
+_readiness_key: bytes | None = None
 
 
 def configure_desktop_request_auth() -> bool:
-    global _session_token
+    global _session_token, _readiness_key
     token = os.environ.pop("DEEPTUTOR_CHATGPT_PLAN_SESSION", "")
-    _session_token = token.encode("ascii") if re.fullmatch(r"[A-Za-z0-9_-]{43}", token) else None
+    key = os.environ.pop("DEEPTUTOR_DESKTOP_READY_KEY", "")
+    _readiness_key = key.encode("ascii") if re.fullmatch(r"[a-f0-9]{64}", key) else None
+    _session_token = (
+        token.encode("ascii")
+        if _readiness_key and re.fullmatch(r"[A-Za-z0-9_-]{43}", token)
+        else None
+    )
     return _session_token is not None
+
+
+def desktop_ready_proof(challenge: str) -> str | None:
+    if not _session_token or not _readiness_key or not re.fullmatch(r"[a-f0-9]{64}", challenge):
+        return None
+    return hmac.new(_readiness_key, challenge.encode("ascii"), "sha256").hexdigest()
 
 
 def is_desktop_frontend(scope: Scope) -> bool:

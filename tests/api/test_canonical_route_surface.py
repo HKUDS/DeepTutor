@@ -56,7 +56,7 @@ class _Coordinator:
 async def test_health_endpoints_distinguish_liveness_and_readiness() -> None:
     assert await health_live() == {"status": "alive"}
     state = SimpleNamespace(ready=False)
-    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    request = SimpleNamespace(app=SimpleNamespace(state=state), headers={})
 
     not_started = await health_ready(request)
     assert not_started.status_code == 503

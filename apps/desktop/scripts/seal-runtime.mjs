@@ -44,7 +44,7 @@ const isolatedVault = await access(path.join(target.runtime, 'core', 'deeptutor'
 const manifest = {
   formatVersion: 1, protocolVersion: 1, platform: target.platform, arch: target.arch,
   runtimeId, coreVersion, commit, archive, sha256: await sha256(path.join(target.seed, archive)),
-  ...(isolatedVault ? { chatGPTPlanVaultVersion: 1 } : {}),
+  ...(isolatedVault ? { chatGPTPlanVaultVersion: 1, chatGPTPlanReadyVersion: 1 } : {}),
 };
 manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
 await writeFile(path.join(target.seed, 'runtime.json'), JSON.stringify(manifest, null, 2) + '\n');

@@ -162,7 +162,7 @@ DeepTutor detects remote revocation when a subsequent request and token refresh 
 
 The encrypted vault is stored outside the workspace so app-managed upgrade backups cannot restore old credentials. If remote revocation fails after disconnecting, DeepTutor retains an encrypted token only for revocation retries. Inference stops locally. Use **Retry revocation** next to that account or revoke access in ChatGPT settings and retry.
 
-Only cores that advertise the isolated vault in their signed manifest can receive the vault key. If a Desktop update rolls back to an older core, the saved connections become available when a compatible core starts.
+Only cores that advertise both the isolated vault and authenticated readiness in their signed manifest can receive the vault key. The shell verifies both local services before enabling Plan requests and clears the authorization on runtime failure. If a Desktop update rolls back to an older core, the saved connections become available when a compatible core starts.
 
 When you regenerate a ChatGPT Plan reply, DeepTutor keeps existing replies as alternatives. A failed or cancelled regeneration leaves the saved reply in place.
 

@@ -553,6 +553,16 @@ async def health_ready(request: Request):
             status_code=503,
             content={"status": "not_ready", "reason": "coordination_unavailable"},
         )
+    challenge = request.headers.get("x-deeptutor-ready-challenge")
+    if challenge is not None:
+        from deeptutor.api.chatgpt_plan_origin import desktop_ready_proof
+
+        proof = desktop_ready_proof(challenge)
+        if proof:
+            return JSONResponse(
+                content={"status": "ready"},
+                headers={"x-deeptutor-ready-proof": proof, "Cache-Control": "no-store"},
+            )
     return {"status": "ready"}
 
 

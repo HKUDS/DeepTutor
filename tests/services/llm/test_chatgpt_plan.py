@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import hashlib
+import hmac
 import json
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,8 +24,17 @@ def test_desktop_session_requires_a_shell_header_and_strips_it(monkeypatch):
     token = "a" * 43
     origin = "http://127.0.0.1:18802"
     monkeypatch.setenv("DEEPTUTOR_CHATGPT_PLAN_SESSION", token)
+    readiness_key = "b" * 64
+    monkeypatch.setenv("DEEPTUTOR_DESKTOP_READY_KEY", readiness_key)
     monkeypatch.setattr(chatgpt_plan_origin, "_session_token", None)
+    monkeypatch.setattr(chatgpt_plan_origin, "_readiness_key", None)
     assert chatgpt_plan_origin.configure_desktop_request_auth()
+    challenge = "c" * 64
+    assert (
+        chatgpt_plan_origin.desktop_ready_proof(challenge)
+        == hmac.new(readiness_key.encode(), challenge.encode(), "sha256").hexdigest()
+    )
+    assert chatgpt_plan_origin.desktop_ready_proof("") is None
 
     app = FastAPI()
     app.add_middleware(chatgpt_plan_origin.DesktopOriginMiddleware, origin=origin)
@@ -59,6 +69,10 @@ def test_desktop_session_requires_a_shell_header_and_strips_it(monkeypatch):
         assert ws.receive_json() is False
     with client.websocket_connect("/ws", headers=valid) as ws:
         assert ws.receive_json() is True
+
+    monkeypatch.setenv("DEEPTUTOR_CHATGPT_PLAN_SESSION", token)
+    assert not chatgpt_plan_origin.configure_desktop_request_auth()
+    assert chatgpt_plan_origin.desktop_ready_proof(challenge) is None
 
 
 @pytest.mark.asyncio

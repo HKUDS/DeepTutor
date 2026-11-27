@@ -85,6 +85,7 @@ function publish() {
 
 function status(next) {
   state = { ...state, ...next };
+  if (['error', 'stopping', 'stopped'].includes(next.phase)) planSessionToken = undefined;
   if (next.phase && next.phase !== 'ready') hideContent();
   publish();
 }
@@ -147,7 +148,7 @@ async function openContent(ready) {
   } });
   view = nextView;
   // The web page can request plan status before the splash hands off to it.
-  planFrontendURL = ready.url;
+  planFrontendURL = ready.planAuthenticated === true ? ready.url : undefined;
   nextView.setBackgroundColor(BACKGROUND[ui.theme]);
   nextView.setVisible(false);
   const content = nextView.webContents;
@@ -195,6 +196,7 @@ async function stopWorker() {
   const previous = worker;
   worker = undefined;
   planSessionToken = undefined;
+  planFrontendURL = undefined;
   if (!previous || previous.exitCode !== null) return;
   await new Promise(resolve => {
     // Windows cannot signal the worker, so a stuck worker is ended with its services.
@@ -226,7 +228,8 @@ async function launchRuntime(installed) {
   // Never prevent regular Desktop startup if the OS key store is locked.
   // Older cores write their vault into workspace backups. Keep the migrated
   // vault available for the next supported core without enabling OAuth there.
-  const isolatedVault = installed.manifest.chatGPTPlanVaultVersion === 1;
+  const isolatedVault = installed.manifest.chatGPTPlanVaultVersion === 1
+    && installed.manifest.chatGPTPlanReadyVersion === 1;
   const planKey = isolatedVault ? await chatGPTPlanKey().catch(() => undefined) : undefined;
   planSessionToken = planKey ? randomBytes(32).toString('base64url') : undefined;
   const child = fork(path.join(sourceDirectory, 'supervisor.mjs'), [], {
@@ -246,7 +249,10 @@ async function launchRuntime(installed) {
       status(next);
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
-    child.once('error', reject);
+    child.once('error', error => {
+      if (worker === child && !quitting) status({ phase: 'error', step: null, message: error.message });
+      if (!ready) reject(error);
+    });
     child.once('exit', code => {
       if (worker !== child || quitting) return;
       status({ phase: 'error', step: null, message: t('workerExited', { code }) });
