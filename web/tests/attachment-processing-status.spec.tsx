@@ -78,7 +78,7 @@ it("shows PDF transfer before server receipt and replaces it with confirmed prog
     { attachmentId: "stored-a", filename: "notes.pdf", phase: "received", detail: "Uploaded" },
   ]);
   render(<AttachmentProcessingStatus items={confirmed} />);
-  expect(screen.getByText("Uploaded to DeepTutor")).toBeVisible();
+  expect(screen.getByText("Uploaded to درسیار")).toBeVisible();
   expect(selectAttachmentProcessing([user, { role: "assistant", events: [] }], false)).toEqual([]);
 });
 

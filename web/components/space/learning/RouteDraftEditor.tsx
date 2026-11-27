@@ -189,11 +189,11 @@ export function RouteDraftEditor({
                 </button>
               </div>
               {blankRegion && (
-                <p className="ml-8 mt-1 text-[11px] text-red-600">
+                <p className="ms-8 mt-1 text-[11px] text-red-600">
                   {t("Module name cannot be blank.")}
                 </p>
               )}
-              <div className="mt-2 space-y-1.5 sm:pl-8">
+              <div className="mt-2 space-y-1.5 sm:ps-8">
                 {module.knowledge_points.map((point, pointIndex) => {
                   const blankWaypoint = waypointHasIssue(
                     moduleIndex,
@@ -291,7 +291,7 @@ export function RouteDraftEditor({
                         <X className="h-3 w-3" />
                       </button>
                       {blankWaypoint && (
-                        <p className="w-full pl-4 text-[11px] text-red-600">
+                        <p className="w-full ps-4 text-[11px] text-red-600">
                           {t("Knowledge point name cannot be blank.")}
                         </p>
                       )}
@@ -372,7 +372,7 @@ function OrderButtons({
         onClick={() => onMove(index + 1)}
         disabled={index === count - 1}
         aria-label={downLabel}
-        className="border-l border-[var(--border)] p-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-25"
+        className="border-s border-[var(--border)] p-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-25"
       >
         <ArrowDown className="h-3 w-3" />
       </button>

@@ -242,7 +242,7 @@ export default function AppearanceSettingsPage() {
                   event.target.value as CodeBlockThemeId,
                 )
               }
-              className={`${selectClass} min-w-[220px] pr-8`}
+              className={`${selectClass} min-w-[220px] pe-8`}
             >
               {CODE_BLOCK_THEME_OPTIONS.map((option) => (
                 <option

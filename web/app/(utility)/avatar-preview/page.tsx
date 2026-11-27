@@ -95,7 +95,7 @@ export default function AvatarPreview() {
         >
           {t("Step forward")}
         </button>
-        <span className="ml-2 text-[var(--muted-foreground)]/60">{t("Size")}</span>
+        <span className="ms-2 text-[var(--muted-foreground)]/60">{t("Size")}</span>
         {[11, 12, 13, 14].map((px) => (
           <button
             key={px}

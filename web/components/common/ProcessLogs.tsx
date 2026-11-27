@@ -79,7 +79,7 @@ export default function ProcessLogs({
         >
           {logs.map((line, i) => (
             <div key={`log-${i}`} className="whitespace-pre-wrap break-all">
-              <span className="mr-2 select-none text-[var(--border)]">
+              <span className="me-2 select-none text-[var(--border)]">
                 {String(i + 1).padStart(3)}
               </span>
               {line}

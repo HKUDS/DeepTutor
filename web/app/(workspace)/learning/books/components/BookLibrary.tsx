@@ -142,14 +142,14 @@ export default function BookLibrary({
         <div className="relative min-w-48 flex-1 sm:max-w-sm">
           <Search
             size={14}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
           />
           <input
             aria-label={t('Search books')}
             value={query}
             onChange={event => setQuery(event.target.value)}
             placeholder={t('Search books')}
-            className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] ps-9 pe-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </div>
       </div>
@@ -247,7 +247,7 @@ export default function BookLibrary({
                   )}
 
                   {book.can_delete !== false && (
-                    <div className="absolute right-2 top-2 z-10">
+                    <div className="absolute end-2 top-2 z-10">
                       <Tooltip label={isPendingDelete ? t('Click again to confirm') : t('Delete book')}>
                         <button
                           type="button"
@@ -278,7 +278,7 @@ export default function BookLibrary({
 
                   {/* Body */}
                   <div className="flex flex-1 flex-col gap-2 p-4">
-                    <div className="flex items-center gap-3 pr-3">
+                    <div className="flex items-center gap-3 pe-3">
                       <LearningCardContent
                         title={book.title || t('Untitled book')}
                         subtitle={

@@ -133,7 +133,7 @@ export default function CategoryMenu({
       {open && (
         <div
           className={`absolute z-30 w-60 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg ${
-            align === "right" ? "right-0" : "left-0"
+            align === "right" ? "end-0" : "start-0"
           } ${direction === "up" ? "bottom-full mb-1.5" : "mt-1.5"}`}
         >
           <div className="max-h-56 overflow-y-auto p-1.5">
@@ -156,7 +156,7 @@ export default function CategoryMenu({
                       if (ok) setOpen(false);
                     })
                   }
-                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70 disabled:opacity-50"
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70 disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {category.name}

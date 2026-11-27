@@ -523,7 +523,7 @@ function RecordEditor({
 
       <div className="flex items-center justify-end gap-2 border-t border-[var(--border)]/70 px-3 py-2">
         {dirty && (
-          <span className="mr-auto text-[11px] text-[var(--muted-foreground)]">
+          <span className="me-auto text-[11px] text-[var(--muted-foreground)]">
             {t("Unsaved changes")}
           </span>
         )}

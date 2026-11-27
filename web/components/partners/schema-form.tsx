@@ -76,7 +76,7 @@ function FieldLabel({
     <label className="mb-1 block text-[12px] font-medium text-[var(--foreground)]">
       {label}
       {description && (
-        <span className="ml-1 font-normal opacity-70">— {description}</span>
+        <span className="ms-1 font-normal opacity-70">— {description}</span>
       )}
     </label>
   );
@@ -187,7 +187,7 @@ export function SchemaField({
         <span>
           {label}
           {description && (
-            <span className="ml-1 text-[11px] text-[var(--muted-foreground)]">
+            <span className="ms-1 text-[11px] text-[var(--muted-foreground)]">
               — {description}
             </span>
           )}
@@ -327,10 +327,10 @@ export function SchemaField({
             // `Optional[str]` default and avoids "" sneaking past validators).
             onChange(next === "" && isNullable(schema) ? null : next);
           }}
-          className={`w-full rounded-lg border border-[var(--border)] bg-transparent py-2 pl-3 ${isSecret ? "pr-10 font-mono" : "pr-3"} text-[13px] outline-none focus:border-[var(--ring)]`}
+          className={`w-full rounded-lg border border-[var(--border)] bg-transparent py-2 ps-3 ${isSecret ? "pe-10 font-mono" : "pe-3"} text-[13px] outline-none focus:border-[var(--ring)]`}
         />
         {isSecret && (
-          <span className="absolute right-1 top-1/2 -translate-y-1/2">
+          <span className="absolute end-1 top-1/2 -translate-y-1/2">
             <Tooltip label={reveal ? t("Hide secret") : t("Show secret")}>
               <button
                 type="button"

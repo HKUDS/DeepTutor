@@ -79,7 +79,7 @@ export default function SimpleMarkdownRenderer({
       <span className="underline underline-offset-2">{children}</span>
     ),
     blockquote: ({ node, children }: any) => (
-      <div className="border-l border-current/20 pl-3 opacity-80">
+      <div className="border-s border-current/20 ps-3 opacity-80">
         {children}
       </div>
     ),
@@ -92,12 +92,12 @@ export default function SimpleMarkdownRenderer({
     img: () => null,
     hr: () => <div className="my-1 h-px bg-current opacity-10" />,
     ul: ({ node, ...props }: any) => (
-      <ul className="my-1 ml-4 list-disc" {...props} />
+      <ul className="my-1 ms-4 list-disc" {...props} />
     ),
     ol: ({ node, ...props }: any) => (
-      <ol className="my-1 ml-4 list-decimal" {...props} />
+      <ol className="my-1 ms-4 list-decimal" {...props} />
     ),
-    li: ({ node, ...props }: any) => <li className="my-0.5 pl-0" {...props} />,
+    li: ({ node, ...props }: any) => <li className="my-0.5 ps-0" {...props} />,
     table: ({ node, children, ...props }: any) =>
       hasRenderableChildren(children) ? (
         <div className="my-1 overflow-x-auto rounded border border-[var(--border)]/50">
@@ -111,7 +111,7 @@ export default function SimpleMarkdownRenderer({
     ),
     th: ({ node, ...props }: any) => (
       <th
-        className="border-b border-[var(--border)]/50 px-1.5 py-0.5 text-left font-medium"
+        className="border-b border-[var(--border)]/50 px-1.5 py-0.5 text-start font-medium"
         {...props}
       />
     ),
@@ -128,7 +128,7 @@ export default function SimpleMarkdownRenderer({
         <input
           type="checkbox"
           readOnly
-          className="mr-1 align-middle"
+          className="me-1 align-middle"
           {...props}
         />
       ) : null,
@@ -417,7 +417,7 @@ export default function SimpleMarkdownRenderer({
           type="checkbox"
           checked={checked}
           readOnly
-          className="mr-2 h-4 w-4 rounded border-[var(--border)] align-middle accent-[var(--primary)]"
+          className="me-2 h-4 w-4 rounded border-[var(--border)] align-middle accent-[var(--primary)]"
           {...props}
         />
       ) : null,

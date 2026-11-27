@@ -82,7 +82,7 @@ export function ReadingPanelSeparator({
     >
       {/* Invisible at rest — the panes' tones mark the edge — and a line
           only while the handle is being found or dragged. */}
-      <span className="absolute inset-y-3 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--primary)_60%,transparent)] group-focus-visible/resize:bg-[var(--primary)] group-active/resize:bg-[var(--primary)]" />
+      <span className="absolute inset-y-3 start-1/2 w-[3px] -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--primary)_60%,transparent)] group-focus-visible/resize:bg-[var(--primary)] group-active/resize:bg-[var(--primary)]" />
     </div>
   )
 }

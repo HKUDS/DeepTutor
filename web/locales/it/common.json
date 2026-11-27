@@ -1,7 +1,6 @@
 {
   "language.english": "English",
   "language.chinese": "中文",
-  "language.italian": "Italiano",
   "common.loading": "Caricamento in corso...",
   "common.save": "Salva",
   "common.cancel": "Annulla",
@@ -42,5 +41,7 @@
   "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Ad esempio: sto studiando algebra lineare. Spiega l'intuizione geometrica prima di introdurre le formule e fornisci suggerimenti prima delle soluzioni complete.",
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.": "Si applica a Chat, Risolvi, Fai domande, Apprendimento guidato, Lettura e visualizzazioni standard. Le modifiche avranno effetto al turno successivo.",
   "Clear instructions": "Cancella istruzioni",
-  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caratteri"
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caratteri",
+  "language.persian": "فارسی",
+  "language.korean": "한국어 (일부 번역)"
 }

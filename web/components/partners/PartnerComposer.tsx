@@ -431,7 +431,7 @@ export const PartnerComposer = memo(function PartnerComposer({
       />
 
       {slashOpen && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg">
+        <div className="absolute bottom-full start-0 z-20 mb-2 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg">
           {slashMatches.map((command, index) => (
             <button
               key={command.command}
@@ -456,7 +456,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                   {command.arg_hint}
                 </span>
               )}
-              <span className="ml-auto truncate pl-3 text-[11.5px] text-[var(--muted-foreground)]">
+              <span className="ms-auto truncate ps-3 text-[11.5px] text-[var(--muted-foreground)]">
                 {command.description}
               </span>
             </button>
@@ -505,7 +505,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                     type="button"
                     onClick={() => removeAttachment(index)}
                     aria-label={removeLabel}
-                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+                    className="absolute -end-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
                   >
                     <X className="h-2.5 w-2.5" />
                   </button>
@@ -520,7 +520,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                 key={`${attachment.filename}-${index}`}
                 className="group relative"
               >
-                <div className="flex h-14 w-[150px] items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-left">
+                <div className="flex h-14 w-[150px] items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-start">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
                     <Icon size={19} strokeWidth={1.5} className={spec.tint} />
                   </div>
@@ -537,7 +537,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                   type="button"
                   onClick={() => removeAttachment(index)}
                   aria-label={removeLabel}
-                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+                  className="absolute -end-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
@@ -579,7 +579,7 @@ export const PartnerComposer = memo(function PartnerComposer({
               <Info className="h-4 w-4" strokeWidth={1.9} />
             </button>
             {showHelp && (
-              <div className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[11.5px] leading-relaxed text-[var(--muted-foreground)] shadow-lg">
+              <div className="absolute bottom-full start-0 z-20 mb-2 w-64 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[11.5px] leading-relaxed text-[var(--muted-foreground)] shadow-lg">
                 <p className="mb-1 font-medium text-[var(--foreground)]">
                   {t("Tips")}
                 </p>

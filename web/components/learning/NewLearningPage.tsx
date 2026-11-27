@@ -68,7 +68,7 @@ export default function NewLearningPage() {
               <button
                 type="button"
                 onClick={() => navigateTask(`${item.href}?create=1`, router.push)}
-                className="group flex h-full min-h-56 w-full flex-col rounded-2xl border border-border bg-card p-6 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring active:translate-y-0 motion-reduce:transform-none"
+                className="group flex h-full min-h-56 w-full flex-col rounded-2xl border border-border bg-card p-6 text-start shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring active:translate-y-0 motion-reduce:transform-none"
               >
                 <span className="mb-6 flex w-full items-center justify-between">
                   <span

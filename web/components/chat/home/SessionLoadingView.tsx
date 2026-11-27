@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_NAME_FA } from "@/lib/brand";
 import { Loader2, RotateCw, TriangleAlert, X } from "lucide-react";
 
 /**
@@ -60,7 +61,7 @@ export default function SessionLoadingView({
       <div className="flex items-center gap-3">
         <img
           src="/brand/black-logo.png"
-          alt="DeepTutor"
+          alt={PRODUCT_NAME_FA}
           width={32}
           height={32}
           className="h-8 w-8 select-none dark:invert"

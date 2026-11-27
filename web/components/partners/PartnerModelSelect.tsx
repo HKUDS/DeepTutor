@@ -131,7 +131,7 @@ export default function PartnerModelSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 z-30 mt-1 max-h-[300px] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg">
+        <div className="absolute start-0 end-0 z-30 mt-1 max-h-[300px] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg">
           <DropdownRow
             title={noneLabel}
             subtitle={noneDetail}

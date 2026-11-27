@@ -86,7 +86,7 @@ export default function McpServerRow({
       <button
         type="button"
         onClick={onToggleExpanded}
-        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        className="flex min-w-0 flex-1 items-start gap-3 text-start"
         aria-expanded={isExpanded}
       >
         <div className="min-w-0 flex-1">

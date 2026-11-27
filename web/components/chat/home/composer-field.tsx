@@ -51,7 +51,7 @@ export function CollapsibleConfigSection({
       <button
         type="button"
         onClick={onToggleCollapsed}
-        className="flex w-full items-center gap-1.5 px-3.5 py-1.5 text-left transition-colors hover:opacity-80"
+        className="flex w-full items-center gap-1.5 px-3.5 py-1.5 text-start transition-colors hover:opacity-80"
       >
         <ChevronDown
           size={10}
