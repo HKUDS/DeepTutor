@@ -87,6 +87,7 @@ class FigureGenerator(BlockGenerator):
                 user_input=user_input,
                 history_context=history_context,
                 analysis=analysis,
+                book_block_id=ctx.block.id,
             )
             ok, validation_error = validate_visualization(code, analysis.render_type)
             if ok:

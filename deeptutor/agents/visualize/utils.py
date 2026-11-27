@@ -46,6 +46,17 @@ def extract_code_block(text: str, language: str = "") -> str:
     match = re.search(pattern, text or "", re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    # Truncated outputs often carry an opening fence with no closing one.
+    # Return the fenced body instead of the raw response, which would leak
+    # the ```html marker and surrounding prose into the rendered payload.
+    open_pattern = (
+        rf"```{re.escape(language)}\s*\n([\s\S]*)$"
+        if language
+        else r"```[A-Za-z]*\s*\n([\s\S]*)$"
+    )
+    open_match = re.search(open_pattern, text or "", re.IGNORECASE)
+    if open_match:
+        return open_match.group(1).strip()
     return (text or "").strip()
 
 
@@ -55,6 +66,28 @@ def is_valid_html_document(html: str) -> bool:
         return False
     lowered = html.lower()
     return "<html" in lowered or "<!doctype" in lowered or "<body" in lowered or "<div" in lowered
+
+
+def validate_book_widget_html(code: str) -> tuple[bool, str]:
+    """Require a complete document for a book's sandboxed interactive widget."""
+    text = (code or "").strip()
+    if not text:
+        return False, "Generated code is empty."
+    if not re.fullmatch(
+        r"(?:<!doctype\s+html\s*>\s*)?<html(?:\s[^>]*)?>.*</html\s*>",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        return False, "Expected a complete HTML document ending in </html>."
+    body = re.search(r"<body(?:\s[^>]*)?>(.*?)</body\s*>", text, re.IGNORECASE | re.DOTALL)
+    if not body or not body.group(1).strip():
+        return False, "Expected a nonempty, closed HTML body."
+    for tag in ("script", "style"):
+        starts = re.findall(rf"<{tag}(?=[\s>])", text, re.IGNORECASE)
+        ends = re.findall(rf"</{tag}\s*>", text, re.IGNORECASE)
+        if len(starts) != len(ends):
+            return False, f"HTML contains an unclosed or unmatched <{tag}> element."
+    return True, ""
 
 
 def build_fallback_html(*, title: str, summary: str = "", note: str = "") -> str:
@@ -208,3 +241,31 @@ __all__ = [
     "is_valid_html_document",
     "validate_visualization",
 ]
+
+
+_MINDMAP_SHAPED = re.compile(r"^[A-Za-z0-9_-]*[\(\[\{]")
+
+
+def sanitize_mindmap_labels(source: str) -> str:
+    """Quote mindmap node labels that contain shape-syntax characters.
+
+    Mermaid's mindmap parser reads ``(``, ``[``, ``{`` in bare labels as node
+    shape delimiters (``f'(c) equals ...`` fails to parse). Wrapping such labels
+    in the quoted square-bracket form keeps them literal. Already-shaped nodes
+    (``root((...))``, ``id[...]``) are left untouched.
+    """
+    out = []
+    for line in (source or "").split("\n"):
+        match = re.match(r"^(\s*)(\S.*)$", line)
+        if not match:
+            out.append(line)
+            continue
+        indent, text = match.groups()
+        if text.startswith("mindmap") or _MINDMAP_SHAPED.match(text):
+            out.append(line)
+            continue
+        if re.search(r"[()\[\]{}]", text):
+            out.append(indent + '["' + text.replace('"', '\\"') + '"]')
+        else:
+            out.append(line)
+    return "\n".join(out)

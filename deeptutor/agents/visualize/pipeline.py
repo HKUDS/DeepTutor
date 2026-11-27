@@ -65,11 +65,13 @@ class VisualizePipeline:
         user_input: str,
         history_context: str,
         analysis: VisualizationAnalysis,
+        book_block_id: str | None = None,
     ) -> str:
         return await self.code_agent.process(
             user_input=user_input,
             history_context=history_context,
             analysis=analysis,
+            book_block_id=book_block_id,
         )
 
     async def run_repair(

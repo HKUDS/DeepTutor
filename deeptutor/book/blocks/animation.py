@@ -100,6 +100,11 @@ class AnimationGenerator(BlockGenerator):
                 request_config=request_config,
                 attachments=[],
             )
+        except TimeoutError as exc:
+            logger.warning("Book animation block=%s timed out", ctx.block.id, exc_info=True)
+            raise GenerationFailure(
+                "Animation timed out. Try a shorter scene or lower render quality."
+            ) from exc
         except Exception as exc:
             logger.warning(f"AnimationGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"animation generation failed: {exc}") from exc
