@@ -125,7 +125,7 @@ async def test_http_date_survives_terminal_rate_limit_error(
     with pytest.raises(EmbeddingProviderError, match="Retry-After"):
         await _make_adapter().embed(EmbeddingRequest(texts=["hello"], model="test-model"))
 
-    assert transport.calls == 9
+    assert transport.calls == 1 + OpenAICompatibleEmbeddingAdapter._MAX_RATE_LIMIT_RETRIES
 
 
 class _RateLimitedThenFlakyTransport(httpx.AsyncBaseTransport):
