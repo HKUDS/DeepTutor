@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.util
+import os
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 from llama_index.core.schema import NodeWithScore, TextNode
 import pytest
@@ -21,6 +26,24 @@ def _clear_reranker_cache():
 
 def _result(node_id: str, text: str, score: float = 0.5) -> NodeWithScore:
     return NodeWithScore(node=TextNode(text=text, id_=node_id), score=score)
+
+
+def _install_fake_sentence_transformers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    body: str,
+) -> Path:
+    pkg_dir = tmp_path / "fake_st"
+    pkg_dir.mkdir()
+    (pkg_dir / "sentence_transformers.py").write_text(textwrap.dedent(body), encoding="utf-8")
+    repo_root = str(Path(rerank_module.__file__).resolve().parents[5])
+    existing = os.environ.get("PYTHONPATH", "")
+    pythonpath = os.pathsep.join(part for part in (str(pkg_dir), repo_root, existing) if part)
+    monkeypatch.setenv("PYTHONPATH", pythonpath)
+    monkeypatch.syspath_prepend(str(pkg_dir))
+    monkeypatch.delitem(sys.modules, "sentence_transformers", raising=False)
+    importlib.invalidate_caches()
+    return pkg_dir
 
 
 def test_cross_encoder_reranks_candidates_and_normalizes_scores() -> None:
@@ -165,3 +188,159 @@ def test_retrieve_nodes_expands_candidates_only_when_reranker_is_configured(
         }
     ]
     assert [result.node_id for result in reranked] == ["first", "second"]
+
+
+def test_default_reranker_runs_in_isolated_worker_and_reuses_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid_log = tmp_path / "pids.txt"
+    _install_fake_sentence_transformers(
+        tmp_path,
+        monkeypatch,
+        f"""
+        import os
+        from pathlib import Path
+
+        class CrossEncoder:
+            def __init__(self, model_name: str) -> None:
+                self.model_name = model_name
+                print("noisy progress output on stdout", flush=True)
+
+            def predict(self, pairs, *, activation_fct=None):
+                with Path({str(pid_log)!r}).open("a", encoding="utf-8") as fh:
+                    fh.write(f"{{os.getpid()}}\\n")
+                scores = [-8.0, 8.0][: len(pairs)]
+                return activation_fct(scores) if callable(activation_fct) else scores
+        """,
+    )
+    candidates = [_result("weak", "weak candidate"), _result("strong", "strong candidate")]
+
+    first = rerank_module.rerank_nodes(
+        "probe",
+        candidates,
+        top_k=2,
+        model_name="fake-reranker",
+    )
+    second = rerank_module.rerank_nodes(
+        "probe",
+        candidates,
+        top_k=2,
+        model_name="fake-reranker",
+    )
+
+    assert "sentence_transformers" not in sys.modules
+    assert [item.node_id for item in first] == ["strong", "weak"]
+    assert [item.node_id for item in second] == ["strong", "weak"]
+
+    pids = [int(line) for line in pid_log.read_text(encoding="utf-8").splitlines()]
+    assert len(pids) == 2
+    assert pids[0] != os.getpid()
+    assert pids[0] == pids[1]
+
+    rerank_module.clear_reranker_cache()
+    rerank_module.rerank_nodes(
+        "probe",
+        candidates,
+        top_k=2,
+        model_name="fake-reranker",
+    )
+    pids_after_clear = [int(line) for line in pid_log.read_text(encoding="utf-8").splitlines()]
+    assert len(pids_after_clear) == 3
+    assert pids_after_clear[2] != pids[0]
+
+
+def test_reranker_worker_crash_falls_back_and_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    crash_marker = tmp_path / "crash_once"
+    crash_marker.write_text("1", encoding="utf-8")
+    _install_fake_sentence_transformers(
+        tmp_path,
+        monkeypatch,
+        f"""
+        import os
+        from pathlib import Path
+        import sys
+
+        class CrossEncoder:
+            def __init__(self, model_name: str) -> None:
+                self.model_name = model_name
+
+            def predict(self, pairs, *, activation_fct=None):
+                marker = Path({str(crash_marker)!r})
+                if marker.exists():
+                    marker.unlink()
+                    sys.stderr.write("simulated native worker abort\\n")
+                    sys.stderr.flush()
+                    os._exit(134)
+                return [-5.0, 5.0][: len(pairs)]
+        """,
+    )
+    candidates = [_result("first", "first"), _result("second", "second")]
+
+    with caplog.at_level("WARNING"):
+        fallback = rerank_module.rerank_nodes(
+            "probe",
+            candidates,
+            top_k=1,
+            model_name="fake-reranker",
+        )
+
+    assert [item.node_id for item in fallback] == ["first"]
+    assert "using embedding retrieval unchanged" in caplog.text
+
+    recovered = rerank_module.rerank_nodes(
+        "probe",
+        candidates,
+        top_k=1,
+        model_name="fake-reranker",
+    )
+    assert [item.node_id for item in recovered] == ["second"]
+
+
+def test_faiss_search_then_rerank_does_not_abort_process() -> None:
+    for module_name in ("faiss", "sentence_transformers"):
+        if importlib.util.find_spec(module_name) is None:
+            pytest.skip(f"{module_name} is not installed")
+
+    code = textwrap.dedent(
+        """
+        import sys
+        import faiss
+        import numpy as np
+        from llama_index.core.schema import NodeWithScore, TextNode
+        from deeptutor.services.rag.pipelines.llamaindex.rerank import (
+            clear_reranker_cache,
+            rerank_nodes,
+        )
+
+        idx = faiss.IndexFlatIP(8)
+        idx.add(np.ones((2, 8), dtype="float32"))
+        idx.search(np.ones((1, 8), dtype="float32"), 1)
+
+        node = NodeWithScore(node=TextNode(text="hello", id_="n1"), score=0.5)
+        ranked = rerank_nodes("hello", [node], top_k=1, model_name="local-offline-probe")
+        clear_reranker_cache()
+        assert len(ranked) == 1
+        assert "torch" not in sys.modules
+        assert "sentence_transformers" not in sys.modules
+        print("OK")
+        """
+    )
+    env = {
+        **os.environ,
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "OK" in proc.stdout
