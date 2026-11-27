@@ -35,7 +35,7 @@ export default function NotePageTree({
   onNavigate: (event: MouseEvent<HTMLAnchorElement>, id: string) => void
   onClose?: () => void
   onCreate: (parentId: string | null) => void
-  onDelete: (page: NoteSummary) => void
+  onDelete?: (page: NoteSummary) => void
   onPin?: (page: NoteSummary) => void
 }) {
   const { t } = useTranslation()
@@ -76,6 +76,7 @@ export default function NotePageTree({
                 className={`dt-note-tree-row ${page.pinned ? 'is-pinned' : ''} ${page.id === currentId ? 'is-current' : ''}`}
                 style={{ paddingLeft: depth * 14 }}
                 onContextMenu={event => {
+                  if (!onDelete && !onPin) return
                   event.preventDefault()
                   if (busy) return
                   const trigger =
@@ -136,23 +137,21 @@ export default function NotePageTree({
                     <Plus size={14} />
                   </button>
                 </Tooltip>
-                <button
-                  className="dt-note-tree-add"
-                  aria-label={t('Page actions for {{page}}', { page: title })}
-                  aria-haspopup="menu"
-                  aria-expanded={menu?.id === page.id}
-                  disabled={busy}
-                  onClick={event => {
-                    const trigger = event.currentTarget
-                    setMenu(
-                      menu?.id === page.id
-                        ? null
-                        : { id: page.id, trigger }
-                    )
-                  }}
-                >
-                  <MoreHorizontal size={14} />
-                </button>
+                {(onDelete || onPin) && (
+                  <button
+                    className="dt-note-tree-add"
+                    aria-label={t('Page actions for {{page}}', { page: title })}
+                    aria-haspopup="menu"
+                    aria-expanded={menu?.id === page.id}
+                    disabled={busy}
+                    onClick={event => {
+                      const trigger = event.currentTarget
+                      setMenu(menu?.id === page.id ? null : { id: page.id, trigger })
+                    }}
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
+                )}
               </div>
               {menu?.id === page.id && (
                 <TreeMenu
@@ -165,10 +164,10 @@ export default function NotePageTree({
                     closeMenu()
                     onPin(page)
                   })}
-                  onDelete={() => {
+                  onDelete={onDelete && (() => {
                     closeMenu()
                     onDelete(page)
-                  }}
+                  })}
                 />
               )}
               {expanded && hasChildren && rows(page.id, depth + 1)}

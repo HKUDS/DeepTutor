@@ -18,10 +18,11 @@ export default function NotePageActions({
   hasChildren: boolean
   current?: boolean
   compact?: boolean
-  onDelete: () => void
+  onDelete?: () => void
 }) {
   const { t } = useTranslation()
   const [confirming, setConfirming] = useState(false)
+  if (!onDelete) return null
   return (
     <>
       {confirming && (!compact || hasChildren) && (

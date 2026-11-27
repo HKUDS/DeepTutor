@@ -83,7 +83,7 @@ export async function applyPageAction(action: PageAction, {
   return true
 }
 
-export async function loadDestination(
+async function loadDestination(
   target: Target,
   pages: NoteSummary[],
   treeOpen: boolean,

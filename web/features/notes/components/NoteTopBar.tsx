@@ -69,7 +69,6 @@ export default function NoteTopBar({
   onExport,
   onImport,
   onDelete,
-  hasChildren,
 }: {
   page: NotePage | null
   pages: NoteSummary[]
@@ -88,9 +87,8 @@ export default function NoteTopBar({
   onMetadata: (patch: Partial<NotePage>) => void
   onInsertFavorite: () => void
   onExport: (format: 'md' | 'docx' | 'anki') => void
-  onImport: () => void
-  onDelete: (page: NotePage) => void
-  hasChildren: boolean
+  onImport?: () => void
+  onDelete?: (page: NotePage) => void
 }) {
   const { t } = useTranslation()
   const feature = useShelfFeature('/co-writer')
@@ -299,13 +297,15 @@ export default function NoteTopBar({
                   {t('Insert favorite')}
                 </button>
                 <div className="dt-menu-divider" />
-                <button role="menuitem" className="dt-menu-item" onClick={() => {
-                  setOpen(false)
-                  onImport()
-                }}>
-                  <Upload size={14} />
-                  {t('Import document')}
-                </button>
+                {onImport && (
+                  <button role="menuitem" className="dt-menu-item" onClick={() => {
+                    setOpen(false)
+                    onImport()
+                  }}>
+                    <Upload size={14} />
+                    {t('Import document')}
+                  </button>
+                )}
                 <button
                   role="menuitem"
                   className="dt-menu-item"
@@ -344,16 +344,20 @@ export default function NoteTopBar({
                 <p className="dt-note-menu-note">
                   {t('Word export keeps text and source links; interactive blocks become static.')}
                 </p>
-                <div className="dt-menu-divider" />
-                <NotePageActions
-                  current
-                  page={page}
-                  hasChildren={hasChildren}
-                  onDelete={() => {
-                    setOpen(false)
-                    onDelete(page)
-                  }}
-                />
+                {onDelete && (
+                  <>
+                    <div className="dt-menu-divider" />
+                    <NotePageActions
+                      current
+                      page={page}
+                      hasChildren={pages.some(p => p.parent_id === page.id)}
+                      onDelete={() => {
+                        setOpen(false)
+                        onDelete(page)
+                      }}
+                    />
+                  </>
+                )}
               </>
             )}
           </div>

@@ -607,7 +607,6 @@ export default function NoteWorkspace({
       <NoteTopBar
         page={page}
         pages={pages}
-        hasChildren={pages.some(p => p.parent_id === docId)}
         onDelete={deletePage}
         onImport={() => importInput.current?.click()}
         invalidParents={invalidParents}
