@@ -13,6 +13,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -88,6 +89,13 @@ export function AddMaterialsDialog({
   const [error, setError] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [showInvidious, setShowInvidious] = useState(false);
+  const browserDialog = useRef<HTMLDialogElement>(null);
+  const browseButton = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    if (showInvidious) browserDialog.current?.showModal();
+  }, [showInvidious]);
+
   const selectedLibraryIds = useMemo(
     () =>
       new Set(
@@ -465,6 +473,7 @@ export function AddMaterialsDialog({
           </div>
 
           <button
+            ref={browseButton}
             type="button"
             onClick={() => setShowInvidious(true)}
             className="mt-3 flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[11.5px] text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)]"
@@ -539,11 +548,25 @@ export function AddMaterialsDialog({
       </div>
 
       {showInvidious && (
-        <WatchingBrowser
-          canDismiss
-          onSelectUrl={(url) => void importInvidiousUrl(url)}
-          onDismiss={() => setShowInvidious(false)}
-        />
+        <dialog
+          ref={browserDialog}
+          aria-label={t("Browse Invidious")}
+          className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-[var(--background)] p-0"
+          onKeyDown={(event) => {
+            // Let the native dialog handle Escape before workspace shortcuts see it.
+            if (event.key === "Escape") event.stopPropagation();
+          }}
+          onClose={() => {
+            setShowInvidious(false);
+            browseButton.current?.focus();
+          }}
+        >
+          <WatchingBrowser
+            canDismiss
+            onSelectUrl={(url) => void importInvidiousUrl(url)}
+            onDismiss={() => browserDialog.current?.close()}
+          />
+        </dialog>
       )}
     </div>
   );

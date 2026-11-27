@@ -1,6 +1,5 @@
 'use client'
 
-import { scopedUrl } from "@/lib/workspace-scope";
 import { LearningCardContent } from '@/components/learning/LearningCard'
 
 import {
@@ -182,29 +181,30 @@ export function WatchingBrowser({
         onScroll={() => remember(scroll.current?.scrollTop || 0)}
         title={t('Browse Invidious')}
         subtitle={t('Choose a video to add to this collection.')}
-        action={
-          <div className="flex items-center gap-2 text-sm">
-            {canDismiss && (
-              <button className="watching-browser-button" onClick={onDismiss}>
-                <ArrowLeft size={16} />
-                {t('Close')}
-              </button>
-            )}
-            <button
-              className="watching-browser-button"
-              disabled={accountBusy || auth.loading}
-              onClick={() => void (account?.connected ? disconnect() : connect())}
-            >
-              {accountBusy ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={16} />}
-              {account?.connected
-                ? t('Disconnect Invidious')
-                : account?.needs_reauthorization
-                  ? t('Reconnect Invidious')
-                  : t('Connect Invidious')}
-            </button>
-          </div>
-        }
+        back={!canDismiss}
       >
+        {/* Page-header actions move to the workspace bar, outside this picker. */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+          {canDismiss && (
+            <button type="button" className="watching-browser-button" onClick={onDismiss}>
+              <ArrowLeft size={16} />
+              {t('Close')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="watching-browser-button"
+            disabled={accountBusy || auth.loading}
+            onClick={() => void (account?.connected ? disconnect() : connect())}
+          >
+            {accountBusy ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={16} />}
+            {account?.connected
+              ? t('Disconnect Invidious')
+              : account?.needs_reauthorization
+                ? t('Reconnect Invidious')
+                : t('Connect Invidious')}
+          </button>
+        </div>
         <div>
           {account && !account.connected && (
             <p className="mb-4 text-sm text-[var(--muted-foreground)]">
