@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterable
+from hashlib import file_digest
 import logging
+from os import linesep
+from pathlib import Path
 import re
 from typing import Any
 
@@ -16,6 +19,18 @@ logger = logging.getLogger(__name__)
 _PDF_PAGE_HEADER = re.compile(r"--- Page (\d+) ---")
 
 
+def _stored_pdf_digest(path: Path) -> str | None:
+    from deeptutor.utils.document_validator import DocumentValidator
+
+    try:
+        if path.stat().st_size <= DocumentValidator.MAX_FILE_SIZE:
+            with path.open("rb") as source:
+                return file_digest(source, "sha256").hexdigest()
+    except OSError:
+        pass  # Let the configured parser handle unreadable or missing files.
+    return None
+
+
 async def parse_chat_pdf_attachments(
     records: Iterable[dict[str, Any]],
     *,
@@ -24,7 +39,7 @@ async def parse_chat_pdf_attachments(
     document_texts: Iterable[str],
     on_progress: Callable[[str, str, str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Parse every chat PDF with the active engine and update model context."""
+    """Resolve active-engine Markdown for each chat PDF and update model context."""
     updated = [dict(record) for record in records]
     contexts = list(document_texts)
     if not any(str(record.get("filename") or "").lower().endswith(".pdf") for record in updated):
@@ -42,6 +57,7 @@ async def parse_chat_pdf_attachments(
     )
 
     for record in updated:
+        native_markdown = record.pop("_native_pdf_markdown", None)
         filename = str(record.get("filename") or "")
         if not filename.lower().endswith(".pdf"):
             continue
@@ -62,16 +78,33 @@ async def parse_chat_pdf_attachments(
             error = "total extracted-text quota exceeded"
         else:
             try:
-                parsed = await asyncio.to_thread(
-                    get_parse_service().parse,
-                    path,
-                    on_output=lambda message: (
-                        on_progress(attachment_id, "parsing", message) if on_progress else None
-                    ),
-                )
+                parser = get_parse_service()
+                if (
+                    native_markdown
+                    and parser.active_engine().strip().lower() == "text_only"
+                    and await asyncio.to_thread(_stored_pdf_digest, path) == native_markdown[0]
+                ):
+                    if on_progress:
+                        on_progress(attachment_id, "parsing", "Reusing extracted PDF text")
+                    # Match the configured parser's text-mode write and read.
+                    text = (
+                        native_markdown[1]
+                        .replace("\n", linesep)
+                        .replace("\r\n", "\n")
+                        .replace("\r", "\n")
+                        .strip()
+                    )
+                else:
+                    parsed = await asyncio.to_thread(
+                        parser.parse,
+                        path,
+                        on_output=lambda message: (
+                            on_progress(attachment_id, "parsing", message) if on_progress else None
+                        ),
+                    )
+                    text = str(parsed.markdown or "").strip()
                 if on_progress:
                     on_progress(attachment_id, "retrieving", "Retrieving parsed document result")
-                text = str(parsed.markdown or "").strip()
                 if not text:
                     error = "configured parser produced no content"
             except Exception as exc:

@@ -63,6 +63,65 @@ async def test_non_pdf_batch_does_not_read_parser_settings(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "engine, unchanged, native_complete, reuse",
+    [
+        ("text_only", True, True, True),
+        ("text_only", False, True, False),
+        ("text_only", True, False, False),
+        ("mineru", True, True, False),
+    ],
+)
+async def test_chat_pdf_reuses_native_markdown_only_for_matching_text_only_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    engine: str,
+    unchanged: bool,
+    native_complete: bool,
+    reuse: bool,
+) -> None:
+    import pymupdf
+
+    from deeptutor.utils import document_extractor
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((40, 60), "Original PDF text")
+        data = pdf.tobytes()
+    store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    await store.put(
+        session_id="session",
+        attachment_id="pdf",
+        filename="notes.pdf",
+        data=data if unchanged else b"other bytes",
+    )
+    if not native_complete:
+        monkeypatch.setattr(document_extractor, "_current_limits", lambda: (10000, 10000, 30, 1000))
+    native_contexts, native_records = await document_extractor.extract_chat_documents(
+        [{"id": "pdf", "filename": "notes.pdf", "base64": base64.b64encode(data).decode()}]
+    )
+    calls = []
+
+    class Parser:
+        def active_engine(self) -> str:
+            return engine
+
+        def parse(self, path: Path, **_: object) -> ParsedDocument:
+            calls.append(path)
+            return ParsedDocument(markdown="# Configured parser output")
+
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
+    records, contexts = await parse_chat_pdf_attachments(
+        native_records, attachment_store=store, session_id="session", document_texts=native_contexts
+    )
+
+    expected = "--- Page 1 ---\nOriginal PDF text" if reuse else "# Configured parser output"
+    assert len(calls) == (0 if reuse else 1)
+    assert records[0]["extracted_text"] == expected
+    assert contexts == [f"[File: notes.pdf]\n{expected}"]
+    assert "_native_pdf_markdown" not in records[0]
+
+
+@pytest.mark.asyncio
 async def test_chat_pdf_always_uses_configured_parser(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

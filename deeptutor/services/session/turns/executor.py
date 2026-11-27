@@ -375,9 +375,8 @@ class TurnExecutor:
             from deeptutor.utils.document_extractor import extract_chat_documents
 
             # Keep the built-in extractor as a graceful fallback, then replace
-            # every PDF's result with the configured parser output. Running the
-            # configured parser regardless of a native text layer is what lets
-            # OCR/layout engines see scanned pages and figures.
+            # each PDF's result with the configured parser output. OCR/layout
+            # engines still see scanned pages and figures even with native text.
             # A quote is text the learner pointed at, not a document: read it
             # back as-is and keep it out of extraction.
             quotes = read_quotes(attachment_records)

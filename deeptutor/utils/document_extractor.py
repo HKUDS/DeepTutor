@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from hashlib import sha256
 from html.parser import HTMLParser
 import io
 import logging
@@ -1344,12 +1345,15 @@ async def extract_chat_documents(records: list[dict]) -> tuple[list[str], list[d
         "deeptutor.utils.document_extractor:extract_documents_from_records",
         records,
         timeout=600.0,
-        kwargs={"limits": _current_limits()},
+        kwargs={"limits": _current_limits(), "retain_native_pdf_markdown": True},
     )
 
 
 def extract_documents_from_records(
-    records: Iterable[dict], *, limits: tuple[int, int, int, int] | None = None
+    records: Iterable[dict],
+    *,
+    limits: tuple[int, int, int, int] | None = None,
+    retain_native_pdf_markdown: bool = False,
 ) -> tuple[list[str], list[dict]]:
     """Process a list of attachment records from the WS payload.
 
@@ -1361,6 +1365,9 @@ def extract_documents_from_records(
     limits:
         Optional caller-resolved per-file and total byte and text quotas,
         in the same order as ``_current_limits()``.
+    retain_native_pdf_markdown:
+        Include the complete native Markdown and source digest for the chat
+        parser to consume before saving attachment records.
 
     Returns
     -------
@@ -1428,13 +1435,14 @@ def extract_documents_from_records(
             continue
 
         total_bytes += len(data)
+        retain_markdown = retain_native_pdf_markdown and _ext(filename) == ".pdf"
 
         try:
             text, images = _extract_document(
                 filename,
                 data,
                 max_bytes=max_file_bytes,
-                max_chars=max_chars_per_doc,
+                max_chars=None if retain_markdown else max_chars_per_doc,
             )
         except DocumentExtractionError as exc:
             logger.info("Document extraction failed for %s: %s", filename, exc)
@@ -1451,6 +1459,13 @@ def extract_documents_from_records(
             record["extracted_chars"] = 0
             updated.append(record)
             continue
+
+        if retain_markdown:
+            if len(text) <= max_chars_per_doc:
+                # Capture parser output before chat truncation and image notices.
+                record["_native_pdf_markdown"] = (sha256(data).hexdigest(), text)
+            else:
+                text = _truncate(text, max_chars_per_doc)
 
         if len(text) > remaining_budget:
             text = (
