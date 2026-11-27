@@ -26,13 +26,13 @@ def _settings_root(tmp_path: Path, content: dict[str, Any]) -> Path:
     return tmp_path
 
 
-def test_visualize_default_leaves_room_for_a_reasoning_model(
+def test_visualize_defaults_match_the_previously_hardcoded_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """16000 was spent entirely on thinking by deepseek-flash, leaving no page."""
+    """An install that never touched this keeps exactly the old behaviour."""
     monkeypatch.setattr(module, "PROJECT_ROOT", _settings_root(tmp_path, {"capabilities": {}}))
 
-    assert get_visualize_params() == {"temperature": 0.15, "max_tokens": 32768}
+    assert get_visualize_params() == {"temperature": 0.15, "max_tokens": 16000}
 
 
 def test_fresh_setup_keeps_the_visualize_runtime_default() -> None:
@@ -66,7 +66,7 @@ def test_visualize_is_exposed_to_the_settings_page(
 
     payload = module.capabilities_settings_dict()
 
-    assert payload["visualize"] == {"temperature": 0.15, "max_tokens": 32768}
+    assert payload["visualize"] == {"temperature": 0.15, "max_tokens": 16000}
 
     module.save_capabilities_settings({"visualize": {"max_tokens": 32000}})
 
