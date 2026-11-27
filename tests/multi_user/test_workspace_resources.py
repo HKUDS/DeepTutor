@@ -110,6 +110,111 @@ def test_knowledge_origins_selection_and_grants(as_user):
             )
 
 
+@pytest.mark.parametrize("by_name", [False, True])
+@pytest.mark.asyncio
+async def test_kb_delete_checks_workspace_access_on_cold_manager_lookup(
+    as_user, monkeypatch, by_name
+):
+    from deeptutor.api.routers import knowledge
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+    with as_user("alice"):
+        workspace_id = ContentWorkspaceService().create_workspace(
+            "Restricted", resources={"knowledge_bases": []}
+        )["workspace_id"]
+        with workspace_context(workspace_id):
+            manager = current_kb_manager()
+            assert manager.register_connected_entry(
+                "notes", {"type": "obsidian", "vault_path": "/unused"}
+            )
+            uncached = KnowledgeBaseManager(manager.base_dir)
+            managers = iter((uncached, manager))
+            monkeypatch.setattr(knowledge, "current_kb_manager", lambda: next(managers, manager))
+
+            with pytest.raises(AccessError):
+                if by_name:
+                    await knowledge.delete_knowledge_base_by_name(
+                        knowledge.DeleteKnowledgeBaseRequest(name="notes")
+                    )
+                else:
+                    await knowledge.delete_knowledge_base("notes")
+
+            assert manager.get_kb_entry("notes") is not None
+
+
+@pytest.mark.asyncio
+async def test_library_delete_only_removes_the_qualified_workspace_kb(as_user):
+    from deeptutor.api.routers import knowledge
+
+    with as_user("alice"), workspace_context():
+        account_manager = current_kb_manager()
+        pointer = {"type": "obsidian", "vault_path": "/unused"}
+        assert account_manager.register_connected_entry("notes", pointer)
+        workspace_id = ContentWorkspaceService().create_workspace("Research")["workspace_id"]
+        with workspace_context(workspace_id):
+            workspace_manager = current_kb_manager()
+            assert workspace_manager.register_connected_entry("notes", pointer)
+
+        token = library_request.set(True)
+        try:
+            payload = knowledge.DeleteKnowledgeBaseRequest(
+                name=qualified_kb_id("notes", workspace_id)
+            )
+            await knowledge.delete_knowledge_base_by_name(payload)
+        finally:
+            library_request.reset(token)
+
+        assert account_manager.get_kb_entry("notes") is not None
+        assert workspace_manager.get_kb_entry("notes") is None
+
+
+@pytest.mark.asyncio
+async def test_cancelled_kb_delete_holds_workspace_activity(as_user, monkeypatch):
+    import asyncio
+    from threading import Event
+
+    from deeptutor.api.routers import knowledge
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+    from deeptutor.services.workspace.activity import WorkspaceActivityMiddleware, acquire_activity
+
+    entered, release, finished = Event(), Event(), Event()
+    delete = KnowledgeBaseManager._delete_knowledge_base
+
+    def slow_delete(manager, *args, **kwargs):
+        entered.set()
+        try:
+            assert release.wait(5)
+            return delete(manager, *args, **kwargs)
+        finally:
+            finished.set()
+
+    async def endpoint(_scope, _receive, _send):
+        await knowledge.delete_knowledge_base("notes")
+
+    with as_user("alice"), workspace_context():
+        manager = current_kb_manager()
+        assert manager.register_connected_entry(
+            "notes", {"type": "obsidian", "vault_path": "/unused"}
+        )
+        monkeypatch.setattr(KnowledgeBaseManager, "_delete_knowledge_base", slow_delete)
+        state = {"workspace_activity": acquire_activity()}
+        middleware = WorkspaceActivityMiddleware(endpoint)
+        request = asyncio.create_task(middleware({"state": state}, None, None))
+        try:
+            assert await asyncio.to_thread(entered.wait, 3)
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+            assert not finished.is_set()
+            with pytest.raises(WorkspaceError, match="busy"):
+                acquire_activity(exclusive=True).close()
+        finally:
+            release.set()
+            assert await asyncio.to_thread(finished.wait, 3)
+
+        assert manager.get_kb_entry("notes") is None
+
+
 def test_inherited_workspace_keeps_account_subagents_without_sharing_kbs(as_user):
     with as_user("alice"):
         account_manager = current_kb_manager()

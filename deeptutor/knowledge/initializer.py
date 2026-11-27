@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from deeptutor.multi_user.models import CurrentUser
     from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicySnapshot
 
+from deeptutor.knowledge.catalog import KnowledgeBaseDeletionInProgress, kb_catalog
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.knowledge.staging import stage_source
@@ -67,26 +68,27 @@ class KnowledgeBaseInitializer:
             from deeptutor.knowledge.manager import KnowledgeBaseManager
 
             manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
-            manager.config = manager._load_config()
-            if self.kb_name in manager.config.get("knowledge_bases", {}):
-                return
+            with kb_catalog(self.base_dir).lock:
+                manager.config = manager._load_config()
+                if self.kb_name in manager.config.get("knowledge_bases", {}):
+                    return
 
-            manager.update_kb_status(
-                name=self.kb_name,
-                status="initializing",
-                progress={
-                    "stage": "initializing",
-                    "message": "Creating directory structure...",
-                    "percent": 0,
-                    "current": 0,
-                    "total": 0,
-                },
-            )
-            manager.config = manager._load_config()
-            manager.config.setdefault("knowledge_bases", {}).setdefault(self.kb_name, {})[
-                "rag_provider"
-            ] = self.rag_provider
-            manager._save_config()
+                manager.update_kb_status(
+                    name=self.kb_name,
+                    status="initializing",
+                    progress={
+                        "stage": "initializing",
+                        "message": "Creating directory structure...",
+                        "percent": 0,
+                        "current": 0,
+                        "total": 0,
+                    },
+                )
+                manager.config = manager._load_config()
+                manager.config.setdefault("knowledge_bases", {}).setdefault(self.kb_name, {})[
+                    "rag_provider"
+                ] = self.rag_provider
+                manager._save_config()
         except Exception as e:
             logger.warning(f"Failed to register KB to config: {e}")
 
@@ -134,23 +136,27 @@ class KnowledgeBaseInitializer:
         logger.info(f"Creating directory structure for knowledge base: {self.kb_name}")
         ensure_data_volume_writable(self.base_dir)
 
-        for dir_path in [
-            self.raw_dir,
-        ]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        catalog = kb_catalog(self.base_dir)
+        with catalog.lock:
+            if catalog.is_deleting(self.kb_name):
+                raise KnowledgeBaseDeletionInProgress(self.kb_name)
+            for dir_path in [
+                self.raw_dir,
+            ]:
+                dir_path.mkdir(parents=True, exist_ok=True)
 
-        metadata = {
-            "name": self.kb_name,
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "description": f"Knowledge base: {self.kb_name}",
-            "version": "1.0",
-            "rag_provider": self.rag_provider,
-            "needs_reindex": False,
-        }
+            metadata = {
+                "name": self.kb_name,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "description": f"Knowledge base: {self.kb_name}",
+                "version": "1.0",
+                "rag_provider": self.rag_provider,
+                "needs_reindex": False,
+            }
 
-        atomic_write_json(self.kb_dir / "metadata.json", metadata)
+            atomic_write_json(self.kb_dir / "metadata.json", metadata)
 
-        self._register_to_config()
+            self._register_to_config()
 
     def copy_documents(self, source_files: list[str]) -> list[str]:
         """Stage source documents into the raw directory.

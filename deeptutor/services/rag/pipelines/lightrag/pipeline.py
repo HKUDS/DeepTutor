@@ -592,13 +592,16 @@ class LightRagPipeline:
     def _clear_pending_policy(self, kb_name: str) -> None:
         """Best-effort cleanup after version metadata became authoritative."""
         try:
+            from deeptutor.knowledge.catalog import kb_catalog
             from deeptutor.knowledge.manager import KnowledgeBaseManager
 
             manager = KnowledgeBaseManager(base_dir=self.kb_base_dir)
-            entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
-            if "pending_indexing_policy" in entry:
-                entry.pop("pending_indexing_policy", None)
-                manager._save_config()
+            with kb_catalog(manager.base_dir).lock:
+                manager.config = manager._load_config()
+                entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
+                if "pending_indexing_policy" in entry:
+                    entry.pop("pending_indexing_policy", None)
+                    manager._save_config()
         except Exception:
             self.logger.warning(
                 "Published LightRAG policy for %s but could not clear pending cache",

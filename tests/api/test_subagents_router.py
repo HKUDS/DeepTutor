@@ -103,6 +103,22 @@ def test_detect_reports_backends(client):
     assert backends["codex"]["available"] is False
 
 
+def test_disconnect_returns_conflict_while_kb_delete_is_running(client, monkeypatch):
+    from deeptutor.knowledge.catalog import KnowledgeBaseDeletionInProgress
+
+    manager = subagents_module.account_kb_manager()
+    manager.register_subagent_connection("MyClaude", "claude_code")
+
+    def busy(name, *, confirm):
+        raise KnowledgeBaseDeletionInProgress(name)
+
+    monkeypatch.setattr(manager, "delete_knowledge_base", busy)
+    response = client.delete("/api/subagents/connections/MyClaude")
+
+    assert response.status_code == 409
+    assert manager.get_metadata("MyClaude")["type"] == "subagent"
+
+
 def test_connect_list_and_disconnect_roundtrip(client):
     created = client.post(
         "/api/subagents/connections",
