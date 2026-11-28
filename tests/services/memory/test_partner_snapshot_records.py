@@ -36,6 +36,90 @@ def _append(path: Path, value: Any) -> None:
         stream.write(json.dumps(value) + "\n")
 
 
+@pytest.mark.parametrize("position", ["start", "middle", "end"])
+def test_invalid_utf8_line_preserves_readable_records_and_other_partners(
+    partner_root: Path, monkeypatch: pytest.MonkeyPatch, position: str
+) -> None:
+    path = _history(partner_root)
+    _append(path, {"role": "assistant", "content": "Readable reply", "timestamp": "2026-11-01"})
+    _history(partner_root.parent / "bot2")
+    before = adapters.read_entities("partner")
+    monkeypatch.setattr(
+        snapshot.store,
+        "load_state",
+        lambda surface: {"fingerprints": {entity.id: entity.fingerprint for entity in before}},
+    )
+    lines = path.read_bytes().splitlines(keepends=True)
+    index = {"start": 0, "middle": 1, "end": len(lines)}[position]
+    lines.insert(index, b'{"role":"user","content":"private-encoding-canary\xff"}\n')
+    original = b"".join(lines)
+    path.write_bytes(original)
+
+    assert adapters.read_entities("partner") == before
+    assert snapshot.pending_changes("partner") == []
+    assert path.read_bytes() == original
+
+
+def test_unreadable_new_session_does_not_create_removals_for_healthy_sessions(
+    partner_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _history(partner_root)
+    _history(partner_root.parent / "bot2")
+    before = adapters.read_entities("partner")
+    monkeypatch.setattr(
+        snapshot.store,
+        "load_state",
+        lambda surface: {"fingerprints": {entity.id: entity.fingerprint for entity in before}},
+    )
+    broken = partner_root / "sessions" / "broken.jsonl"
+    broken.write_bytes(b"\xff\xfe private-encoding-canary\n")
+
+    assert adapters.read_entities("partner") == before
+    assert [stamp.id for stamp in adapters.read_stamps("partner")] == [
+        entity.id for entity in before
+    ]
+    assert snapshot.pending_changes("partner") == []
+    assert broken.read_bytes() == b"\xff\xfe private-encoding-canary\n"
+
+
+def test_invalid_utf8_warning_names_file_and_line_without_message_body(
+    partner_root: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = _history(partner_root)
+    with path.open("ab") as stream:
+        stream.write(b'{"content":"private-encoding-canary\xff"}\n')
+
+    with caplog.at_level(logging.WARNING, logger=adapters.__name__):
+        entities = adapters.read_entities("partner")
+
+    assert len(entities) == 1
+    messages = [row.getMessage() for row in caplog.records if row.name == adapters.__name__]
+    assert any(str(path) in message and "line 2" in message for message in messages)
+    assert "private-encoding-canary" not in caplog.text
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_partner_unicode_and_universal_newlines_remain_exact(
+    partner_root: Path, newline: str
+) -> None:
+    path = _history(partner_root)
+    records = [
+        {"role": "user", "content": "解释极限 αβ 🧬", "timestamp": "2026-11-01"},
+        {"role": "assistant", "content": "Réponse: ε > 0", "timestamp": "2026-11-02"},
+    ]
+    original = (
+        newline.join(json.dumps(row, ensure_ascii=False) for row in records) + newline
+    ).encode("utf-8")
+    path.write_bytes(original)
+
+    entities = adapters.read_entities("partner")
+
+    assert len(entities) == 1
+    assert entities[0].content == "### user\n解释极限 αβ 🧬\n\n### assistant\nRéponse: ε > 0"
+    assert entities[0].metadata["message_count"] == 2
+    assert path.read_bytes() == original
+
+
 @pytest.mark.parametrize(
     "content", [[{"text": "structured"}], {"text": "object"}, 7, 0, 1.5, True, False, [], {}, None]
 )
