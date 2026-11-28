@@ -26,3 +26,4 @@ json-repair>=0.57.0,<1.0.0
 psutil>=5.9.0,<8.0.0
 python-docx>=1.1.0
 openpyxl>=3.1.0
+defusedxml>=0.7.1

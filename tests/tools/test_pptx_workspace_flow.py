@@ -6,6 +6,7 @@ import zipfile
 import pytest
 
 from deeptutor.services.path_service import PathService
+from deeptutor.services.pptx_fonts import pptx_for_rendering
 from deeptutor.services.sandbox.backends import RestrictedSubprocessBackend
 from deeptutor.services.session.artifact_attachments import fill_preview_text
 from deeptutor.services.workspace import ContentWorkspaceService
@@ -39,6 +40,21 @@ def test_pptx_dependency_is_packaged_for_pip_source_and_docker_runner() -> None:
 
     assert '"python-pptx>=1.0.0"' in (root / "pyproject.toml").read_text(encoding="utf-8")
     assert "python-pptx" in (root / "Dockerfile.runner").read_text(encoding="utf-8")
+
+
+def test_render_copy_leaves_xml_with_a_doctype_to_the_converter(tmp_path: Path) -> None:
+    source = tmp_path / "slides.pptx"
+    with zipfile.ZipFile(source, "w") as package:
+        package.writestr(
+            "ppt/slides/slide1.xml",
+            '<!DOCTYPE a:ea><a:ea xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            'typeface="Microsoft YaHei"/>',
+        )
+
+    render_copy = tmp_path / "render.pptx"
+    substitutions = {"microsoft yahei": "PingFang SC"}
+    assert pptx_for_rendering(source, render_copy, substitutions=substitutions) == source
+    assert not render_copy.exists()
 
 
 @pytest.mark.asyncio
@@ -87,9 +103,10 @@ async def test_real_pptx_exec_stays_in_outputs_and_is_presented(
 
     first_result = await ExecTool().execute(
         code=(
-            "from pptx import Presentation\n"
-            "from pptx.util import Inches\n"
+            "from pathlib import Path\n"
             "import zipfile\n"
+            "from deeptutor_pptx_fonts import pptx_for_rendering\n"
+            "from pptx import Presentation\n"
             "prs = Presentation()\n"
             "slide = prs.slides.add_slide(prs.slide_layouts[0])\n"
             "slide.shapes.title.text = 'DeepTutor PPTX smoke test'\n"
@@ -101,6 +118,8 @@ async def test_real_pptx_exec_stays_in_outputs_and_is_presented(
             "assert reopened.slides[0].shapes.title.text == 'DeepTutor PPTX smoke test'\n"
             "with zipfile.ZipFile(path) as package:\n"
             "    assert 'ppt/presentation.xml' in package.namelist()\n"
+            "source = Path(path)\n"
+            "assert pptx_for_rendering(source, Path('copy.pptx'), substitutions={}) == source\n"
             "print('verified deeptutor_smoke.pptx')\n"
         ),
         language="python",

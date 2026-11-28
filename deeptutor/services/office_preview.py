@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +16,13 @@ import signal
 import subprocess
 import tempfile
 import time
+
+from deeptutor.services.pptx_fonts import (
+    PPTX_SUFFIXES,
+    chinese_font_substitutions,
+    pptx_for_rendering,
+    pptx_render_environment,
+)
 
 MAX_OFFICE_BYTES = 25 * 1024 * 1024
 MAX_PREVIEW_PDF_BYTES = 60 * 1024 * 1024
@@ -75,12 +83,21 @@ async def render_office_pdf(data: bytes, filename: str, cache_dir: Path) -> byte
     if not soffice:
         raise OfficePreviewUnavailable("LibreOffice is not installed on the server")
 
-    key = hashlib.sha256(b"office-preview-v1\0" + suffix.encode() + b"\0" + data).hexdigest()
     async with _conversion_slots:
-        return await asyncio.to_thread(_render_sync, data, suffix, cache_dir, key, soffice)
+        return await asyncio.to_thread(_render_sync, data, suffix, cache_dir, soffice)
 
 
-def _render_sync(data: bytes, suffix: str, cache_dir: Path, key: str, soffice: str) -> bytes:
+def _render_sync(data: bytes, suffix: str, cache_dir: Path, soffice: str) -> bytes:
+    substitutions = chinese_font_substitutions() if suffix in PPTX_SUFFIXES else None
+    cache_prefix = b"office-preview-v1\0" + suffix.encode() + b"\0"
+    if substitutions is not None:
+        # Reject old PowerPoint previews and vary the cache as installed fonts change.
+        mapping = json.dumps(substitutions, sort_keys=True).encode()
+        cache_prefix = b"office-preview-v3\0" + suffix.encode() + b"\0" + mapping + b"\0"
+    digest = hashlib.sha256(cache_prefix)
+    digest.update(data)
+    key = digest.hexdigest()
+
     try:
         cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         cache_available = True
@@ -102,10 +119,17 @@ def _render_sync(data: bytes, suffix: str, cache_dir: Path, key: str, soffice: s
         work = Path(workdir)
         source = work / f"source{suffix}"
         source.write_bytes(data)
+        if substitutions:
+            render_input = work / "input"
+            render_input.mkdir()
+            source = pptx_for_rendering(
+                source, render_input / source.name, substitutions=substitutions
+            )
         output_dir = work / "output"
         output_dir.mkdir()
         profile = work / "profile"
         profile.mkdir()
+        environment = pptx_render_environment(work) if substitutions is not None else None
         try:
             process = subprocess.Popen(
                 [
@@ -119,6 +143,7 @@ def _render_sync(data: bytes, suffix: str, cache_dir: Path, key: str, soffice: s
                     str(source),
                 ],
                 cwd=work,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

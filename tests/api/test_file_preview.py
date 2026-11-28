@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+from io import BytesIO
+import json
 from pathlib import Path
 from types import SimpleNamespace
+from zipfile import ZipFile
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,7 +17,7 @@ from starlette.datastructures import QueryParams
 
 from deeptutor.api.routers import file_preview, outputs
 from deeptutor.multi_user import learning_access
-from deeptutor.services import office_preview
+from deeptutor.services import office_preview, pptx_fonts
 from deeptutor.services.path_service import PathService
 
 
@@ -263,6 +267,76 @@ def test_converter_uses_isolated_profile_and_cached_pdf(monkeypatch, tmp_path: P
     assert first == second == b"%PDF-1.7\npreview"
     assert len(calls) == 1
     assert len(list(cache_dir.glob("*.pdf"))) == 1
+
+
+def test_powerpoint_preview_resolves_missing_fonts_and_refreshes_cache(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+    from pptx.util import Inches
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1))
+    for text, family in (("今天讲五件事 · OpenAI", "Microsoft YaHei"), ("日本語", "Yu Gothic")):
+        run = box.text_frame.paragraphs[0].add_run()
+        run.text = text
+        run.font.name = "Arial"
+        east_asian = OxmlElement("a:ea")
+        east_asian.set("typeface", family)
+        run._r.get_or_add_rPr().append(east_asian)
+    data = BytesIO()
+    deck.save(data)
+    source = data.getvalue()
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    old_key = hashlib.sha256(b"office-preview-v1\0.pptx\0" + source).hexdigest()
+    (cache_dir / f"{old_key}.pdf").write_bytes(b"%PDF-1.7\nold preview")
+    calls: list[tuple[str, str]] = []
+    families = {"pingfang sc"}
+    monkeypatch.setattr(pptx_fonts, "_installed_families", lambda: families)
+    monkeypatch.setattr(office_preview.shutil, "which", lambda _name: "/fake/soffice")
+    monkeypatch.setattr(pptx_fonts, "sys", SimpleNamespace(platform="darwin"))
+    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+    monkeypatch.setattr(pptx_fonts, "_MACOS_FONT_ASSETS", tmp_path)
+    asset = tmp_path / "com_apple_MobileAsset_Font8" / "test.asset" / "AssetData"
+    asset.mkdir(parents=True)
+    (asset / "PingFang.ttc").touch()
+    mapping = json.dumps(pptx_fonts.chinese_font_substitutions(), sort_keys=True).encode()
+    old_key = hashlib.sha256(b"office-preview-v2\0.pptx\0" + mapping + b"\0" + source).hexdigest()
+    (cache_dir / f"{old_key}.pdf").write_bytes(b"%PDF-1.7\nold headless preview")
+
+    def fake_popen(args: list[str], *, env: dict[str, str], **_kwargs) -> SimpleNamespace:
+        fontconfig = Path(env["FONTCONFIG_FILE"])
+        assert fontconfig.parent == Path(env["FONTCONFIG_PATH"])
+        config = fontconfig.read_text(encoding="utf-8")
+        assert "<dir>/System/Library/Fonts</dir>" in config
+        assert f"<dir>{asset}</dir>" in config
+        path = Path(args[-1])
+        runs = Presentation(path).slides[0].shapes[0].text_frame.paragraphs[0].runs
+        assert [run.text for run in runs] == ["今天讲五件事 · OpenAI", "日本語"]
+        assert runs[0].font.name == "Arial"
+        fonts = tuple(run._r.find(f"{qn('a:rPr')}/{qn('a:ea')}").get("typeface") for run in runs)
+        calls.append(fonts)
+        output = Path(args[args.index("--outdir") + 1]) / path.with_suffix(".pdf").name
+        output.write_bytes(b"%PDF-1.7\n" + fonts[0].encode())
+        return SimpleNamespace(returncode=0, communicate=lambda **_kwargs: (b"", b""))
+
+    monkeypatch.setattr(office_preview.subprocess, "Popen", fake_popen)
+
+    def render() -> bytes:
+        return asyncio.run(office_preview.render_office_pdf(source, "slides.pptx", cache_dir))
+
+    assert render() == render() == b"%PDF-1.7\nPingFang SC"
+    families.add("microsoft yahei")
+    assert render() == b"%PDF-1.7\nMicrosoft YaHei"
+    assert calls == [("PingFang SC", "Yu Gothic"), ("Microsoft YaHei", "Yu Gothic")]
+
+    with ZipFile(BytesIO(source)) as original:
+        assert b'typeface="Microsoft YaHei"' in original.read("ppt/slides/slide1.xml")
 
 
 def test_converter_reports_missing_libreoffice_and_rejects_oversized_input(
