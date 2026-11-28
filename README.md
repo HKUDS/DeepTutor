@@ -920,6 +920,12 @@ The 1.7.0 package family uses matching versions across core and feature wheels. 
 
 </details>
 
+### Agent plugin
+
+Coding agents that read [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) (Codex, Claude Code and others)
+can install [`plugins/deeptutor`](plugins/deeptutor). It links the root [`SKILL.md`](SKILL.md) as `deeptutor-cli` and adds
+`deeptutor-setup` (based on [AGENT_SETUP.md](docs-for-dev/AGENT_SETUP.md)) and `deeptutor-knowledge-bases`.
+
 ## 🧩 Ecosystem — EduHub & the Skills Community
 
 DeepTutor skills use the open **Agent-Skills** format — a folder with a `SKILL.md` playbook (YAML frontmatter + Markdown) and optional reference files. Nothing about it is DeepTutor-specific, so any registry that speaks the format becomes a source for your library. DeepTutor ships with **[EduHub](https://eduhub.deeptutor.info/)** — our own education-focused skill registry — wired in as the default hub.

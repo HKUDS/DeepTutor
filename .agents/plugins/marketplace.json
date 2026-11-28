@@ -1,0 +1,20 @@
+{
+  "name": "deeptutor",
+  "interface": {
+    "displayName": "DeepTutor"
+  },
+  "plugins": [
+    {
+      "name": "deeptutor",
+      "source": {
+        "source": "local",
+        "path": "./plugins/deeptutor"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Education"
+    }
+  ]
+}
