@@ -210,3 +210,68 @@ def test_registry_deferred_tools_filter() -> None:
     assert [t.name for t in deferred] == ["mcp_a"]
     reg.unregister("mcp_a")
     assert reg.deferred_tools() == []
+
+
+def test_loaded_schemas_are_closed_like_mounted_ones() -> None:
+    """A tool must have one byte form in ``tools[]`` however it got there.
+
+    Mounted schemas are sent with ``additionalProperties: false``; a loaded
+    one used to go out without it, so a tool moving between mounted and loaded
+    across turns (a mastery tool after a mode switch) broke the cached prefix.
+    """
+    reg = _registry(_FakeDeferredTool("mcp_gh_search", server="gh"))
+    loader = DeferredToolLoader(registry=reg, session_id="s1", loaded=set())
+    live: list[dict] = []
+    loader.bind_live_schemas(live)
+    loader.load(["mcp_gh_search"])
+
+    restored = DeferredToolLoader(registry=reg, session_id="s1", loaded={"mcp_gh_search"})
+
+    assert live[0]["function"]["parameters"]["additionalProperties"] is False
+    assert restored.initial_schemas() == live
+
+
+def test_names_this_loader_cannot_serve_are_kept_in_the_session_state(monkeypatch) -> None:
+    """A mastery turn records its outline tools in the session's loaded set; a
+    later plain chat turn's loader neither serves them nor drops them, so the
+    next mastery turn still mounts them and its ``tools[]`` keeps the prefix."""
+
+    class _Regular(BaseTool):
+        def get_definition(self) -> ToolDefinition:
+            return ToolDefinition(name="mastery_build", description="d")
+
+        async def execute(self, **kwargs: object) -> ToolResult:
+            return ToolResult(content="ok")
+
+    written: list[set[str]] = []
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools",
+        lambda session_id, names: written.append(set(names)),
+    )
+    registry = _registry(
+        _Regular(),
+        _FakeDeferredTool("mcp_provider_tool", server="gh"),
+        _FakeDeferredTool("mcp_partner_tool", server="gh"),
+    )
+    loader = DeferredToolLoader(
+        registry=registry,
+        session_id="s1",
+        loaded={"mastery_build", "mcp_provider_tool", "mcp_server_gone"},
+        allowed=None,
+    )
+
+    schemas = loader.initial_schemas()
+
+    assert [item["function"]["name"] for item in schemas] == ["mcp_provider_tool"]
+    assert loader.loaded_names == {"mcp_provider_tool"}
+    # The removed server's tool is dropped; the capability's tool is kept.
+    assert written[-1] == {"mastery_build", "mcp_provider_tool"}
+    assert loader.load(["mastery_build"])["unknown"] == ["mastery_build"]
+
+    # A restricted caller keeps what it may not load the same way.
+    restricted = DeferredToolLoader(
+        registry=registry, session_id="s1", loaded=written[-1], allowed={"mcp_partner_tool"}
+    )
+    assert restricted.initial_schemas() == [] and restricted.loaded_names == set()
+    assert restricted.load(["mcp_partner_tool"])["loaded"] == ["mcp_partner_tool"]
+    assert written[-1] == {"mastery_build", "mcp_provider_tool", "mcp_partner_tool"}
