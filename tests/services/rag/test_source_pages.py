@@ -143,6 +143,28 @@ def test_image_block_without_caption_still_uses_native_page_text(tmp_path: Path)
     assert documents[0].metadata["page_status"] == "searchable"
 
 
+def test_page_marked_markdown_wins_over_native_pdf_text(tmp_path: Path) -> None:
+    raw = tmp_path / "kb" / "raw"
+    path = raw / "exam.pdf"
+    _pdf(path, ["0,7", "19,2"])
+    parsed = SimpleNamespace(
+        blocks=None,
+        markdown="--- Page 1 ---\n7,0\n12,9\n\n--- Page 2 ---\nOther page",
+        engine="text_only",
+        parser_signature="text_only-test",
+    )
+
+    documents = build_pdf_documents(path, parsed, raw.parent)
+
+    by_page = {doc.metadata["page_index"]: doc for doc in documents if "page_index" in doc.metadata}
+    assert "7,0" in by_page[0].text
+    assert "12,9" in by_page[0].text
+    assert "0,7" not in by_page[0].text
+    assert "19,2" not in by_page[0].text
+    assert by_page[0].metadata["parse_engine"] == "text_only"
+    assert by_page[1].text == "Other page"
+
+
 def test_reference_list_without_page_index_is_still_indexed(tmp_path: Path) -> None:
     raw = tmp_path / "kb" / "raw"
     path = raw / "notes.pdf"

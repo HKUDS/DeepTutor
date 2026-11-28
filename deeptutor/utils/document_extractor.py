@@ -29,6 +29,7 @@ from pathlib import Path, PurePosixPath
 import posixpath
 import re
 from typing import Any
+import unicodedata
 from urllib.parse import unquote
 import zipfile
 
@@ -366,6 +367,49 @@ async def extract_text_from_path_isolated(
     return result
 
 
+def _pdf_spans_are_out_of_order(page: Any) -> bool:
+    """Whether a number span stores its glyphs in a non-visual order.
+
+    ``Microsoft: Print To PDF`` and some equation editors write a run such as
+    ``7,0`` as glyphs at x=134, 140 and 143 but emit them in the content
+    stream as ``0``, ``,``, ``7``. PyMuPDF's ``get_text`` follows stream
+    order, so the number comes out reversed. A left-to-right span whose
+    glyph origins run backwards is the signal; right-to-left text is left
+    alone.
+    """
+    try:
+        raw = page.get_text("rawdict")
+    except Exception:
+        return False
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                chars = [char for char in span.get("chars", []) if char.get("c", "").strip()]
+                if len(chars) < 2:
+                    continue
+                text = "".join(char["c"] for char in chars)
+                if any(unicodedata.bidirectional(char) in {"R", "AL"} for char in text):
+                    continue
+                xs = [char["origin"][0] for char in chars]
+                if any(right < left - 0.01 for left, right in zip(xs, xs[1:])):
+                    return True
+    return False
+
+
+def _pdfplumber_pages(data: bytes) -> dict[int, str]:
+    """Read pages with pdfplumber, which orders glyphs by position."""
+    try:
+        import pdfplumber
+    except ImportError:  # pragma: no cover - declared parsing dependency
+        return {}
+    try:
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            return {i: page.extract_text() or "" for i, page in enumerate(pdf.pages, 1)}
+    except Exception as exc:
+        logger.warning("pdfplumber layout fallback failed: %s", exc)
+        return {}
+
+
 def _extract_pdf(data: bytes, filename: str) -> str:
     global fitz, PdfReader, _PypdfNotDecryptedError
     if fitz is _NOT_LOADED:
@@ -383,9 +427,19 @@ def _extract_pdf(data: bytes, filename: str) -> str:
                     raise CorruptDocumentError(
                         f"{filename} is encrypted and cannot be read", filename=filename
                     )
-                pages = [
-                    f"--- Page {i} ---\n{page.get_text() or ''}" for i, page in enumerate(doc, 1)
-                ]
+                page_texts: list[str] = []
+                out_of_order: list[int] = []
+                for i, page in enumerate(doc, 1):
+                    page_texts.append(page.get_text() or "")
+                    if _pdf_spans_are_out_of_order(page):
+                        out_of_order.append(i)
+            if out_of_order:
+                fallback = _pdfplumber_pages(data)
+                for i in out_of_order:
+                    text = fallback.get(i, "")
+                    if text.strip():
+                        page_texts[i - 1] = text
+            pages = [f"--- Page {i} ---\n{page_text}" for i, page_text in enumerate(page_texts, 1)]
             pdf_images = extract_pdf_images(data)
             if pdf_images.collection.images:
                 marker_by_page: dict[int, list[str]] = {}
