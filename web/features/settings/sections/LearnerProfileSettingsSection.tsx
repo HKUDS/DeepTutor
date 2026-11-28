@@ -52,7 +52,7 @@ export default function LearnerProfileSettingsPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
       <h1 className="text-xl font-semibold">{t("Learner profile")}</h1>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+      <p className="mt-1 text-sm text-[var(--muted-foreground)] empty:hidden">
         {t("Personalize explanations and reading support for your account.")}
       </p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

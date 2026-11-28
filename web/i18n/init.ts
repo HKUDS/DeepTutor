@@ -30,7 +30,8 @@ export function initI18n(language?: unknown) {
     interpolation: {
       escapeValue: false,
     },
-    returnEmptyString: false,
+    // An explicitly empty translation omits optional UI copy. Missing keys still fall back.
+    returnEmptyString: true,
     returnNull: false,
   });
 

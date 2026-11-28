@@ -208,7 +208,7 @@ function ProbeForm({
           <p className="text-sm font-medium">
             {t(listing ? "Provider model list" : "Provider connection")}
           </p>
-          <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
+          <p className="mt-1 text-[13px] text-[var(--muted-foreground)] empty:hidden">
             {t(
               listing
                 ? "Choose a listed model or enter any model ID below."

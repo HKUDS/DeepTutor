@@ -20,8 +20,18 @@ it("loads Korean translations, preserves interpolation and falls back per key", 
   expect(i18n.t("{{count}} resources selected", { count: 3 })).toBe("자료 3개 선택됨");
   expect(i18n.t("guidedLearning.masteredProgress", { mastered: 2, total: 5 })).toBe("2/5 습득 완료");
   expect(i18n.t("Speech synthesis and transcription models with saved providers.")).toBe(
-    "Speech synthesis and transcription models with saved providers.",
+    "Speech synthesis and transcription",
   );
+});
+
+it("omits a reviewed settings hint only when its translation is empty", async () => {
+  const i18n = initI18n();
+  const key = "Choose the space between lines of learning text.";
+  await ensureLanguage("zh");
+  await ensureLanguage("fr");
+  expect(i18n.t(key, { lng: "zh" })).toBe("");
+  expect(i18n.t(key, { lng: "en" })).toBe("");
+  expect(i18n.t(key, { lng: "fr" })).toBeTruthy();
 });
 
 it("uses English copy for a key missing from a partial locale", async () => {
