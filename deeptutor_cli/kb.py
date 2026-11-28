@@ -18,6 +18,7 @@ import typer
 
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
+from deeptutor.multi_user.paths import local_admin_user, user_context
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.rag.factory import DEFAULT_PROVIDER
 from deeptutor.services.rag.file_routing import FileTypeRouter
@@ -194,6 +195,11 @@ def _load_eval_report(path: str) -> dict:
 
 
 def register(app: typer.Typer) -> None:
+    @app.callback()
+    def scope_cli_user(ctx: typer.Context) -> None:
+        # A local CLI invocation runs as the deployment operator.
+        ctx.with_resource(user_context(local_admin_user()))
+
     @app.command("list")
     def kb_list(
         fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
