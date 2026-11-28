@@ -14784,7 +14784,8 @@ export interface components {
         | "ja"
         | "tr"
         | "it"
-        | "hu";
+        | "hu"
+        | "ko";
     };
     /** LearnerOverrideRequest */
     readonly LearnerOverrideRequest: {
@@ -18220,6 +18221,7 @@ export interface components {
             | "tr"
             | "it"
             | "hu"
+            | "ko"
           )
         | null;
       /** Response Language */

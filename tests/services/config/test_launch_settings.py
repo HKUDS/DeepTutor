@@ -63,6 +63,10 @@ def test_launch_settings_reads_ports_from_system_json_and_ignores_env_json(
         ("vi_VN", "vi"),
         ("japanese", "ja"),
         ("ja-JP", "ja"),
+        ("korean", "ko"),
+        ("한국어", "ko"),
+        ("ko-KR", "ko"),
+        ("ko_KR", "ko"),
     ],
 )
 def test_launch_settings_reads_supported_languages_from_interface_json(

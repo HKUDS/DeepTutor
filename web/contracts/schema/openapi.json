@@ -6314,7 +6314,8 @@
               "ja",
               "tr",
               "it",
-              "hu"
+              "hu",
+              "ko"
             ],
             "title": "Language",
             "type": "string"
@@ -13602,7 +13603,8 @@
                   "ja",
                   "tr",
                   "it",
-                  "hu"
+                  "hu",
+                  "ko"
                 ],
                 "type": "string"
               },
