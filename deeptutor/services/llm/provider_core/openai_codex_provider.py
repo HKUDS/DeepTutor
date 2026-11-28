@@ -100,6 +100,12 @@ class OpenAICodexProvider(LLMProvider):
                     session_id=prompt_cache_key,
                     extra_headers={**self.extra_headers, **(extra_headers or {})},
                 )
+                usage: dict[str, int] = {}
+
+                def _collect_provider_event(kind: str, payload: dict[str, Any]) -> None:
+                    if kind == "usage" and payload:
+                        usage.update(payload)
+
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
                         CODEX_RESPONSES_URL,
@@ -107,6 +113,7 @@ class OpenAICodexProvider(LLMProvider):
                         body,
                         verify=not disable_ssl_verify_enabled(),
                         on_content_delta=on_content_delta,
+                        on_provider_event=_collect_provider_event,
                     )
                 except CodexHTTPError as exc:
                     if exc.status_code == 401:
@@ -130,6 +137,7 @@ class OpenAICodexProvider(LLMProvider):
                     content=content,
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    usage=usage,
                 )
             except CodexHTTPError as exc:
                 return LLMResponse(
@@ -299,6 +307,7 @@ async def _request_codex(
     body: dict[str, Any],
     verify: bool,
     on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+    on_provider_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> tuple[str, list[ToolCallRequest], str]:
     async with httpx.AsyncClient(timeout=60.0, verify=verify) as client:
         async with client.stream("POST", url, headers=headers, json=body) as response:
@@ -315,7 +324,7 @@ async def _request_codex(
                     response.status_code,
                     _friendly_error(response.status_code),
                 )
-            return await consume_sse(response, on_content_delta)
+            return await consume_sse(response, on_content_delta, on_provider_event)
 
 
 def _pop_session_id(kwargs: dict[str, Any]) -> str | None:
