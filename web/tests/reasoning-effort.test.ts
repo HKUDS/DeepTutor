@@ -49,6 +49,30 @@ test("a stored value this table excludes stays visible so it can be reset", () =
   ]);
 });
 
+test("Gemini 3.8 Flash rejects minimal, so its lowest option is low", () => {
+  assert.deepEqual(values("gemini", "gemini-3.8-flash"), [
+    "",
+    "low",
+    "medium",
+    "high",
+  ]);
+  assert.deepEqual(values("google", "models/gemini-3.8-flash"), [
+    "",
+    "low",
+    "medium",
+    "high",
+  ]);
+  // 3.6-flash still accepts minimal — the rule keys on the model, not the
+  // gemini-3 prefix.
+  assert.deepEqual(values("gemini", "gemini-3.6-flash"), [
+    "",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+  ]);
+});
+
 test("provider aliases resolve to the canonical adapter", () => {
   assert.deepEqual(values("google", "gemini-2.5-flash"), [
     "",
