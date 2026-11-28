@@ -268,6 +268,7 @@ class LlamaIndexPipeline:
             )
             if not documents:
                 self.logger.error("No valid documents found")
+                self._cleanup_failed_version_dir(storage_dir, signature)
                 return False
 
             self.logger.info(
@@ -525,6 +526,8 @@ class LlamaIndexPipeline:
             )
             if not documents:
                 self.logger.warning("No valid documents to add")
+                if plan.existing_storage is None or plan.storage_dir != plan.existing_storage:
+                    self._cleanup_failed_version_dir(plan.storage_dir, signature)
                 return False
 
             VisualAssetStore(kb_dir).publish(visual_candidates)

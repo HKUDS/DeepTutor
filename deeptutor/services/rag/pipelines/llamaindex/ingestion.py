@@ -7,7 +7,8 @@ transformations and embedding to LlamaIndex's official IngestionPipeline.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+import threading
+from typing import Any, Callable
 
 from llama_index.core import Document, Settings, VectorStoreIndex
 from llama_index.core.ingestion import IngestionPipeline
@@ -17,6 +18,101 @@ from llama_index.core.schema import BaseNode
 from . import vector_store
 from .config import should_show_progress, vector_index_config_from_settings
 from .embedding_adapter import current_embedding
+
+_PUNKT_LOCK = threading.Lock()
+_UNTIMED_PUNKT_TOKENIZER: Any | None = None
+
+
+def _disable_redos_timeout(pattern: Any) -> Any:
+    """Return ``pattern`` with any ``nltk.redos.TimedPattern`` timeout disabled.
+
+    NLTK 3.10.4 compiles Punkt's built-in patterns through ``nltk.redos``, which
+    enforces a 5s ``regex`` timeout counted in whole-process CPU time across all
+    threads. When chat turns stream concurrently in the same process, a single
+    whole-document ``finditer`` scan can trip that limit with ``TimeoutError``.
+    Disabling the timeout only on our private Punkt tokenizer's constant
+    patterns avoids mutating process-global ``nltk.redos.DEFAULT_TIMEOUT`` and
+    is a no-op on NLTK < 3.10.4.
+    """
+    try:
+        from nltk import redos
+    except ImportError:
+        return pattern
+    if isinstance(pattern, redos.TimedPattern):
+        return redos.compile(pattern, timeout=None)
+    return pattern
+
+
+def _untimed_punkt_tokenizer() -> Any:
+    """Return a thread-safe Punkt tokenizer whose built-in constant patterns do
+    not inherit ``nltk.redos.DEFAULT_TIMEOUT``.
+
+    LlamaIndex's ``globals_helper.punkt_tokenizer`` instantiates an untrained
+    ``PunktSentenceTokenizer()`` while also loading ``corpora/stopwords`` from
+    ``llama_index/core/_static/nltk_cache`` as a side effect. Constructing the
+    equivalent ``PunktSentenceTokenizer`` directly avoids both NLTK 3.10.4's
+    process-CPU regex limit and ``nltk.pathsec`` failures when ``nltk_cache``
+    lives in a group-writable ``site-packages`` directory.
+    """
+    global _UNTIMED_PUNKT_TOKENIZER
+
+    if _UNTIMED_PUNKT_TOKENIZER is not None:
+        return _UNTIMED_PUNKT_TOKENIZER
+
+    with _PUNKT_LOCK:
+        if _UNTIMED_PUNKT_TOKENIZER is not None:
+            return _UNTIMED_PUNKT_TOKENIZER
+
+        from nltk.tokenize import punkt
+
+        base_lang_vars = punkt.PunktLanguageVars()
+
+        class _UntimedPunktLanguageVars(punkt.PunktLanguageVars):
+            __slots__ = ()
+            re_boundary_realignment = _disable_redos_timeout(base_lang_vars.re_boundary_realignment)
+
+        lang_vars = _UntimedPunktLanguageVars()
+        # Eagerly populate both slotted patterns so concurrent indexing threads
+        # never race on NLTK's lazy attribute initialization.
+        lang_vars._re_period_context = _disable_redos_timeout(base_lang_vars.period_context_re())
+        lang_vars._re_word_tokenizer = _disable_redos_timeout(base_lang_vars._word_tokenizer_re())
+
+        untimed_non_punct = _disable_redos_timeout(getattr(punkt, "_re_non_punct", None))
+
+        class _UntimedPunktToken(punkt.PunktToken):
+            __slots__ = ()
+            _RE_ELLIPSIS = _disable_redos_timeout(punkt.PunktToken._RE_ELLIPSIS)
+            _RE_NUMERIC = _disable_redos_timeout(punkt.PunktToken._RE_NUMERIC)
+            _RE_INITIAL = _disable_redos_timeout(punkt.PunktToken._RE_INITIAL)
+            _RE_ALPHA = _disable_redos_timeout(punkt.PunktToken._RE_ALPHA)
+
+            if untimed_non_punct is not None:
+
+                @property
+                def is_non_punct(self) -> Any:
+                    return untimed_non_punct.search(self.type)
+
+        _UNTIMED_PUNKT_TOKENIZER = punkt.PunktSentenceTokenizer(
+            lang_vars=lang_vars,
+            token_cls=_UntimedPunktToken,
+        )
+        return _UNTIMED_PUNKT_TOKENIZER
+
+
+def _split_by_untimed_sentence_tokenizer() -> Callable[[str], list[str]]:
+    """Mirror LlamaIndex's ``split_by_sentence_tokenizer`` without the process-CPU cap."""
+    from llama_index.core.node_parser.text.utils import split_by_sentence_tokenizer_internal
+
+    return lambda text: split_by_sentence_tokenizer_internal(text, _untimed_punkt_tokenizer())
+
+
+def build_sentence_splitter(*, chunk_size: int, chunk_overlap: int) -> SentenceSplitter:
+    """Create a ``SentenceSplitter`` immune to NLTK 3.10.4's process-CPU regex cap."""
+    return SentenceSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        chunking_tokenizer_fn=_split_by_untimed_sentence_tokenizer(),
+    )
 
 
 def build_ingestion_pipeline() -> IngestionPipeline:
@@ -29,7 +125,7 @@ def build_ingestion_pipeline() -> IngestionPipeline:
 
     return IngestionPipeline(
         transformations=[
-            SentenceSplitter(
+            build_sentence_splitter(
                 chunk_size=Settings.chunk_size,
                 chunk_overlap=Settings.chunk_overlap,
             ),
@@ -123,6 +219,7 @@ def insert_documents_into_index(
 
 __all__ = [
     "build_ingestion_pipeline",
+    "build_sentence_splitter",
     "create_index_from_documents",
     "documents_to_nodes",
     "insert_documents_into_index",

@@ -311,3 +311,120 @@ def test_hybrid_fallback_to_vector_warns_instead_of_staying_silent(
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("vector-only" in r.getMessage() for r in warnings)
+
+
+@pytest.mark.asyncio
+async def test_failed_first_add_cleans_up_building_version_for_later_uploads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #3030: a failed first upload must not brick the empty KB."""
+    from deeptutor.knowledge.add_documents import DocumentAdder
+    from deeptutor.services.rag.index_versioning import list_kb_versions
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    kb_dir = tmp_path / "kb"
+    raw_file = kb_dir / "raw" / "first.md"
+    raw_file.parent.mkdir(parents=True)
+    raw_file.write_text("First document content.", encoding="utf-8")
+
+    async def _verify_embedding_connectivity(self) -> None:
+        return None
+
+    def _failing_create_index(*_args, **_kwargs) -> int:
+        raise TimeoutError("simulated indexing timeout")
+
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+    monkeypatch.setattr(
+        LlamaIndexPipeline, "_verify_embedding_connectivity", _verify_embedding_connectivity
+    )
+    monkeypatch.setattr(storage_module, "create_index", _failing_create_index)
+
+    # First upload passes DocumentAdder bootstrap, then fails inside create_index.
+    DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")
+    pipeline = LlamaIndexPipeline(kb_base_dir=str(tmp_path), signature_provider=_signature)
+    with pytest.raises(TimeoutError, match="simulated indexing timeout"):
+        await pipeline.add_documents("kb", [str(raw_file)])
+
+    assert not (kb_dir / "version-1").exists()
+    assert list_kb_versions(kb_dir) == []
+
+    # Subsequent upload must still be able to bootstrap instead of failing with
+    # "no ready llamaindex index; reindex required".
+    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")
+    assert adder.rag_provider == "llamaindex"
+
+
+@pytest.mark.asyncio
+async def test_empty_first_add_and_initialize_clean_up_building_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Returning False when no documents parse must not leave an empty version-1."""
+    from deeptutor.knowledge.add_documents import DocumentAdder
+    from deeptutor.services.rag.index_versioning import list_kb_versions
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    kb_dir = tmp_path / "kb"
+    raw_file = kb_dir / "raw" / "empty.txt"
+    raw_file.parent.mkdir(parents=True)
+    raw_file.write_text("   ", encoding="utf-8")
+
+    async def _verify_embedding_connectivity(self) -> None:
+        return None
+
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+    monkeypatch.setattr(
+        LlamaIndexPipeline, "_verify_embedding_connectivity", _verify_embedding_connectivity
+    )
+
+    pipeline = LlamaIndexPipeline(kb_base_dir=str(tmp_path), signature_provider=_signature)
+    assert await pipeline.add_documents("kb", [str(raw_file)]) is False
+    assert list_kb_versions(kb_dir) == []
+
+    assert await pipeline.initialize("kb", [str(raw_file)]) is False
+    assert list_kb_versions(kb_dir) == []
+
+    DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")
+
+
+def test_cleanup_failed_version_dir_handles_building_checkpoint_and_published(
+    tmp_path: Path,
+) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
+
+    # 1. Unpublished publication-guarded dir (empty or partial without checkpoint) is removed.
+    empty_guarded = tmp_path / "version-1"
+    empty_guarded.mkdir()
+    (empty_guarded / ".building.json").write_text('{"state":"building"}', encoding="utf-8")
+    assert storage_module.cleanup_failed_version_dir(empty_guarded) is True
+    assert not empty_guarded.exists()
+
+    partial_guarded = tmp_path / "version-2"
+    partial_guarded.mkdir()
+    (partial_guarded / ".building.json").write_text('{"state":"building"}', encoding="utf-8")
+    (partial_guarded / "docstore.json").write_text("{}", encoding="utf-8")
+    assert storage_module.cleanup_failed_version_dir(partial_guarded) is True
+    assert not partial_guarded.exists()
+
+    # 2. Resumable rebuild checkpoint is preserved.
+    resumable = tmp_path / "version-3"
+    resumable.mkdir()
+    (resumable / ".building.json").write_text('{"state":"building"}', encoding="utf-8")
+    (resumable / ".embedding-checkpoint.json").write_text("{}", encoding="utf-8")
+    assert storage_module.cleanup_failed_version_dir(resumable) is False
+    assert resumable.exists()
+
+    # 3. Published version is never removed.
+    published = tmp_path / "version-4"
+    published.mkdir()
+    (published / ".building.json").write_text('{"state":"building"}', encoding="utf-8")
+    (published / "meta.json").write_text('{"state":"published"}', encoding="utf-8")
+    assert storage_module.cleanup_failed_version_dir(published) is False
+    assert published.exists()
+
+    # 4. Legacy non-guarded dir with persisted files is preserved.
+    legacy_populated = tmp_path / "version-5"
+    legacy_populated.mkdir()
+    (legacy_populated / "docstore.json").write_text("{}", encoding="utf-8")
+    assert storage_module.cleanup_failed_version_dir(legacy_populated) is False
+    assert legacy_populated.exists()
