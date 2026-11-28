@@ -612,7 +612,7 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
     "openai": GenerationProviderSpec(
         label="OpenAI",
         default_api_base="https://api.openai.com/v1",
-        default_model="gpt-image-1",
+        default_model="gpt-image-2.6-flare",
     ),
     "xai": GenerationProviderSpec(
         label="xAI (Grok Imagine)",
@@ -635,7 +635,7 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
         label="OpenRouter",
         default_api_base="https://openrouter.ai/api/v1",
         adapter="chat_completions",
-        default_model="google/gemini-2.5-flash-image-preview",
+        default_model="google/gemini-3.1-flash-image",
     ),
     "azure_openai": GenerationProviderSpec(
         label="Azure OpenAI",
