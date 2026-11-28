@@ -1592,7 +1592,7 @@ class QuestionPipeline:
             messages.append(
                 assistant_message(
                     step.text[:500],
-                    reasoning_content=step.reasoning_content or None,
+                    reasoning_content=step.reasoning_content,
                     thinking_blocks=list(step.thinking_blocks) or None,
                 )
             )

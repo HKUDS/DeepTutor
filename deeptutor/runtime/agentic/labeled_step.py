@@ -119,7 +119,9 @@ class LabeledStepResult:
     # the previous assistant turn's reasoning ("the reasoning_content in the
     # thinking mode must be passed back to the API"), and quiz, research and
     # explore_context are all multi-round.
-    reasoning_content: str = ""
+    # None means the provider omitted the field. An explicit empty string is
+    # still part of the assistant message in a DeepSeek tool conversation.
+    reasoning_content: str | None = None
     # Anthropic's signed thinking blocks, which must be replayed verbatim and
     # cannot be reconstructed from text.
     thinking_blocks: tuple[dict[str, Any], ...] = ()
@@ -561,13 +563,14 @@ async def run_labeled_step(
             # prelude uses, so both flavors of reasoning model surface
             # identically. ``saw_pre_label_think`` forces the final cleanup
             # path to run even when ``binding`` is unset.
-            reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
-                delta, "reasoning", None
-            )
+            reasoning_text = getattr(delta, "reasoning_content", None)
+            reasoning_alias = getattr(delta, "reasoning", None)
+            if not reasoning_text and reasoning_alias is not None:
+                reasoning_text = reasoning_alias
             # Accumulated for every label, not only the pre-label prelude: the
             # provider wants the whole round's reasoning back, and whether the
             # trace UI showed it is a display question.
-            if reasoning_text:
+            if reasoning_text is not None:
                 reasoning_acc.append(str(reasoning_text))
             if reasoning_text and label is None:
                 output_chars_seen += len(reasoning_text)
@@ -654,7 +657,7 @@ async def run_labeled_step(
     # fallbacks, so a provider that streams a tool call without an ``id`` still
     # yields a correlatable call (matching the other accumulator consumers).
     ordered_tool_calls = tc_acc.collected()
-    reasoning_acc_text = "".join(reasoning_acc)
+    reasoning_acc_text = "".join(reasoning_acc) if reasoning_acc else None
     return LabeledStepResult(
         label=label,
         text=text,
