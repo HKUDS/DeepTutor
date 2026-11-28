@@ -494,6 +494,9 @@ class MasteryInteraction(BaseModel):
     session_id: str = ""
     turn_id: str = ""
     user_answer: str = ""
+    #: Photos submitted with ``user_answer``: attachment-store references with
+    #: a SHA-256 digest of each image (see ``deeptutor.learning.answer_images``).
+    answer_images: list[dict[str, str]] = Field(default_factory=list)
     answers: dict[str, str] = Field(default_factory=dict)
     result: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)

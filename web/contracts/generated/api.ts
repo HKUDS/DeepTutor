@@ -15258,9 +15258,14 @@ export interface components {
       readonly answers: {
         readonly [key: string]: string;
       } | null;
+      /** Attachment Ids */
+      readonly attachment_ids?: readonly string[];
       /** Question Id */
       readonly question_id: string;
-      /** Text */
+      /**
+       * Text
+       * @default
+       */
       readonly text: string;
     };
     /**

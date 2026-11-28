@@ -80,6 +80,7 @@ class LearningTurnAdapter:
         question_id: str,
         answer: str,
         answers: dict[str, str] | None = None,
+        answer_images: list[dict[str, str]] | None = None,
     ) -> None:
         """Record an answer submitted from a card that outlived its turn.
 
@@ -104,6 +105,7 @@ class LearningTurnAdapter:
                 session_id=session_id,
                 turn_id=turn_id,
                 **({"answers": answers} if answers is not None else {}),
+                **({"answer_images": answer_images} if answer_images else {}),
             )
 
         try:
@@ -116,12 +118,29 @@ class LearningTurnAdapter:
                 exc_info=True,
             )
 
+    @staticmethod
+    def _card_answer_images(session_id: str, answer: Any, attachments: Any) -> list[dict[str, str]]:
+        """References to the photos a card answer names among the turn's uploads.
+
+        Raises ``ValueError`` when they cannot be described.
+        """
+        from deeptutor.learning.answer_images import answer_image_refs
+
+        if not isinstance(answer, dict):
+            return []
+        return answer_image_refs(
+            answer.get("attachment_ids"),
+            attachments if isinstance(attachments, list) else [],
+            session_id=session_id,
+        )
+
     async def _is_mismatched_card_replay(
         self,
         *,
         path_id: str,
         submission: dict[str, Any],
         receipt: dict[str, Any],
+        answer_images: list[dict[str, str]] | None = None,
     ) -> bool:
         """Identify a single-card replay that does not assess this submission.
 
@@ -145,15 +164,21 @@ class LearningTurnAdapter:
             else submission.get("text") or ""
         ).strip()
         previous = str(result.get("learner_answer") or "").strip()
-        if current == previous:
-            return False
 
+        from deeptutor.learning.answer_images import image_digests
         from deeptutor.learning.pending import is_readable_choice_answer, resolve_choice_submission
         from deeptutor.learning.storage import LearningStore
 
         interaction = await asyncio.to_thread(
             LearningStore().get_interaction, path_id, submission["question_id"]
         )
+        # Photos are part of the answer: the same words with different (or no)
+        # photos are a different submission.
+        stored_images = interaction.answer_images if interaction is not None else []
+        if image_digests(answer_images) != image_digests(stored_images):
+            return True
+        if current == previous:
+            return False
         if interaction is not None and interaction.question.question_type == "choice":
             options = interaction.question.choice_map
             if is_readable_choice_answer(current, options):
@@ -167,6 +192,7 @@ class LearningTurnAdapter:
         *,
         path_id: str,
         answer: dict[str, Any],
+        answer_images: list[dict[str, str]] | None = None,
     ) -> dict[str, Any] | None:
         """Rule on a card answer now, before the tutor writes a word.
 
@@ -189,7 +215,7 @@ class LearningTurnAdapter:
         question_id = str((answer or {}).get("question_id") or "").strip()
         text = str((answer or {}).get("text") or "")
         answers = (answer or {}).get("answers")
-        if not path_id or not question_id or (not text and answers is None):
+        if not path_id or not question_id or (not text and answers is None and not answer_images):
             return None
         # Grading is one deterministic engine operation and this tool is its
         # only entry point; calling it here keeps that logic in one place
@@ -203,6 +229,7 @@ class LearningTurnAdapter:
                 _turn_id=execution.turn_id,
                 question_id=question_id,
                 **({"answers": answers} if answers is not None else {"answer": text}),
+                **({"_answer_images": answer_images} if answer_images else {}),
             )
         except Exception:
             logger.warning(
@@ -219,7 +246,7 @@ class LearningTurnAdapter:
             return None
         try:
             mismatched = await self._is_mismatched_card_replay(
-                path_id=path_id, submission=answer, receipt=payload
+                path_id=path_id, submission=answer, receipt=payload, answer_images=answer_images
             )
         except Exception:
             # A replay we cannot verify must not become a new answer's verdict.

@@ -157,7 +157,13 @@ class TurnRequestPreparer:
             question_id: str,
             answer: str,
             answers: dict[str, str] | None = None,
+            answer_images: list[dict[str, str]] | None = None,
         ) -> None: ...
+
+        @staticmethod
+        def _card_answer_images(
+            session_id: str, answer: Any, attachments: Any
+        ) -> list[dict[str, str]]: ...
 
         async def _acquire_mastery_path_lease(
             self,
@@ -471,8 +477,17 @@ class TurnRequestPreparer:
                 requested_path_id=mastery_path_id,
                 remembered_path_id=_mastery_path_id(preferences.get("mastery_path_id")),
             )
+            # Before any turn exists: a card answer whose photos cannot be
+            # described is rejected, never committed or graded as text alone.
+            try:
+                card_answer_images = self._card_answer_images(
+                    session["id"], payload.get("mastery_answer"), payload.get("attachments")
+                )
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             mastery_path_id = configured_mastery_path_id
+            card_answer_images = []
         mastery_lease_managed = bool(
             mastery_binding is not None and _mastery_loop_managed(workspace_mode, capability)
         )
@@ -875,6 +890,7 @@ class TurnRequestPreparer:
             capability=capability,
             payload=dict(payload),
             lease=lease,
+            mastery_card_answer_images=card_answer_images,
         )
         # Publish an ownership marker before trying to recover another path
         # lease. Two start_turn calls can otherwise interleave after the first
@@ -918,6 +934,7 @@ class TurnRequestPreparer:
                             if card_answer.get("answers") is not None
                             else {}
                         ),
+                        answer_images=card_answer_images,
                     )
             except Exception as exc:
                 async with self._lock:

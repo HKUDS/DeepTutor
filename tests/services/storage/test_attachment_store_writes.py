@@ -75,6 +75,37 @@ def test_put_returns_resolvable_url(tmp_path: Path) -> None:
     assert path.read_bytes() == b"notes"
 
 
+@pytest.mark.parametrize(
+    "attachment_id", ["../other/abc", "..\\other\\abc", "nested/../../other/abc"]
+)
+def test_attachment_id_cannot_leave_its_session_directory(
+    tmp_path: Path, attachment_id: str
+) -> None:
+    import asyncio
+
+    store = LocalDiskAttachmentStore(root=tmp_path)
+    url = asyncio.run(
+        store.put(session_id="mine", attachment_id=attachment_id, filename="p.png", data=b"px")
+    )
+
+    assert not (tmp_path / "other").exists()
+    [stored] = list((tmp_path / "mine").iterdir())
+    assert "/" not in url.split("/files/attachments/mine/", 1)[1].rsplit("/", 1)[0]
+    path = store.resolve_path(session_id="mine", attachment_id=attachment_id, filename="p.png")
+    assert path == stored.resolve() and path.read_bytes() == b"px"
+    asyncio.run(store.delete_attachment("mine", attachment_id))
+    assert not (tmp_path / "mine").exists()
+
+
+def test_safe_attachment_ids_keep_their_stored_names(tmp_path: Path) -> None:
+    import asyncio
+
+    store = LocalDiskAttachmentStore(root=tmp_path)
+    asyncio.run(store.put(session_id="s", attachment_id="a1-b_2", filename="p.png", data=b"px"))
+
+    assert [entry.name for entry in (tmp_path / "s").iterdir()] == ["a1-b_2_p.png"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("filename", ["a" * 240 + ".txt", "é" * 120 + ".pdf"])
 async def test_put_shortens_names_that_exceed_the_filesystem_limit(

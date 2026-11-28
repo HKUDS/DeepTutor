@@ -129,6 +129,9 @@ interface OutgoingAttachment {
   base64?: string;
   filename?: string;
   mime_type?: string;
+  /** Client-chosen id, when the request refers to this upload by it (a
+   *  mastery card answer names its photos this way). */
+  id?: string;
 }
 
 interface NotebookReferencePayload {
@@ -161,7 +164,7 @@ export interface SendMessageOptions {
    *  came from a question card, so the backend can commit the answer to the
    *  engine before the tutor's first token instead of pairing a bare "C"
    *  with a question from scrollback. */
-  masteryAnswer?: { question_id: string; text: string } | null;
+  masteryAnswer?: { question_id: string; text: string; attachment_ids?: string[] } | null;
   /** Which mastery question this message drops. Set when the learner used the
    *  card's skip control, so the engine is clear of it before the tutor's
    *  first ``mastery_status`` — otherwise the next ``mastery_quiz`` simply
@@ -353,7 +356,7 @@ export interface MessageRequestSnapshot {
   readingReferences?: ReadingReferencePayload[];
   masteryPathId?: string;
   masterySessionMode?: string;
-  masteryAnswer?: { question_id: string; text: string };
+  masteryAnswer?: { question_id: string; text: string; attachment_ids?: string[] };
   masterySkip?: { question_id: string };
   timedMediaId?: string;
   persona?: string;
@@ -2067,9 +2070,11 @@ function hydrateRequestSnapshot(
   const masteryAnswer = asRecord(stored.masteryAnswer);
   if (typeof masteryAnswer?.question_id === "string" &&
       typeof masteryAnswer.text === "string") {
+    const attachmentIds = asStringArray(masteryAnswer.attachment_ids);
     snapshot.masteryAnswer = {
       question_id: masteryAnswer.question_id,
       text: masteryAnswer.text,
+      ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
     };
   }
   const masterySkip = asRecord(stored.masterySkip);
@@ -3113,6 +3118,7 @@ export function ChatStateAdapterProvider({
         base64: a.base64,
         url: a.url,
         mime_type: a.mime_type,
+        ...(a.id ? { id: a.id } : {}),
       }));
       const currentState = stateRef.current;
       let key = currentState.selectedKey;
@@ -3190,6 +3196,7 @@ export function ChatStateAdapterProvider({
           base64: a.base64,
           url: a.url,
           mime_type: a.mime_type,
+          ...(a.id ? { id: a.id } : {}),
         })) ?? (exactReplay ? undefined : msgAttachments);
       const effectiveConfig = exactReplay ? replaySnapshot?.config : config ?? replaySnapshot?.config;
       const effectiveNotebookReferences =

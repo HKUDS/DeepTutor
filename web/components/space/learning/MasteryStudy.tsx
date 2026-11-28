@@ -59,6 +59,7 @@ import { ActivityHeader } from "@/components/activity";
 
 import { ModeSwitch } from "./ModeSwitch";
 import { MasteryPathCrumb } from "@/components/layout/instance-crumbs";
+import { buildMasteryAnswerTurn } from "@/lib/mastery-question";
 import { PageBarSlot, usePageBarOffers } from "@/components/layout/PageChrome";
 import { topicDisplayName, type Translate } from "./format";
 
@@ -444,17 +445,13 @@ export function MasteryStudy({
   // backend, and returning ``false`` here reopens the card instead of showing
   // the learner that refusal.
   const answerMasteryQuestion = useCallback(
-    (answer: { questionId: string; text: string; answers?: Array<{ questionId: string; text: string }> }) => {
-      const text = answer.text.trim();
-      if (!text || state.isStreaming || sessionLoading || sessionError) {
+    (answer: Parameters<typeof buildMasteryAnswerTurn>[0]) => {
+      const turn = buildMasteryAnswerTurn(answer, t("Photo of my solution"));
+      if (!turn || state.isStreaming || sessionLoading || sessionError) {
         return false;
       }
-      sendMessage(text, undefined, undefined, undefined, undefined, {
-        masteryAnswer: {
-          question_id: answer.questionId,
-          text,
-          ...(answer.answers ? { answers: Object.fromEntries(answer.answers.map((item) => [item.questionId, item.text])) } : {}),
-        },
+      sendMessage(turn.content, turn.attachments, undefined, undefined, undefined, {
+        masteryAnswer: turn.masteryAnswer,
       });
       shouldAutoScrollRef.current = true;
       return true;
@@ -465,6 +462,7 @@ export function MasteryStudy({
       sessionLoading,
       shouldAutoScrollRef,
       state.isStreaming,
+      t,
     ],
   );
 

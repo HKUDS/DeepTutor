@@ -37,7 +37,8 @@ export const DEFAULT_ATTACHMENT_LIMITS: AttachmentLimits = {
 let cached: AttachmentLimits | null = null;
 let inflight: Promise<AttachmentLimits> | null = null;
 
-function loadAttachmentLimits(): Promise<AttachmentLimits> {
+/** The effective limits, for a picker that only needs them when files arrive. */
+export function loadAttachmentLimits(): Promise<AttachmentLimits> {
   if (cached) return Promise.resolve(cached);
   if (!inflight) {
     inflight = apiFetch(apiUrl("/api/settings/chat-attachments"))

@@ -168,6 +168,7 @@ import SelectionActions, {
   type SelectionAnchor,
 } from "@/features/chat/components/SelectionActions";
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
+import { buildMasteryAnswerTurn } from "@/lib/mastery-question";
 
 const FilePreviewDrawer = dynamic(
   () => import("@/components/chat/preview/FilePreviewDrawer"),
@@ -2336,29 +2337,23 @@ export default function ChatWorkspace() {
   // and ``masteryAnswer`` tells the backend which question it settles so the
   // engine has the answer committed before the tutor reads anything.
   const answerMasteryQuestion = useCallback(
-    (answer: { questionId: string; text: string; answers?: Array<{ questionId: string; text: string }> }) => {
-      const text = answer.text.trim();
+    (answer: Parameters<typeof buildMasteryAnswerTurn>[0]) => {
+      const turn = buildMasteryAnswerTurn(answer, t("Photo of my solution"));
       // One live turn per path: submitting into a running one is refused, and
       // ``false`` reopens the card rather than surfacing that refusal.
-      if (!text || state.isStreaming) return false;
+      if (!turn || state.isStreaming) return false;
       sendMessage(
-        text,
+        turn.content,
+        turn.attachments,
         undefined,
         undefined,
         undefined,
-        undefined,
-        {
-          masteryAnswer: {
-            question_id: answer.questionId,
-            text,
-            ...(answer.answers ? { answers: Object.fromEntries(answer.answers.map((item) => [item.questionId, item.text])) } : {}),
-          },
-        },
+        { masteryAnswer: turn.masteryAnswer },
       );
       shouldAutoScrollRef.current = true;
       return true;
     },
-    [sendMessage, shouldAutoScrollRef, state.isStreaming],
+    [sendMessage, shouldAutoScrollRef, state.isStreaming, t],
   );
 
   // Declining one is the same kind of move, and has to be a turn for the same

@@ -91,6 +91,7 @@ class TurnExecutor:
             *,
             path_id: str,
             answer: dict[str, Any],
+            answer_images: list[dict[str, str]] | None = None,
         ) -> dict[str, Any] | None: ...
 
         async def _skip_card_question(
@@ -848,11 +849,14 @@ class TurnExecutor:
             mastery_card_grade: dict[str, Any] | None = None
             mastery_card_rejection: dict[str, Any] | None = None
             mastery_card_skip: dict[str, Any] | None = None
+            # Described and validated once, when the turn was admitted.
+            mastery_card_answer_images = execution.mastery_card_answer_images
             if workspace_mode == WORKSPACE_MODE_MASTERY:
                 mastery_card_grade = await self._grade_submitted_card_answer(
                     execution,
                     path_id=_mastery_path_id(payload.get("mastery_path_id")),
                     answer=payload.get("mastery_answer") or {},
+                    answer_images=mastery_card_answer_images,
                 )
                 if mastery_card_grade and mastery_card_grade.get("reason") == "stale_card":
                     mastery_card_rejection = mastery_card_grade
@@ -1069,6 +1073,9 @@ class TurnExecutor:
                     # graded or not: "A" is an answer, not something to search.
                     "mastery_card_answered": workspace_mode == WORKSPACE_MODE_MASTERY
                     and bool(payload.get("mastery_answer")),
+                    # References to the photos that answer carried, for the
+                    # tutor's own mastery_grade call (see the mastery loop).
+                    "mastery_card_answer_images": mastery_card_answer_images,
                     "mastery_path_lease_managed": mastery_lease_managed,
                     # Immersive reading: the open material activates the reading
                     # capability and binds its tools; the viewport tells the

@@ -175,6 +175,11 @@ class MasteryLoopCapability:
             elif tool_name == "mastery_grade":
                 state["quiz_awaiting_grade"] = False
                 state["quiz_graded"] = True
+                # Photos this turn's card answer carried. Set on every call so a
+                # model-supplied value never survives.
+                updated["_answer_images"] = list(
+                    context.metadata.get("mastery_card_answer_images") or []
+                )
             updated["_mastery_path_id"] = path_id
             updated["_attached_kb_names"] = list(context.knowledge_bases)
             updated["_inspected_image_hashes"] = list(

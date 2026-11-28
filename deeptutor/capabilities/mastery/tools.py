@@ -1781,6 +1781,11 @@ class MasteryGradeTool(BaseTool):
             superseded = (
                 supersedes_ungraded_reply(stored, answer, interaction.result)
                 if "_learner_message" in kwargs
+                # A photo answer is replaced only from its card: the message
+                # beside it (a placeholder label on a regenerate, or chat
+                # prose) is not a newer reply and would discard the photos.
+                and not interaction.answer_images
+                and not kwargs.get("_answer_images")
                 and question.question_type != "choice"
                 and not question.questions
                 else None
@@ -1846,6 +1851,14 @@ class MasteryGradeTool(BaseTool):
             progress, interaction, replayed = await service.grade_interaction_semantic(
                 path_id,
                 answer=answer,
+                # Runtime-injected, never model-authored: the photos this
+                # turn's card answer carried, so a commit that lost them is
+                # refused instead of graded as text.
+                **(
+                    {"answer_images": kwargs["_answer_images"]}
+                    if kwargs.get("_answer_images")
+                    else {}
+                ),
                 question_id=submitted_question_id,
                 answer_for_grading=answer_for_grading,
                 expected_answer=expected_answer if pending is not None else None,

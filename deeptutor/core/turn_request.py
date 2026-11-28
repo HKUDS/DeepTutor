@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
@@ -100,6 +100,10 @@ class TimedMediaViewport(BaseModel):
     time_seconds: float = Field(ge=0)
 
 
+#: An attachment id the server may use as a storage path component.
+SafeAttachmentId = Annotated[StrictStr, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+
+
 class MasteryCardAnswer(BaseModel):
     """An answer submitted from a mastery question card.
 
@@ -113,8 +117,26 @@ class MasteryCardAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str = Field(min_length=1)
-    text: str = Field(min_length=1)
+    #: May be empty only when photos carry the answer.
+    text: str = ""
     answers: dict[str, StrictStr] | None = Field(default=None, min_length=1, max_length=4)
+    #: IDs of this turn's image ``attachments`` that show the learner's own
+    #: solution, such as a photo of handwritten working. Single questions only.
+    #: At most four; checked below so the browser contract stays a plain list.
+    attachment_ids: list[SafeAttachmentId] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_answer_content(self) -> MasteryCardAnswer:
+        if self.attachment_ids:
+            if self.answers is not None:
+                raise ValueError("answer photos are accepted for single questions only")
+            if len(self.attachment_ids) > 4 or len(set(self.attachment_ids)) != len(
+                self.attachment_ids
+            ):
+                raise ValueError("answer photos require up to four distinct IDs")
+        elif not self.text:
+            raise ValueError("a card answer requires text or answer photos")
+        return self
 
     @field_validator("answers")
     @classmethod
@@ -266,6 +288,22 @@ class TurnRequest(BaseModel):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @model_validator(mode="after")
+    def _answer_photos_are_uploaded_images(self) -> TurnRequest:
+        ids = self.mastery_answer.attachment_ids if self.mastery_answer else []
+        images = {
+            item.id
+            for item in self.attachments
+            if item.type == "image"
+            and item.base64
+            and (item.mime_type or "image/").startswith("image/")
+        }
+        if any(attachment_id not in images for attachment_id in ids):
+            raise ValueError(
+                "mastery_answer.attachment_ids must name image attachments of this turn"
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod
