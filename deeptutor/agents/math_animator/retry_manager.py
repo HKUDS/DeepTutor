@@ -31,12 +31,16 @@ class CodeRetryManager:
         max_retries: int = 4,
         repair_timeout_seconds: float = 180.0,
         review_timeout_seconds: float = 120.0,
+        review_is_advisory: bool = False,
     ) -> None:
         self.renderer = renderer
         self.repair_callback = repair_callback
         self.review_callback = review_callback
         self.on_retry = on_retry
         self.on_status = on_status
+        # A post-render record-only review must stay ``passed=False`` so the
+        # warning is visible, but it must not start another repair round.
+        self.review_is_advisory = review_is_advisory
         self.max_retries = max_retries
         self.repair_timeout_seconds = repair_timeout_seconds
         self.review_timeout_seconds = review_timeout_seconds
@@ -77,6 +81,22 @@ class CodeRetryManager:
                             f"Visual quality review timed out after {int(self.review_timeout_seconds)}s."
                         ) from timeout_exc
                     render_result.visual_review = review_result
+                    if (
+                        review_result is not None
+                        and not review_result.passed
+                        and self.review_is_advisory
+                    ):
+                        # The pre-render geometry rounds are exhausted. Keep the
+                        # failure visible in the result, but do not repair and
+                        # re-render the final scene again.
+                        if self.on_status is not None:
+                            await self.on_status(
+                                "Layout issues recorded after the repair rounds; "
+                                "returning the rendered result with a warning."
+                            )
+                        render_result.retry_attempts = len(retry_history)
+                        render_result.retry_history = retry_history
+                        return code, render_result
                     if review_result is not None and not review_result.passed:
                         if attempt >= self.max_retries:
                             if self.on_status is not None:
