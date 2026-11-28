@@ -1,14 +1,20 @@
 """Audited OpenAI Codex compatibility constants."""
 
 CODEX_UPSTREAM_COMMIT = "81da9deb065d7adb283816b19b40f89bcc484276"
-# Catalog compatibility: rust-v0.153.4, commit
-# 3d2ee51ca2d5db578f328aa75e20aa22c0197c9a. Older versions omit eligible models.
-# This request version is independent of the installed CLI and OAuth audit above.
-CODEX_CLIENT_VERSION = "0.153.4"
+# Catalog compatibility: rust-v0.171.0, independent of CODEX_UPSTREAM_COMMIT.
+CODEX_CLIENT_VERSION = "0.171.0"
+CODEX_GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/openai/codex/releases/latest"
+CODEX_CATALOG_HEADER_SCHEMA = 2
+CODEX_AUTO_REFRESH_INTERVAL_SECONDS = 7 * 24 * 3600
+CODEX_AUTO_REFRESH_POLL_SECONDS = 300
+CODEX_AUTO_REFRESH_FAILURE_BACKOFF_SECONDS = 900
+CODEX_AUTO_REFRESH_LEASE_SECONDS = 120
+CODEX_VERSION_TOTAL_TIMEOUT_SECONDS = 5
 CODEX_STABLE_VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 CODEX_NPM_LATEST_URL = "https://registry.npmjs.org/@openai%2Fcodex/latest"
 CODEX_VERSION_TIMEOUT_SECONDS = 3
 CODEX_MAX_VERSION_BYTES = 64 * 1024
+CODEX_GITHUB_MAX_RELEASE_BYTES = 1024 * 1024
 CODEX_OAUTH_ISSUER = "https://auth.openai.com"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_OAUTH_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke"

@@ -2789,6 +2789,7 @@
   "codex.oauth.denied": "Codex authorization was denied.",
   "codex.oauth.requestFailed": "The Codex request failed. Try again.",
   "codex.oauth.modelCount": "Models: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Catalog version: {{version}} ({{source}}) · Last synced: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Reasoning effort",
   "codex.oauth.reasoningDescription": "Choose a default for each Codex model. Only levels supported by that model are available.",
   "codex.oauth.reasoningSaved": "Codex reasoning effort saved.",

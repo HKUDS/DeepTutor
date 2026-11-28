@@ -32,6 +32,11 @@ export type CodexOAuthStatus = {
     | "stale-cache"
     | null;
   catalog_fetched_at: number | null;
+  catalog_client_version?: string | null;
+  catalog_version_source?: string | null;
+  catalog_last_attempt_at?: number | null;
+  catalog_last_error_code?: string | null;
+  catalog_next_refresh_at?: number | null;
   active_model: string | null;
   models: CodexReasoningModel[];
   activated: boolean;

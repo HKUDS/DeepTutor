@@ -14,6 +14,14 @@ from .common import maybe_run
 
 
 def register(app: typer.Typer) -> None:
+    @app.command("refresh-models")
+    def provider_refresh_models(provider: str = typer.Argument(...)) -> None:
+        """Refresh the signed-in provider's model catalog."""
+        if provider.strip().lower().replace("-", "_") != "openai_codex":
+            raise typer.BadParameter("Supported provider: openai-codex")
+        maybe_run(_refresh_openai_codex())
+
+
     @app.command("login")
     def provider_login(
         provider: str = typer.Argument(
@@ -171,3 +179,16 @@ async def _login_codebuddy() -> None:
         typer.echo(f"CodeBuddy auth validation succeeded for {label}.")
         return
     typer.echo("CodeBuddy auth validation succeeded.")
+
+
+async def _refresh_openai_codex() -> None:
+    try:
+        status = await get_codex_oauth_service().refresh_models()
+        typer.echo(f"Models: {status['model_count']}")
+        source = status.get("catalog_version_source")
+        suffix = f" ({source})" if source else ""
+        typer.echo(f"Catalog client version: {status.get('catalog_client_version')}{suffix}")
+        typer.echo(f"Active model: {status.get('active_model')}")
+    except CodexAuthError as exc:
+        typer.echo(exc.public_message)
+        raise typer.Exit(code=1) from None

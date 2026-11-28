@@ -357,6 +357,22 @@ export function CodexOAuthCard() {
               {t("codex.oauth.modelCount", { count: status.model_count })}
             </p>
           )}
+          {connected && status?.catalog_client_version && (
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              {t("codex.oauth.catalogSyncMeta", {
+                version: status.catalog_client_version,
+                source: status.catalog_version_source || "bundled",
+                syncedAt: status.catalog_fetched_at
+                  ? new Date(status.catalog_fetched_at * 1000).toLocaleString()
+                  : "—",
+              })}
+            </p>
+          )}
+          {connected && status?.catalog_last_error_code && !errorKey && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {t(codexErrorMessageKey(status.catalog_last_error_code))}
+            </p>
+          )}
           {connected &&
             catalogEditable === false &&
             status.models.length > 0 && (

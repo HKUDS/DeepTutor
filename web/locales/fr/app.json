@@ -3139,6 +3139,7 @@
   "codex.oauth.denied": "L'autorisation Codex a été refusée.",
   "codex.oauth.requestFailed": "La requête Codex a échoué. Réessayez.",
   "codex.oauth.modelCount": "Modèles : {{count}}",
+  "codex.oauth.catalogSyncMeta": "Version du catalogue : {{version}} ({{source}}) · Dernière synchro : {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Effort de raisonnement",
   "codex.oauth.reasoningDescription": "Choisissez une valeur par défaut pour chaque modèle Codex. Seuls les niveaux pris en charge par ce modèle sont proposés.",
   "codex.oauth.reasoningSaved": "Effort de raisonnement Codex enregistré.",

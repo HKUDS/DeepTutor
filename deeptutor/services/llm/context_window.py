@@ -174,7 +174,10 @@ def coerce_positive_int(value: Any) -> int | None:
 def looks_like_large_context_model(model: str) -> bool:
     """Return True when a model family is typically backed by a large window."""
     normalized = (model or "").strip().lower()
-    return any(marker in normalized for marker in KNOWN_LARGE_CONTEXT_MARKERS)
+    if any(marker in normalized for marker in KNOWN_LARGE_CONTEXT_MARKERS):
+        return True
+    family = normalized.rsplit("/", 1)[-1]
+    return family == "gpt-6" or family.startswith(("gpt-6-", "gpt-6."))
 
 
 def default_context_window_for_model(

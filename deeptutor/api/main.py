@@ -297,8 +297,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"v1 memory migration failed: {e}")
 
+    codex_scheduler = None
+    try:
+        from deeptutor.services.codex_auth.scheduler import CodexCatalogRefreshScheduler
+
+        codex_scheduler = CodexCatalogRefreshScheduler()
+        await codex_scheduler.start()
+    except Exception:
+        logger.warning("Could not start Codex catalog refresh scheduler")
+
     app.state.ready = True
     yield
+
+    if codex_scheduler is not None:
+        await codex_scheduler.stop()
 
     # Execute on shutdown
     app.state.ready = False

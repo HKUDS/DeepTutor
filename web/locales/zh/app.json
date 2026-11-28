@@ -2789,6 +2789,7 @@
   "codex.oauth.denied": "Codex 授权被拒绝。",
   "codex.oauth.requestFailed": "Codex 请求失败，请重试。",
   "codex.oauth.modelCount": "模型：{{count}}",
+  "codex.oauth.catalogSyncMeta": "目录版本：{{version}}（{{source}}）· 上次同步：{{syncedAt}}",
   "codex.oauth.reasoningTitle": "推理强度",
   "codex.oauth.reasoningDescription": "为每个 Codex 模型选择默认推理强度。仅显示该模型实际支持的等级。",
   "codex.oauth.reasoningSaved": "Codex 推理强度已保存。",

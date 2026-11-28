@@ -2684,6 +2684,7 @@
   "codex.oauth.denied": "Codex-Autorisierung wurde verweigert.",
   "codex.oauth.requestFailed": "Die Codex-Anfrage ist fehlgeschlagen. Versuch es erneut.",
   "codex.oauth.modelCount": "Modelle: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Katalogversion: {{version}} ({{source}}) · Zuletzt synchronisiert: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Reasoning-Aufwand",
   "codex.oauth.reasoningDescription": "Wähle einen Standard für jedes Codex-Modell. Nur Stufen, die von diesem Modell unterstützt werden, sind verfügbar.",
   "codex.oauth.reasoningSaved": "Codex-Reasoning-Aufwand gespeichert.",

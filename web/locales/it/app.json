@@ -2789,6 +2789,7 @@
   "codex.oauth.denied": "L'autorizzazione del Codex è stata negata.",
   "codex.oauth.requestFailed": "La richiesta del Codex è fallita. Riprova.",
   "codex.oauth.modelCount": "Modelli: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Versione catalogo: {{version}} ({{source}}) · Ultima sincronizzazione: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Sforzo di ragionamento",
   "codex.oauth.reasoningDescription": "Scegli un valore predefinito per ciascun modello Codex. Sono disponibili solo i livelli supportati da quel modello.",
   "codex.oauth.reasoningSaved": "Lo sforzo di ragionamento del Codex è stato salvato.",

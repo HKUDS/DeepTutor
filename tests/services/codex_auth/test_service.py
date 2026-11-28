@@ -1018,6 +1018,8 @@ async def test_dynamic_catalog_login_and_refresh_keep_selection_and_skip_npm_on_
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal npm_calls, catalog_calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             npm_calls += 1
             if npm_calls > 2:
@@ -1954,3 +1956,43 @@ async def test_pasting_a_callback_with_no_login_waiting_is_a_conflict(tmp_path: 
 
     assert exc_info.value.code == "login_not_active"
     assert exc_info.value.http_status == 409
+
+
+@pytest.mark.asyncio
+async def test_periodic_refresh_due_backoff_and_rejected_auth(tmp_path: Path) -> None:
+    clock = [1000]
+    service, _, _, catalog, store, _ = await _oauth_service(tmp_path, clock=clock)
+    assert await service.refresh_models_if_due() is False
+    credentials = store.commit_credentials(_stored_credentials(), 0)
+    assert await service.refresh_models_if_due(min_interval_seconds=100) is True
+    state = store.load_catalog_refresh_state()
+    assert state["catalog_last_success_at"] == 1000
+    assert await service.refresh_models_if_due(min_interval_seconds=100) is False
+    clock[0] = 1101
+    catalog.error = CodexAuthError("catalog_rate_limited", "Try later", 429)
+    assert await service.refresh_models_if_due(failure_backoff_seconds=900) is False
+    assert store.load_catalog_refresh_state()["catalog_next_refresh_at"] == 2001
+    assert store.load_catalog_refresh_state()["catalog_refresh_lease_owner"] is None
+    with pytest.raises(CodexAuthError):
+        await service.refresh_models()
+    clock[0] = 5000
+    store.mark_authentication_rejected(credentials.generation)
+    calls = len(catalog.calls)
+    assert await service.refresh_models_if_due() is False
+    assert len(catalog.calls) == calls
+
+
+@pytest.mark.asyncio
+async def test_periodic_refresh_discards_logout_response(tmp_path: Path) -> None:
+    service, _, _, catalog, store, model_catalog = await _oauth_service(tmp_path)
+    store.commit_credentials(_stored_credentials(), 0)
+    catalog.get_started = asyncio.Event()
+    catalog.get_release = asyncio.Event()
+    task = asyncio.create_task(service.refresh_models_if_due())
+    await catalog.get_started.wait()
+    before = model_catalog.load()
+    store.clear_credentials()
+    catalog.get_release.set()
+    assert await task is False
+    assert model_catalog.load() == before
+    assert all(value is None for value in store.load_catalog_refresh_state().values())

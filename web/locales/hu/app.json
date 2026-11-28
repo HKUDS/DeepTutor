@@ -2789,6 +2789,7 @@
   "codex.oauth.denied": "A Codex engedélyezés elutasítva.",
   "codex.oauth.requestFailed": "A Codex-kérés meghiúsult. Próbálja újra.",
   "codex.oauth.modelCount": "Modellek: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Katalógusverzió: {{version}} ({{source}}) · Utolsó szinkron: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Gondolkodási erőfeszítés",
   "codex.oauth.reasoningDescription": "Válasszon alapértéket minden Codex-modellhez. Csak a modell által támogatott szintek érhetők el.",
   "codex.oauth.reasoningSaved": "A Codex gondolkodási erőfeszítése mentve.",

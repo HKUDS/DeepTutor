@@ -60,6 +60,8 @@ class ResponseQueue:
         self.requests: list[httpx.Request] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(503)
         self.requests.append(request)
@@ -181,6 +183,8 @@ async def test_late_catalog_response_does_not_restore_cache_after_logout(
     logout_during_response = False
 
     def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(503)
         if logout_during_response:
@@ -240,6 +244,8 @@ async def test_late_catalog_response_preserves_new_generation_cache(
 
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal expected_cache, catalog_calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(503)
         catalog_calls += 1
@@ -286,6 +292,8 @@ async def test_refresh_discovers_and_persists_version_without_sending_credential
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             assert "authorization" not in request.headers
             assert "chatgpt-account-id" not in request.headers
@@ -450,6 +458,8 @@ async def test_new_version_falls_back_once_to_successful_version(
     requested: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(200, json={"name": "@openai/codex", "version": next(versions)})
         version = request.url.params["client_version"]
@@ -497,6 +507,8 @@ async def test_version_discovery_failure_reuses_persisted_success_after_restart(
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return next(npm_responses)
         assert request.url.params["client_version"] == "1.2.3"
@@ -519,6 +531,8 @@ async def test_version_change_never_reuses_old_etag_or_promotes_304(
     catalog_requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(200, json={"name": "@openai/codex", "version": next(versions)})
         catalog_requests.append(request)
@@ -590,6 +604,8 @@ async def test_new_version_does_not_retry_or_hide_unrelated_failures(
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal catalog_requests
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(200, json={"name": "@openai/codex", "version": "2.0.0"})
         catalog_requests += 1
@@ -610,11 +626,13 @@ async def test_new_version_does_not_retry_or_hide_unrelated_failures(
 
 
 @pytest.mark.asyncio
-async def test_failed_fallback_does_not_loop_or_overwrite_success(tmp_path: Path) -> None:
+async def test_invalid_catalog_without_previous_version_does_not_retry(tmp_path: Path) -> None:
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(200, json={"name": "@openai/codex", "version": "2.0.0"})
         calls += 1
@@ -624,7 +642,7 @@ async def test_failed_fallback_does_not_loop_or_overwrite_success(tmp_path: Path
         catalog = CodexModelCatalog(CodexCredentialStore(tmp_path), http=http, version_http=http)
         with pytest.raises(CodexAuthError, match="invalid model catalog"):
             await catalog.get(_credentials(), force=True)
-    assert calls == 2
+    assert calls == 1
     assert CodexCredentialStore(tmp_path).load_catalog_cache() is None
 
 
@@ -635,6 +653,8 @@ async def test_credential_rotation_keeps_version_but_not_catalog_or_etag(tmp_pat
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal npm_calls, catalog_calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             npm_calls += 1
             if npm_calls == 1:
@@ -662,6 +682,8 @@ async def test_invalid_json_does_not_retry_a_different_version(tmp_path: Path) -
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(200, json={"name": "@openai/codex", "version": "2.0.0"})
         calls += 1
@@ -684,6 +706,8 @@ async def test_auth_invalidation_preserves_version_history_but_no_usable_models(
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal npm_calls, catalog_calls
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             npm_calls += 1
             if npm_calls == 1:
