@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, type SetStateAction } from "react";
+import { useCallback, useState, type SetStateAction } from "react";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { APP_LANGUAGES, isAppLanguage, type AppLanguage } from "@/i18n/init";
 import AgentSetupHelp from "@/components/settings/AgentSetupHelp";
 import {
@@ -17,7 +19,12 @@ import { RESPONSE_LANGUAGE_OPTIONS, useUiSettings } from "@/features/settings/st
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useUiLayout } from "@/hooks/useUiLayout";
-import { UI_LAYOUTS, writeStoredUiLayout, type UiLayout } from "@/lib/ui-layout";
+import {
+  DEFAULT_UI_LAYOUT,
+  UI_LAYOUTS,
+  writeStoredUiLayout,
+  type UiLayout,
+} from "@/lib/ui-layout";
 
 const UI_LAYOUT_LABELS: Record<UiLayout, string> = {
   classic: "Classic",
@@ -64,11 +71,40 @@ export default function SettingsOverview() {
       writeStoredUiLayout(typeof action === "function" ? action(uiLayout) : action),
     [uiLayout],
   );
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
   const [stagedUiLayout, stageUiLayout] = useStagedSettings(
     "ui-layout",
     uiLayout,
     setLiveUiLayout,
   );
+  const resetConfigurations = async () => {
+    setResetting(true);
+    setResetError("");
+    try {
+      const response = await apiFetch(apiUrl("/api/settings/reset"), {
+        method: "POST",
+      });
+      if (!response.ok)
+        throw new Error(
+          t("Could not reset configurations (HTTP {{status}}).", {
+            status: response.status,
+          }),
+        );
+      writeStoredUiLayout(DEFAULT_UI_LAYOUT);
+      window.location.reload();
+    } catch (error) {
+      setResetDialogOpen(false);
+      setResetError(
+        error instanceof Error
+          ? error.message
+          : t("Could not reset configurations."),
+      );
+    } finally {
+      setResetting(false);
+    }
+  };
   return (
     <div>
       <SettingsPageHeader
@@ -193,6 +229,49 @@ export default function SettingsOverview() {
           </Link>
         ))}
       </SettingSection>}
+      {catalogEditable && (
+        <SettingSection
+          title={t("Reset configurations")}
+          description={t(
+            "Restore saved application settings and model providers to their defaults.",
+          )}
+        >
+          <div className="space-y-3">
+            <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+              {t(
+                "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.",
+              )}
+            </p>
+            {resetError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {resetError}
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={resetting}
+              onClick={() => setResetDialogOpen(true)}
+              className="rounded-lg border border-red-500/50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-500/10 dark:text-red-300 disabled:opacity-40"
+            >
+              {t("Reset all configurations")}
+            </button>
+          </div>
+          <ConfirmDialog
+            open={resetDialogOpen}
+            title={t("Reset all configurations?")}
+            tone="danger"
+            confirmLabel={t("Reset configurations")}
+            busy={resetting}
+            busyLabel={t("Resetting…")}
+            onConfirm={() => void resetConfigurations()}
+            onCancel={() => setResetDialogOpen(false)}
+          >
+            {t(
+              "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.",
+            )}
+          </ConfirmDialog>
+        </SettingSection>
+      )}
     </div>
   );
 }

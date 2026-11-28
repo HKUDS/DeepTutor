@@ -6661,5 +6661,18 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Select {{model}}": "选择 {{model}}",
+  "Remove selected models ({{count}})": "移除所选模型（{{count}}）",
+  "Remove selected models?": "移除所选模型？",
+  "Remove models": "移除模型",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "所选模型将从设置草稿中移除。应用更改后才会保存。",
+  "Could not reset configurations (HTTP {{status}}).": "无法重置配置（HTTP {{status}}）。",
+  "Could not reset configurations.": "无法重置配置。",
+  "Reset configurations": "重置配置",
+  "Reset all configurations": "重置所有配置",
+  "Reset all configurations?": "重置所有配置？",
+  "Restore saved application settings and model providers to their defaults.": "将已保存的应用设置和模型提供商恢复为默认值。",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "这会移除已配置的模型和提供商凭据。账号、对话、知识库和已上传文件会保留。部署环境变量不会更改；部分设置可能需要重启 DeepTutor。",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "所有已保存的应用设置、模型配置、提供商凭据和未应用的设置草稿都将重置。账号、工作区位置和学习数据会保留。此操作无法撤销。"
 }

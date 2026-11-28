@@ -57,11 +57,43 @@ def test_runtime_settings_creates_defaults_without_reading_dotenv(tmp_path: Path
 
     assert service.load_system(include_process_overrides=False)["backend_port"] == 8001
     assert service.load_system(include_process_overrides=False)["version_check_enabled"] is True
-    assert service.load_auth(include_process_overrides=False)["enabled"] is False
+    assert service.load_auth(include_process_overrides=False)["enabled"] is True
     assert service.load_integrations(include_process_overrides=False)["pocketbase_url"] == ""
 
     assert _read_json(service.path_for("system"))["backend_port"] == 8001
-    assert _read_json(service.path_for("auth"))["enabled"] is False
+    assert _read_json(service.path_for("auth"))["enabled"] is True
+
+
+def test_reset_to_defaults_restores_every_runtime_configuration_file(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    setting_files = (
+        "system",
+        "auth",
+        "integrations",
+        "document_parsing",
+        "pageindex",
+        "query_rewrite",
+        "ima",
+        "llamaindex",
+        "graphrag",
+        "lightrag",
+        "lightrag_server",
+    )
+    for name in setting_files:
+        path = service.path_for(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"custom_value": "remove-me"}', encoding="utf-8")
+
+    service.reset_to_defaults()
+
+    for name in setting_files:
+        assert "custom_value" not in _read_json(service.path_for(name))
+    assert service.load_system(include_process_overrides=False)["backend_port"] == 8001
+    assert service.load_auth(include_process_overrides=False)["enabled"] is True
+    assert service.load_auth(include_process_overrides=False)["password_hash"] == ""
+    assert service.load_integrations(include_process_overrides=False)[
+        "pocketbase_admin_password"
+    ] == ""
 
 
 def test_capability_routing_defaults_to_disabled(tmp_path) -> None:
@@ -283,7 +315,7 @@ def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
     assert _parsing_file["version"] == 2
     assert _parsing_file["engines"]["mineru"]["mode"] == "local"
     assert _read_json(settings_dir / "system.json")["backend_port"] == 8001
-    assert _read_json(settings_dir / "auth.json")["enabled"] is False
+    assert _read_json(settings_dir / "auth.json")["enabled"] is True
     assert _read_json(settings_dir / "integrations.json")["pocketbase_url"] == ""
     assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == set(SERVICE_NAMES)
 

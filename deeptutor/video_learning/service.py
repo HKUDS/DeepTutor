@@ -189,6 +189,11 @@ def save_video_learning_settings(payload: Any) -> dict[str, Any]:
     return normalized
 
 
+def reset_video_learning_settings() -> dict[str, Any]:
+    """Restore video-learning provider settings to their shipped defaults."""
+    return save_video_learning_settings(DEFAULT_VIDEO_LEARNING_SETTINGS)
+
+
 def clean_transcript_text(value: Any) -> str:
     """Decode caption-source entities into the text readers should see."""
     return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
@@ -858,6 +863,7 @@ __all__ = [
     "refresh_invidious_transcript",
     "resolve_material",
     "resolve_youtube_captions",
+    "reset_video_learning_settings",
     "save_video_learning_settings",
     "test_invidious_connection",
 ]

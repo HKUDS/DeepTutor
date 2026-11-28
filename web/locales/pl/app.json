@@ -6683,5 +6683,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "Wybierz {{model}}",
+  "Remove selected models ({{count}})": "Usuń wybrane modele ({{count}})",
+  "Remove selected models?": "Usunąć wybrane modele?",
+  "Remove models": "Usuń modele",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "Wybrane modele zostaną usunięte z wersji roboczej ustawień. Zastosuj zmiany, aby zapisać tę aktualizację.",
+  "Could not reset configurations (HTTP {{status}}).": "Nie udało się zresetować konfiguracji (HTTP {{status}}).",
+  "Could not reset configurations.": "Nie udało się zresetować konfiguracji.",
+  "Reset configurations": "Zresetuj konfigurację",
+  "Reset all configurations": "Zresetuj wszystkie konfiguracje",
+  "Reset all configurations?": "Zresetować wszystkie konfiguracje?",
+  "Restore saved application settings and model providers to their defaults.": "Przywróć domyślne wartości zapisanych ustawień aplikacji i dostawców modeli.",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "Ta operacja usuwa skonfigurowane modele i dane logowania dostawców. Konta, rozmowy, bazy wiedzy i przesłane pliki zostaną zachowane. Zmienne środowiskowe wdrożenia nie zostaną zmienione; niektóre ustawienia mogą wymagać ponownego uruchomienia DeepTutor.",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "Wszystkie zapisane ustawienia aplikacji, profile modeli, dane logowania dostawców i niezastosowane wersje robocze ustawień zostaną zresetowane. Twoje konto, lokalizacje obszarów roboczych i dane nauki pozostaną. Tej operacji nie można cofnąć."
 }

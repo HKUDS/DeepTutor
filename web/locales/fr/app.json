@@ -7566,5 +7566,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "Sélectionner {{model}}",
+  "Remove selected models ({{count}})": "Supprimer les modèles sélectionnés ({{count}})",
+  "Remove selected models?": "Supprimer les modèles sélectionnés ?",
+  "Remove models": "Supprimer les modèles",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "Les modèles sélectionnés seront retirés du brouillon des paramètres. Appliquez les modifications pour les enregistrer.",
+  "Could not reset configurations (HTTP {{status}}).": "Impossible de réinitialiser la configuration (HTTP {{status}}).",
+  "Could not reset configurations.": "Impossible de réinitialiser la configuration.",
+  "Reset configurations": "Réinitialiser la configuration",
+  "Reset all configurations": "Réinitialiser toute la configuration",
+  "Reset all configurations?": "Réinitialiser toute la configuration ?",
+  "Restore saved application settings and model providers to their defaults.": "Rétablir les paramètres enregistrés de l’application et les fournisseurs de modèles à leurs valeurs par défaut.",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "Cette action supprime les modèles configurés et les identifiants des fournisseurs. Les comptes, conversations, bases de connaissances et fichiers importés sont conservés. Les variables d’environnement du déploiement ne changent pas ; certains paramètres peuvent nécessiter le redémarrage de DeepTutor.",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "Tous les paramètres enregistrés de l’application, les profils de modèles, les identifiants des fournisseurs et les brouillons non appliqués seront réinitialisés. Votre compte, les emplacements des espaces de travail et vos données d’apprentissage seront conservés. Cette action est irréversible."
 }

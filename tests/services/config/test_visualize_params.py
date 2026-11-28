@@ -8,6 +8,7 @@ no setting anywhere that changed it (#1546).
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -71,3 +72,53 @@ def test_visualize_is_exposed_to_the_settings_page(
     module.save_capabilities_settings({"visualize": {"max_tokens": 32000}})
 
     assert get_visualize_params()["max_tokens"] == 32000
+
+
+def test_reset_capabilities_settings_restores_all_exposed_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = _settings_root(
+        tmp_path,
+        {
+            "capabilities": {
+                "chat": {"temperature": 1.8, "max_rounds": 49, "exploring": {"max_tokens": 1}},
+                "solve": {"temperature": 1.8, "max_tokens": 1},
+            },
+        },
+    )
+    monkeypatch.setattr(module, "PROJECT_ROOT", project_root)
+
+    class FakeConfigManager:
+        config: dict[str, Any] = {
+            "capabilities": {
+                "solve": {"max_rounds": 49, "max_replans": 10},
+                "research": {"researching": {"tool_timeout": 1}},
+                "question": {"exploring": {"max_iterations": 50}},
+            }
+        }
+
+        def load_config(self) -> dict[str, Any]:
+            return deepcopy(self.config)
+
+        def save_config(self, update: dict[str, Any]) -> bool:
+            module._deep_merge(self.config, update)
+            return True
+
+    manager = FakeConfigManager()
+    monkeypatch.setattr(module, "ConfigManager", lambda: manager)
+
+    result = module.reset_capabilities_settings()
+
+    expected_chat = {
+        "temperature": module.DEFAULT_CHAT_PARAMS["temperature"],
+        "max_rounds": module.DEFAULT_CHAT_PARAMS["max_rounds"],
+        "stage_budgets": {
+            stage: module.DEFAULT_CHAT_PARAMS[stage]["max_tokens"]
+            for stage in module._CHAT_STAGES_IN_USE
+        },
+    }
+    assert result["chat"] == expected_chat
+    for capability, defaults in module._SIMPLE_LLM_DEFAULTS.items():
+        expected = deepcopy(defaults)
+        expected.update(deepcopy(module._MAIN_YAML_RUNTIME_DEFAULTS.get(capability, {})))
+        assert result[capability] == expected

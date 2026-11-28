@@ -6661,5 +6661,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "{{model}} kiválasztása",
+  "Remove selected models ({{count}})": "Kijelölt modellek eltávolítása ({{count}})",
+  "Remove selected models?": "Eltávolítod a kijelölt modelleket?",
+  "Remove models": "Modellek eltávolítása",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "A kijelölt modellek eltávolításra kerülnek a beállítások piszkozatából. A mentéshez alkalmazd a módosításokat.",
+  "Could not reset configurations (HTTP {{status}}).": "Nem sikerült visszaállítani a konfigurációt (HTTP {{status}}).",
+  "Could not reset configurations.": "Nem sikerült visszaállítani a konfigurációt.",
+  "Reset configurations": "Konfiguráció visszaállítása",
+  "Reset all configurations": "Minden konfiguráció visszaállítása",
+  "Reset all configurations?": "Visszaállítod az összes konfigurációt?",
+  "Restore saved application settings and model providers to their defaults.": "A mentett alkalmazásbeállítások és modell-szolgáltatók visszaállítása az alapértelmezett értékekre.",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "Ez eltávolítja a konfigurált modelleket és a szolgáltatói hitelesítő adatokat. A fiókok, beszélgetések, tudásbázisok és feltöltött fájlok megmaradnak. A telepítési környezeti változók nem változnak; egyes beállításokhoz újra kell indítani a DeepTutort.",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "Minden mentett alkalmazásbeállítás, modellprofil, szolgáltatói hitelesítő adat és nem alkalmazott beállítási piszkozat alaphelyzetbe áll. A fiókod, a munkaterületek helye és a tanulási adatok megmaradnak. Ez nem vonható vissza."
 }

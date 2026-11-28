@@ -97,6 +97,11 @@ def save_starter_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return resolved
 
 
+def reset_starter_settings() -> dict[str, Any]:
+    """Restore starter suggestions to their shipped defaults."""
+    return save_starter_settings(DEFAULT_STARTER_SETTINGS)
+
+
 def ask_hint_enabled() -> bool:
     """Whether the chat composer should offer a predicted next line. Never raises."""
     try:
@@ -113,5 +118,6 @@ __all__ = [
     "TRACE_COUNT_RANGE",
     "ask_hint_enabled",
     "get_starter_settings",
+    "reset_starter_settings",
     "save_starter_settings",
 ]

@@ -38,6 +38,7 @@ from deeptutor.services.config import (
     redact_catalog_secrets,
     restore_catalog_secrets,
 )
+from deeptutor.services.config.capabilities_settings import reset_capabilities_settings
 from deeptutor.services.config.image_description import ImageDescriptionModelSelection
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
@@ -64,6 +65,7 @@ from deeptutor.services.config.settings_profile import (
 )
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
+from deeptutor.services.memory.settings import reset_memory_settings
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.session.usage_statistics import UsageStatistics
 from deeptutor.services.settings.interface_settings import (
@@ -86,8 +88,11 @@ from deeptutor.services.settings.page_customization import (
 )
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
+    reset_starter_settings,
 )
+from deeptutor.services.subagent.config import reset_subagent_settings
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
+from deeptutor.video_learning.service import reset_video_learning_settings
 
 router = APIRouter()
 # Public UI-settings router. The app shell bootstraps the interface language
@@ -2321,8 +2326,18 @@ async def update_ui_settings(update: UISettingsUpdate):
 
 @router.post("/reset")
 async def reset_settings():
+    _require_settings_admin()
+    get_runtime_settings_service().reset_to_defaults()
+    with _runtime_catalog_write():
+        get_model_catalog_service().reset_to_defaults()
+    reset_capabilities_settings()
+    reset_memory_settings()
+    reset_starter_settings()
+    reset_subagent_settings()
+    reset_video_learning_settings()
+    get_settings_draft_service().clear()
     save_ui_settings(DEFAULT_UI_SETTINGS)
-    return DEFAULT_UI_SETTINGS
+    return {"ui": DEFAULT_UI_SETTINGS, "restart_required": True}
 
 
 @router.get("/themes")

@@ -1744,6 +1744,69 @@ async def test_get_ui_settings_returns_persisted_interface_preferences(
     assert response["language"] == "zh"
 
 
+@pytest.mark.asyncio
+async def test_reset_settings_restores_configuration_and_clears_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    runtime_settings = SimpleNamespace(
+        reset_to_defaults=lambda: calls.append("runtime"),
+    )
+    model_catalog = SimpleNamespace(
+        reset_to_defaults=lambda: calls.append("catalog"),
+    )
+    draft = SimpleNamespace(clear=lambda: calls.append("draft"))
+    monkeypatch.setattr(settings_router, "_require_settings_admin", lambda: None)
+    monkeypatch.setattr(
+        settings_router, "get_runtime_settings_service", lambda: runtime_settings
+    )
+    monkeypatch.setattr(
+        settings_router, "get_model_catalog_service", lambda: model_catalog
+    )
+    monkeypatch.setattr(settings_router, "get_settings_draft_service", lambda: draft)
+    monkeypatch.setattr(
+        settings_router, "_runtime_catalog_write", contextlib.nullcontext
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "save_ui_settings",
+        lambda settings: calls.append("ui"),
+    )
+    monkeypatch.setattr(
+        settings_router, "reset_capabilities_settings", lambda: calls.append("capabilities")
+    )
+    monkeypatch.setattr(
+        settings_router, "reset_memory_settings", lambda: calls.append("memory")
+    )
+    monkeypatch.setattr(
+        settings_router, "reset_starter_settings", lambda: calls.append("starters")
+    )
+    monkeypatch.setattr(
+        settings_router, "reset_subagent_settings", lambda: calls.append("subagents")
+    )
+    monkeypatch.setattr(
+        settings_router, "reset_video_learning_settings", lambda: calls.append("video_learning")
+    )
+
+    response = await settings_router.reset_settings()
+
+    assert calls == [
+        "runtime",
+        "catalog",
+        "capabilities",
+        "memory",
+        "starters",
+        "subagents",
+        "video_learning",
+        "draft",
+        "ui",
+    ]
+    assert response == {
+        "ui": settings_router.DEFAULT_UI_SETTINGS,
+        "restart_required": True,
+    }
+
+
 def test_codex_provider_choice_is_advertised_as_oauth() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

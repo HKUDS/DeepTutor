@@ -6661,5 +6661,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "Chọn {{model}}",
+  "Remove selected models ({{count}})": "Xóa các mô hình đã chọn ({{count}})",
+  "Remove selected models?": "Xóa các mô hình đã chọn?",
+  "Remove models": "Xóa mô hình",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "Các mô hình đã chọn sẽ bị xóa khỏi bản nháp cài đặt. Hãy áp dụng thay đổi để lưu.",
+  "Could not reset configurations (HTTP {{status}}).": "Không thể đặt lại cấu hình (HTTP {{status}}).",
+  "Could not reset configurations.": "Không thể đặt lại cấu hình.",
+  "Reset configurations": "Đặt lại cấu hình",
+  "Reset all configurations": "Đặt lại tất cả cấu hình",
+  "Reset all configurations?": "Đặt lại tất cả cấu hình?",
+  "Restore saved application settings and model providers to their defaults.": "Khôi phục cài đặt ứng dụng và nhà cung cấp mô hình đã lưu về mặc định.",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "Thao tác này xóa các mô hình đã cấu hình và thông tin xác thực của nhà cung cấp. Tài khoản, hội thoại, kho kiến thức và tệp đã tải lên vẫn được giữ lại. Biến môi trường triển khai không bị thay đổi; một số cài đặt có thể cần khởi động lại DeepTutor.",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "Tất cả cài đặt ứng dụng đã lưu, hồ sơ mô hình, thông tin xác thực nhà cung cấp và bản nháp cài đặt chưa áp dụng sẽ được đặt lại. Tài khoản, vị trí không gian làm việc và dữ liệu học tập của bạn vẫn được giữ lại. Không thể hoàn tác thao tác này."
 }

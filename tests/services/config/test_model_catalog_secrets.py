@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from deeptutor.services.config.model_catalog import (
     CATALOG_SECRET_MASK,
+    ModelCatalogService,
     redact_catalog_secrets,
     restore_catalog_secrets,
 )
@@ -75,3 +76,25 @@ def test_restore_catalog_secrets_keeps_explicit_clear() -> None:
     restored = restore_catalog_secrets(proposed, current)
 
     assert restored["services"]["llm"]["profiles"][0]["api_key"] == ""
+
+
+def test_model_catalog_reset_clears_all_profiles_connections_and_secrets(tmp_path) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    catalog = service.load()
+    catalog["connections"] = [
+        {
+            "id": "provider",
+            "name": "Provider",
+            "provider": "custom",
+            "api_key": "secret",
+            "base_url": "https://example.invalid",
+            "api_version": "",
+        }
+    ]
+    service.save(catalog)
+
+    reset = service.reset_to_defaults()
+
+    assert reset["connections"] == []
+    assert all(not service_data["profiles"] for service_data in reset["services"].values())
+    assert service.load() == reset

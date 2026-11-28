@@ -109,7 +109,7 @@ CHAT_PRIOR_IMAGE_REINJECT_RANGE = (0, 20)
 
 DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "version": 1,
-    "enabled": False,
+    "enabled": True,
     "username": "admin",
     "password_hash": "",
     "token_expire_hours": 24,
@@ -796,6 +796,20 @@ class RuntimeSettingsService:
         self.load_graphrag()
         self.load_lightrag()
         self.load_lightrag_server()
+
+    def reset_to_defaults(self) -> None:
+        """Restore every persisted runtime settings file to shipped defaults."""
+        self.save_system(deepcopy(DEFAULT_SYSTEM_SETTINGS))
+        self.save_auth(deepcopy(DEFAULT_AUTH_SETTINGS))
+        self.save_integrations(deepcopy(DEFAULT_INTEGRATIONS_SETTINGS))
+        self.save_document_parsing(deepcopy(DEFAULT_DOCUMENT_PARSING_SETTINGS))
+        self.save_pageindex(deepcopy(DEFAULT_PAGEINDEX_SETTINGS))
+        self.save_query_rewrite(deepcopy(DEFAULT_QUERY_REWRITE_SETTINGS))
+        self.save_ima(deepcopy(DEFAULT_IMA_SETTINGS))
+        self.save_llamaindex(deepcopy(DEFAULT_LLAMAINDEX_SETTINGS))
+        self.save_graphrag(deepcopy(DEFAULT_GRAPHRAG_SETTINGS))
+        self.save_lightrag(deepcopy(DEFAULT_LIGHTRAG_SETTINGS))
+        self.save_lightrag_server(deepcopy(DEFAULT_LIGHTRAG_SERVER_SETTINGS))
 
     def render_environment(self) -> dict[str, str]:
         """Render non-model settings into process env names for subprocesses."""

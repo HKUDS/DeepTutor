@@ -205,6 +205,11 @@ def save_subagent_settings(settings: SubagentSettings) -> None:
     path.write_text(json.dumps(settings.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def reset_subagent_settings() -> None:
+    """Restore subagent settings to backend-safe defaults."""
+    save_subagent_settings(SubagentSettings())
+
+
 def get_consult_budget() -> int:
     return load_subagent_settings().consult_budget
 
@@ -218,6 +223,7 @@ __all__ = [
     "CONSULT_BUDGET_MAX",
     "settings_from_dict",
     "load_subagent_settings",
+    "reset_subagent_settings",
     "save_subagent_settings",
     "get_consult_budget",
 ]

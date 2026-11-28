@@ -401,3 +401,73 @@ export function stageRegistryAction(catalog: Catalog, edit: RegistryEdit): void 
     if (!active?.models.some((m) => m.id === bucket.active_model_id)) bucket.active_model_id = active?.models[0]?.id ?? null;
   }
 }
+
+export function canRemoveModelFromCatalog(
+  catalog: Catalog,
+  service: ServiceName,
+  profileId: string,
+  modelId: string,
+): boolean {
+  const bucket = catalog.services[service];
+  const profile = bucket.profiles.find((item) => item.id === profileId);
+  const model = profile?.models.find((item) => item.id === modelId);
+  if (
+    !profile ||
+    !model ||
+    model.managed_by ||
+    profile.managed_by ||
+    profile.read_only ||
+    (bucket.active_profile_id === profileId &&
+      bucket.active_model_id === modelId)
+  )
+    return false;
+
+  const taskChoices = [
+    catalog.services.task,
+    ...Object.values(catalog.services.task.overrides ?? {}),
+  ];
+  return !taskChoices.some(
+    (choice) =>
+      (service === "llm" &&
+        choice.mode === "reference" &&
+        choice.selection?.profile_id === profileId &&
+        choice.selection.model_id === modelId) ||
+      (service === "task" &&
+        choice.mode === "profiles" &&
+        choice.active_profile_id === profileId &&
+        choice.active_model_id === modelId),
+  );
+}
+
+export type ModelRemovalTarget = {
+  service: ServiceName;
+  profile_id: string;
+  model_id: string;
+};
+
+export function stageSelectedModelRemovals(
+  catalog: Catalog,
+  targets: ModelRemovalTarget[],
+): ModelRemovalTarget[] {
+  const eligible: ModelRemovalTarget[] = [];
+  const seen = new Set<string>();
+  for (const target of targets) {
+    const key = `${target.service}\u0000${target.profile_id}\u0000${target.model_id}`;
+    if (
+      seen.has(key) ||
+      !canRemoveModelFromCatalog(
+        catalog,
+        target.service,
+        target.profile_id,
+        target.model_id,
+      )
+    )
+      continue;
+    seen.add(key);
+    eligible.push(target);
+  }
+  for (const target of eligible) {
+    stageRegistryAction(catalog, { kind: "model", ...target, delete: true });
+  }
+  return eligible;
+}

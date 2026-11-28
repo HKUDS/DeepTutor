@@ -292,6 +292,33 @@ it("keeps a flat model list, shows the selected identity, and never exposes cred
     "two",
   );
 });
+
+it("removes multiple selected non-active language models as one draft action", () => {
+  live.services.llm.profiles[0].models.push({
+    id: "three",
+    name: "Three",
+    model: "model-three",
+  });
+  render(<Harness page="llm" />);
+
+  expect(screen.getByRole("checkbox", { name: "Select One" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Two" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Three" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove selected models (2)" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Remove models" }));
+
+  expect(
+    mocks.settings.draft.services.llm.profiles[0].models.map((model) => model.id),
+  ).toEqual(["one"]);
+  expect(live.services.llm.profiles[0].models.map((model) => model.id)).toEqual([
+    "one",
+    "two",
+    "three",
+  ]);
+});
+
 it("requires a model ID before creating the row and names it after that ID", async () => {
   render(<Harness page="llm" />);
   fireEvent.click(screen.getByRole("button", { name: "Add model" }));

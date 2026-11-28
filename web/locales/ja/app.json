@@ -6661,5 +6661,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "{{model}}を選択",
+  "Remove selected models ({{count}})": "選択したモデルを削除（{{count}}）",
+  "Remove selected models?": "選択したモデルを削除しますか？",
+  "Remove models": "モデルを削除",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "選択したモデルは設定の下書きから削除されます。この変更を保存するには適用してください。",
+  "Could not reset configurations (HTTP {{status}}).": "設定をリセットできませんでした（HTTP {{status}}）。",
+  "Could not reset configurations.": "設定をリセットできませんでした。",
+  "Reset configurations": "設定をリセット",
+  "Reset all configurations": "すべての設定をリセット",
+  "Reset all configurations?": "すべての設定をリセットしますか？",
+  "Restore saved application settings and model providers to their defaults.": "保存済みのアプリ設定とモデルプロバイダーを初期値に戻します。",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "設定済みのモデルとプロバイダーの認証情報を削除します。アカウント、会話、ナレッジベース、アップロード済みファイルは保持されます。デプロイ環境変数は変更されません。一部の設定ではDeepTutorの再起動が必要です。",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "保存済みのアプリ設定、モデルプロファイル、プロバイダー認証情報、未適用の設定下書きはすべてリセットされます。アカウント、ワークスペースの場所、学習データは保持されます。この操作は取り消せません。"
 }

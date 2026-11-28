@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Check, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatConfiguredProviderName } from "@/lib/provider-branding";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import {
   useSettings,
@@ -17,6 +18,7 @@ import {
 } from "@/features/settings/store/SettingsStore";
 import {
   defaultModelFor,
+  canRemoveModelFromCatalog,
   flattenModels,
   modelProvider,
   providerAdapter,
@@ -25,6 +27,7 @@ import {
   providerRegistry,
   providerServiceSupport,
   SERVICE_TITLES,
+  stageSelectedModelRemovals,
   type ProviderSource,
 } from "@/lib/provider-registry";
 import { voiceModelOptions } from "@/lib/voice-settings";
@@ -78,12 +81,17 @@ export function ModelsWorkspace({
     mutateCatalog,
     focusModel,
     clearFocusModel,
+    applying,
   } = useSettings();
   const services = PAGE_SERVICES[page];
   const rows = flattenModels(draft, services);
   const editorRef = useRef<HTMLDivElement>(null);
   const restoredPage = useRef<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedModelKeys, setSelectedModelKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [confirmBulkRemoval, setConfirmBulkRemoval] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newService, setNewService] = useState<ServiceName>(
     initialService && services.includes(initialService) ? initialService : services[0],
@@ -187,6 +195,41 @@ export function ModelsWorkspace({
         model: row.model?.id ?? null,
       });
     revealDetail();
+  };
+  const selectedBulkRows = rows.filter(
+    (row) =>
+      selectedModelKeys.has(row.key) &&
+      row.model &&
+      canRemoveModelFromCatalog(
+        draft,
+        row.service,
+        row.profile.id,
+        row.model.id,
+      ),
+  );
+  const removeSelectedModels = () => {
+    const targets = selectedBulkRows.flatMap((row) =>
+      row.model
+        ? [
+            {
+              service: row.service,
+              profile_id: row.profile.id,
+              model_id: row.model.id,
+            },
+          ]
+        : [],
+    );
+    const keysToRemove = new Set(selectedBulkRows.map((row) => row.key));
+    if (!targets.length) return;
+    mutateCatalog((next) => {
+      stageSelectedModelRemovals(next, targets);
+    });
+    setSelectedModelKeys(new Set());
+    if (selected && keysToRemove.has(selected)) {
+      setSelected(null);
+      syncQuery({ profile: null, model: null });
+    }
+    setConfirmBulkRemoval(false);
   };
   const selectedRow = rows.find((r) => r.key === selected);
   // Providers and models can be created together in the same draft.
@@ -392,14 +435,29 @@ export function ModelsWorkspace({
             // description row above the split that only repeated the page
             // description, costing a band of height and telling nobody anything.
             action={
-              <button
-                type="button"
-                onClick={start}
-                className={`${registryButton} w-full py-2`}
-              >
-                <Plus size={14} />
-                {addLabel}
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={start}
+                  className={`${registryButton} w-full py-2`}
+                >
+                  <Plus size={14} />
+                  {addLabel}
+                </button>
+                {!adding && page === "llm" && selectedBulkRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBulkRemoval(true)}
+                    disabled={applying}
+                    className={`${registryDanger} w-full justify-center py-2`}
+                  >
+                    <Trash2 size={14} />
+                    {t("Remove selected models ({{count}})", {
+                      count: selectedBulkRows.length,
+                    })}
+                  </button>
+                )}
+              </div>
             }
             search={{
               label: t(page === "search" ? "settings.serviceConfig.findSearch" : "Find model"),
@@ -452,50 +510,78 @@ export function ModelsWorkspace({
                 (row.model ? t("New model") : row.profile.name);
               const providerName = provider ? formatConfiguredProviderName(provider.provider, provider.name, uiLanguage) : t("Provider unavailable");
               const editing = !adding && row.key === selected;
+              const canBulkRemove =
+                page === "llm" &&
+                row.model != null &&
+                canRemoveModelFromCatalog(
+                  draft,
+                  row.service,
+                  row.profile.id,
+                  row.model.id,
+                );
               return (
-                <button
+                <div
                   key={row.key}
-                  type="button"
-                  aria-pressed={editing}
-                  // The card leads with the model, because that is what you are
-                  // looking for, but the accessible name keeps the provider
-                  // first so the row still reads as "provider, model".
-                  aria-label={`${providerName} ${label}${row.model?.model ? ` ${row.model.model}` : ""}`}
-                  onClick={() => selectModel(row.key)}
-                  className={workspaceCardClass(editing)}
+                  className="flex min-w-0 items-center gap-2"
                 >
-                  <span className="flex items-center gap-2">
-                    <ProviderIcon
-                      provider={provider?.provider || "custom"}
-                      size={15}
+                  {!adding && page === "llm" && row.model && (
+                    <input
+                      type="checkbox"
+                      aria-label={t("Select {{model}}", { model: label })}
+                      checked={selectedModelKeys.has(row.key)}
+                      disabled={!canBulkRemove || applying}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setSelectedModelKeys((current) => {
+                          const next = new Set(current);
+                          if (checked) next.add(row.key);
+                          else next.delete(row.key);
+                          return next;
+                        });
+                      }}
+                      className="size-4 shrink-0 accent-[var(--primary)]"
                     />
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
-                      {label}
+                  )}
+                  <button
+                    type="button"
+                    aria-pressed={editing}
+                    aria-label={`${providerName} ${label}${row.model?.model ? ` ${row.model.model}` : ""}`}
+                    onClick={() => selectModel(row.key)}
+                    className={`${workspaceCardClass(editing)} min-w-0 flex-1`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ProviderIcon
+                        provider={provider?.provider || "custom"}
+                        size={15}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                        {label}
+                      </span>
+                      {isDefault && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--primary)]"
+                        >
+                          <Check size={13} />
+                          {t(row.service === "search" ? "settings.serviceConfig.defaultSearch" : "Default model")}
+                        </span>
+                      )}
                     </span>
-                    {isDefault && (
-                      <span
-                        className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--primary)]"
-                      >
-                        <Check size={13} />
-                        {t(row.service === "search" ? "settings.serviceConfig.defaultSearch" : "Default model")}
+                    <span className="mt-1 flex items-center gap-1.5 pl-[23px] text-[12px] text-[var(--muted-foreground)]">
+                      <span className="max-w-[45%] truncate">{providerName}</span>
+                      {row.model?.model && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="truncate">{row.model.model}</span>
+                        </>
+                      )}
+                    </span>
+                    {(page === "voice" || page === "multimodal" || row.service === "task") && (
+                      <span className="mt-1.5 ml-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">
+                        {t(SERVICE_TITLES[row.service])}
                       </span>
                     )}
-                  </span>
-                  <span className="mt-1 flex items-center gap-1.5 pl-[23px] text-[12px] text-[var(--muted-foreground)]">
-                    <span className="max-w-[45%] truncate">{providerName}</span>
-                    {row.model?.model && (
-                      <>
-                        <span aria-hidden>·</span>
-                        <span className="truncate">{row.model.model}</span>
-                      </>
-                    )}
-                  </span>
-                  {(page === "voice" || page === "multimodal" || row.service === "task") && (
-                    <span className="mt-1.5 ml-[23px] inline-flex rounded-md bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--muted-foreground)]">
-                      {t(SERVICE_TITLES[row.service])}
-                    </span>
-                  )}
-                </button>
+                  </button>
+                </div>
               );
             })}
           </WorkspaceRail>
@@ -556,6 +642,18 @@ export function ModelsWorkspace({
           </div>
         }
       />
+      <ConfirmDialog
+        open={confirmBulkRemoval}
+        title={t("Remove selected models?")}
+        tone="danger"
+        confirmLabel={t("Remove models")}
+        onConfirm={removeSelectedModels}
+        onCancel={() => setConfirmBulkRemoval(false)}
+      >
+        {t(
+          "The selected models will be removed from your settings draft. Apply changes to save this update.",
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

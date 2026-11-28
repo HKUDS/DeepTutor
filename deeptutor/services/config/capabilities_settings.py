@@ -446,6 +446,23 @@ def save_capabilities_settings(payload: dict[str, Any]) -> dict[str, Any]:
     return capabilities_settings_dict()
 
 
+def reset_capabilities_settings() -> dict[str, Any]:
+    """Restore every capability setting exposed by this module to its defaults."""
+    chat_defaults = {
+        "temperature": DEFAULT_CHAT_PARAMS["temperature"],
+        "max_rounds": DEFAULT_CHAT_PARAMS["max_rounds"],
+        "stage_budgets": {
+            stage: DEFAULT_CHAT_PARAMS[stage]["max_tokens"] for stage in _CHAT_STAGES_IN_USE
+        },
+    }
+    payload: dict[str, Any] = {"chat": chat_defaults}
+    for capability, defaults in _SIMPLE_LLM_DEFAULTS.items():
+        block = copy.deepcopy(defaults)
+        block.update(copy.deepcopy(_MAIN_YAML_RUNTIME_DEFAULTS.get(capability, {})))
+        payload[capability] = block
+    return save_capabilities_settings(payload)
+
+
 def get_visualize_params() -> dict[str, Any]:
     """Runtime visualize params, read through the same coerce path as the UI.
 
@@ -477,5 +494,6 @@ __all__ = [
     "capabilities_settings_dict",
     "get_solve_params",
     "get_visualize_params",
+    "reset_capabilities_settings",
     "save_capabilities_settings",
 ]

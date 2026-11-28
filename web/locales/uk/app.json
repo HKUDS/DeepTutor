@@ -6683,5 +6683,18 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Select {{model}}": "Вибрати {{model}}",
+  "Remove selected models ({{count}})": "Вилучити вибрані моделі ({{count}})",
+  "Remove selected models?": "Вилучити вибрані моделі?",
+  "Remove models": "Вилучити моделі",
+  "The selected models will be removed from your settings draft. Apply changes to save this update.": "Вибрані моделі буде вилучено з чернетки налаштувань. Застосуйте зміни, щоб зберегти їх.",
+  "Could not reset configurations (HTTP {{status}}).": "Не вдалося скинути конфігурацію (HTTP {{status}}).",
+  "Could not reset configurations.": "Не вдалося скинути конфігурацію.",
+  "Reset configurations": "Скинути конфігурацію",
+  "Reset all configurations": "Скинути всі конфігурації",
+  "Reset all configurations?": "Скинути всі конфігурації?",
+  "Restore saved application settings and model providers to their defaults.": "Відновити типові значення збережених налаштувань програми та постачальників моделей.",
+  "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.": "Це вилучить налаштовані моделі та облікові дані постачальників. Облікові записи, розмови, бази знань і завантажені файли буде збережено. Змінні середовища розгортання не змінюються; для деяких налаштувань може знадобитися перезапуск DeepTutor.",
+  "All saved configuration, model profiles, provider credentials, and unapplied settings drafts will be cleared. Your account and learning data will remain. This cannot be undone.": "Усі збережені налаштування застосунку, профілі моделей, облікові дані постачальників і незастосовані чернетки налаштувань буде скинуто. Ваш обліковий запис, розташування робочих просторів і навчальні дані залишаться. Цю дію неможливо скасувати."
 }

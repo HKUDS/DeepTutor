@@ -319,6 +319,10 @@ class ModelCatalogService:
                 temp_path.unlink(missing_ok=True)
             return normalized
 
+    def reset_to_defaults(self) -> dict[str, Any]:
+        """Replace all configured providers, models, and credentials with defaults."""
+        return self.save(_default_catalog())
+
     def update(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
         with self._lock:
             catalog = self.load()

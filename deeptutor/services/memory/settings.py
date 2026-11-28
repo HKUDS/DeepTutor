@@ -96,6 +96,11 @@ def memory_settings_dict() -> dict[str, Any]:
     return asdict(load_memory_settings())
 
 
+def reset_memory_settings() -> MemorySettings:
+    """Restore the memory consolidator settings to their dataclass defaults."""
+    return save_memory_settings(asdict(MemorySettings()))
+
+
 # ── Coercion + clamping ─────────────────────────────────────────────────
 
 
@@ -194,5 +199,6 @@ __all__ = [
     "UpdateSettings",
     "load_memory_settings",
     "memory_settings_dict",
+    "reset_memory_settings",
     "save_memory_settings",
 ]
