@@ -1,5 +1,5 @@
 {
-  "fingerprint": "95c32d76295b3652a84e703f12d213df216fbaba7fbeba9d9395ec2da11d49d1",
+  "fingerprint": "68db41197aba4d27c5ed64d51f82542ebf4e0d388274a0c0b56b3efa83391cf9",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -5837,6 +5837,14 @@
       }
     ],
     "deeptutor.api.routers.attachments:router": [
+      {
+        "path": "/{session_id}/{attachment_id}/{filename:path}",
+        "name": "get_attachment",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
       {
         "path": "/{session_id}/{attachment_id}/{filename:path}",
         "name": "get_attachment",

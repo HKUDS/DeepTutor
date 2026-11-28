@@ -223,6 +223,8 @@ def _proc_entry(pid: int) -> tuple[int, str, str] | None:
 
 
 def _proc_rss(pid: int) -> int | None:
+    if not hasattr(os, "sysconf"):
+        return None
     try:
         fields = Path(f"/proc/{pid}/statm").read_text(encoding="utf-8").split()
     except OSError:

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from deeptutor.capabilities.mastery.history import project_mastery_replay
-from deeptutor.capabilities.mastery.memory import MasteryContextBuilder
+from deeptutor.capabilities.mastery.memory import MasteryContextBuilder, _plan_tokens
 from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.session.context_builder import _count_model_context_tokens
 from deeptutor.services.session.model_history import replay_history
@@ -113,7 +113,155 @@ async def test_final_mastery_token_count_projects_duplicate_images_without_chang
     assert built.token_count == _count_model_context_tokens(
         deduplicate_user_images(built.model_history)
     )
-    assert built.model_history == project_mastery_replay(replay_history(rows))
+    assert built.model_history == project_mastery_replay(replay_history(rows), keep_snapshots=True)
     assert rows == original
     builder._summarize.assert_not_awaited()
     store.update_summary.assert_not_awaited()
+
+
+def _snapshot_turn(row_id: int, question: str, answer: str, snapshot: str | None):
+    messages = []
+    if snapshot is not None:
+        messages.append(
+            {
+                "role": "user",
+                "content": f"[Runtime context: workspace]\n{snapshot}",
+                "_context_snapshot": "workspace",
+            }
+        )
+    messages += [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": answer},
+    ]
+    return [
+        {"id": row_id, "role": "user", "content": question},
+        {
+            "id": row_id + 1,
+            "role": "assistant",
+            "content": answer,
+            "metadata": {"model_turn": {"version": 1, "messages": messages}},
+        },
+    ]
+
+
+async def _build(rows, context_window=272000):
+    store = MagicMock()
+    store.get_session = AsyncMock(
+        return_value={"compressed_summary": "", "summary_up_to_msg_id": 0}
+    )
+    store.get_messages_for_context = AsyncMock(return_value=rows)
+    store.update_summary = AsyncMock()
+    builder = MasteryContextBuilder(store)
+    builder._summarize = AsyncMock()
+    return await builder.build(
+        session_id="synthetic-session",
+        llm_config=SimpleNamespace(
+            model="synthetic-model", context_window=context_window, max_tokens=8192
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_replayed_snapshots_stay_in_place_so_follow_up_turns_extend_the_prefix():
+    """Issue #2922: dropping sent snapshots shifted history and broke the prompt cache."""
+    first = _snapshot_turn(
+        1, "Explain the chain rule.", "Differentiate outside, then inside.", "/w"
+    )
+    second = _snapshot_turn(3, "One more example?", "Try sin(x^2).", "/w2")
+
+    turn_two = await _build(first)
+    turn_three = await _build([*first, *second])
+
+    assert turn_two.model_history[0]["_context_snapshot"] == "workspace"
+    assert turn_two.model_history == turn_three.model_history[: len(turn_two.model_history)]
+    assert [m.get("_context_snapshot") for m in turn_three.model_history] == [
+        "workspace",
+        None,
+        None,
+        "workspace",
+        None,
+        None,
+    ]
+    assert turn_three.token_count == _count_model_context_tokens(
+        deduplicate_user_images(project_mastery_replay(turn_three.model_history))
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_large_kept_snapshot_does_not_force_a_memory_rewrite():
+    """A large status snapshot must not trigger a memory rewrite on its own.
+
+    The real DeepSeek run hit this: after two mastery turns an 18k-character
+    mastery_status snapshot pushed the replayed history over the 20k budget,
+    and the third turn paid a memory call plus a full prefix miss.
+    """
+    bulky = "status line\n" * 8000
+    rows = _snapshot_turn(1, "Explain the chain rule.", "Outside, then inside.", bulky)
+
+    built = await _build(rows)
+
+    assert _count_model_context_tokens(built.model_history) > built.budget
+    assert built.model_history[0]["_context_snapshot"] == "workspace"
+    assert built.model_history[-1]["content"] == "Outside, then inside."
+    assert built.token_count <= built.budget
+
+
+@pytest.mark.asyncio
+async def test_kept_snapshots_stay_bounded_over_a_long_session():
+    """Uncounted snapshots must not grow without limit across short exchanges.
+
+    A quiz-style session adds little dialogue per turn but a changed status
+    snapshot each time, so a dialogue-only count never reaches the budget.
+    """
+    rows = []
+    for turn in range(120):
+        status = " ".join(str((turn + 1) * 7919 * n % 1_000_003) for n in range(400))
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct. Next one.", status)
+
+    built = await _build(rows)
+
+    assert _count_model_context_tokens(built.model_history) <= 2 * built.budget
+    assert built.token_count <= built.budget
+
+
+@pytest.mark.asyncio
+async def test_small_windows_give_kept_snapshots_no_extra_room():
+    rows = []
+    for turn in range(120):
+        status = " ".join(str((turn + 1) * 7919 * n % 1_000_003) for n in range(400))
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct. Next one.", status)
+
+    built = await _build(rows, context_window=32000)
+
+    assert built.budget == 11200
+    assert _count_model_context_tokens(built.model_history) <= built.budget
+
+
+def test_recent_history_selection_discounts_kept_snapshots_like_the_plan():
+    """A small dialogue with large kept snapshots keeps its tail exact.
+
+    The plan already discounts kept snapshots by the window headroom, but the
+    recent-tail selection counted them in full, so a quiz-style session with
+    tiny exchanges archived most of them the moment selection ran.
+    """
+    status = " ".join(str(7919 * n % 1_000_003) for n in range(150))
+    rows = []
+    for turn in range(10):
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct.", status)
+    builder = MasteryContextBuilder(MagicMock())
+    builder._snapshot_headroom = 2
+    recent_budget = 1500
+
+    _older, recent = builder._select_recent_messages(rows, recent_budget)
+
+    def plan(tail):
+        return _plan_tokens(replay_history(tail), "", 2)
+
+    kept = len(recent) // 2
+    sent = _count_model_context_tokens(replay_history(rows[-2:]))
+    assert sent > 200  # each exchange is mostly snapshot
+    assert recent == rows[-2 * kept :]
+    assert plan(recent) <= recent_budget
+    assert kept == 10 or plan(rows[-2 * (kept + 1) :]) > recent_budget
+    # Counting snapshots in full would keep only recent_budget // sent exchanges.
+    assert kept > recent_budget // sent

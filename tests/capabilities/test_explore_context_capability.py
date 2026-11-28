@@ -9,9 +9,11 @@ import pytest
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.explore_context import explorer as explorer_mod
+from deeptutor.capabilities.explore_context.capability import _load_prompts
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
+from deeptutor.runtime.agentic.usage import UsageTracker, message_content_chars
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
 
@@ -198,11 +200,13 @@ class _FakeChoice:
 class _FakeChunk:
     def __init__(
         self,
-        delta: _FakeDelta,
+        delta: _FakeDelta | None = None,
         provider_specific_fields: dict | None = None,
+        *,
+        usage: dict[str, int] | None = None,
     ) -> None:
-        self.choices = [_FakeChoice(delta, provider_specific_fields)]
-        self.usage = None
+        self.choices = [_FakeChoice(delta, provider_specific_fields)] if delta is not None else []
+        self.usage = usage
 
 
 class _FakeResponseStream:
@@ -286,6 +290,65 @@ async def test_loop_reads_source_then_writes_investigation(
     kinds = [e.type for e in bus._history]
     assert StreamEventType.CONTENT not in kinds
     assert StreamEventType.TOOL_CALL in kinds
+
+
+@pytest.mark.asyncio
+async def test_loop_records_reported_or_estimated_usage_per_call(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    read = _FakeToolCall(0, "call_1", "read_source", '{"source_id":"hs-x"}')
+    answer = "briefing"
+    client = _FakeClient(
+        [
+            [
+                _FakeChunk(
+                    _FakeDelta(tool_calls=[read]),
+                    usage={"prompt_tokens": 100, "completion_tokens": 4},
+                ),
+                _FakeChunk(usage={"prompt_tokens": 100, "completion_tokens": 8}),
+            ],
+            [_FakeChunk(_FakeDelta(content=answer)), _FakeChunk(usage={})],
+        ]
+    )
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _: client)
+    usage = UsageTracker()
+    block = await ExploreContextCapability().pre_loop(
+        _ctx(source_index={"hs-x": "source text"}), StreamBus(), usage=usage
+    )
+    assert block and answer in block.content
+    first, second = client.chat.completions.calls
+    estimated_input = sum(message_content_chars(m) for m in second["messages"])
+    assert usage.calls == 2
+    assert usage.prompt_tokens == 100 + int(estimated_input / 3.5)
+    assert usage.completion_tokens == 8 + int(len(answer) / 3.5)
+    assert first["stream_options"] == second["stream_options"] == {"include_usage": True}
+
+
+@pytest.mark.asyncio
+async def test_loop_retries_without_rejected_stream_options(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    client = _FakeClient([])
+    calls = []
+
+    async def create(**kwargs: Any) -> _FakeResponseStream:
+        calls.append(kwargs)
+        if "stream_options" in kwargs:
+            raise ValueError("Unsupported parameter: stream_options")
+        return _FakeResponseStream([_FakeChunk(_FakeDelta(content="compatible reply"))])
+
+    monkeypatch.setattr(client.chat.completions, "create", create)
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _: client)
+    monkeypatch.setattr(explorer_mod, "llm_stream", _fake_stream(["single-pass reply"]))
+    usage = UsageTracker()
+    block = await ExploreContextCapability().pre_loop(
+        _ctx(source_index={"hs-x": "source text"}), StreamBus(), usage=usage
+    )
+    assert block and "compatible reply" in block.content
+    first, retry = calls
+    assert "stream_options" not in retry
+    assert first == {**retry, "stream_options": {"include_usage": True}}
+    assert usage.calls == 1
 
 
 @pytest.mark.asyncio
@@ -595,6 +658,33 @@ def test_explorer_kind_label_from_prefix() -> None:
     assert explorer._kind_label("hs-abc") == "Conversation transcript"
     assert explorer._kind_label("at-abc") == "Document"
     assert explorer._kind_label("zz-abc") == "Source"
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_preloaded_source_text_stays_in_the_shared_prefix(language: str) -> None:
+    explorer = explorer_mod.ContextExplorer(language=language, prompts=_load_prompts(language))
+    source_text = "Lecture notes on the sampling theorem."
+    sources = {"at-lecture": source_text}
+    fresh = "at-lecture: preview from the upload"
+    previous = "at-lecture: previously attached (turn 1)"
+    upload = explorer._cache_shaped_messages(
+        source_index=sources, mode="chat", manifest=fresh, question="What is the theorem?"
+    )
+    followup = explorer._cache_shaped_messages(
+        source_index=sources, mode="deep_solve", manifest=previous, question="Can you prove it?"
+    )
+
+    assert upload[0] == followup[0]
+    assert source_text in upload[0]["content"]
+    # Without this the model re-reads the preloaded text with read_source on
+    # every turn, sending the whole lecture a second time.
+    assert "read_source" in upload[0]["content"]
+    for messages, mode, manifest, question in (
+        (upload, "chat", fresh, "What is the theorem?"),
+        (followup, "deep_solve", previous, "Can you prove it?"),
+    ):
+        assert [m["role"] for m in messages] == ["user", "user"]
+        assert all(value in messages[1]["content"] for value in (mode, manifest, question))
 
 
 def test_preload_never_exceeds_limit_even_for_the_first_source():

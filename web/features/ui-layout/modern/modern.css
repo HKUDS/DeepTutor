@@ -352,6 +352,11 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 :root[data-ui-layout="modern"] .dt-composer-surface textarea,
 :root[data-ui-layout="modern"] .dt-composer-surface .dt-composer-lead { font-size: 15.5px; line-height: 1.6; letter-spacing: -0.003em; }
 :root[data-ui-layout="modern"] .dt-composer-surface textarea::placeholder { color: rgb(var(--dt-ink) / 0.4); }
+/* Glass --card is translucent; keep the surface opaque so the tucked tray
+   does not show through the composer (#2329). */
+:root[data-ui-layout="modern"].theme-glass .dt-composer-surface {
+  background: var(--surface-raised);
+}
 
 /* What this message uses, written at its start: blue words the text runs
    on after, the way a command reads. Each turns into a remove mark on hover;

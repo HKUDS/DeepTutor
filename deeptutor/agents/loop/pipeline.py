@@ -839,7 +839,11 @@ class AgenticLoopPipeline:
                 # and gets a card that opens the real study screen. Only the
                 # atlas listing is withheld from a mastery turn, which reads
                 # its own through ``mastery_paths``.
-                has_mastery_nav=self._mastery_nav_available(context),
+                # A mastery turn mounts navigation from the start: its first
+                # turn usually creates the topic, and mounting it only then
+                # grew tools[] on the second turn (one full cache miss).
+                has_mastery_nav=bool(context.metadata.get("mastery_mode"))
+                or self._mastery_nav_available(context),
                 has_mastery_topics=(
                     self._mastery_nav_available(context)
                     and not context.metadata.get("mastery_mode")
@@ -1918,6 +1922,7 @@ class AgenticLoopPipeline:
             max_tokens=max_tokens,
             binding=self.binding,
             reasoning_effort=self.reasoning_effort,
+            context_window=getattr(self.llm_config, "context_window", None),
         )
 
     def _can_use_native_tool_calling(self) -> bool:

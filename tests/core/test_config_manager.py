@@ -20,6 +20,20 @@ def reset_config_manager_singleton():
     ConfigManager.reset_for_tests()
 
 
+def test_default_root_reads_and_writes_runtime_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    config_path = tmp_path / "data" / "user" / "settings" / "main.yaml"
+    config = {"capabilities": {"research": {"researching": {"tool_timeout": 60}}}}
+    write_yaml(config_path, config)
+
+    manager = ConfigManager()
+    assert manager.load_config() == config
+
+    updated = {"capabilities": {"research": {"researching": {"tool_timeout": 120}}}}
+    assert manager.save_config(updated)
+    assert yaml.safe_load(config_path.read_text(encoding="utf-8")) == updated
+
+
 def test_atomic_save_and_deep_merge(tmp_path: Path):
     project = tmp_path
     cfg_path = project / "data" / "user" / "settings" / "main.yaml"

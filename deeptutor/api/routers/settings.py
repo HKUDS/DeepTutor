@@ -2486,6 +2486,10 @@ async def stream_service_test_events(service: str, run_id: str, request: Request
     _require_settings_admin()
     runner = get_config_test_runner()
     run = runner.get(run_id)
+    if run is None:
+        # Runs are in-memory only: after a restart, or when the page reconnects
+        # with an id from an earlier process, the stream has nothing to read.
+        raise HTTPException(status_code=404, detail="Unknown test run")
 
     async def event_stream():
         sent = 0
@@ -2509,7 +2513,8 @@ async def stream_service_test_events(service: str, run_id: str, request: Request
 @router.post("/tests/{service}/{run_id}/cancel")
 async def cancel_service_test(service: str, run_id: str):
     _require_settings_admin()
-    get_config_test_runner().cancel(run_id)
+    if not get_config_test_runner().cancel(run_id):
+        raise HTTPException(status_code=404, detail="Unknown test run")
     return {"message": "Cancelled"}
 
 

@@ -1,0 +1,151 @@
+name: Mobile
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "web/contracts/**"
+      - "web/features/chat/transport/**"
+      - ".github/workflows/mobile.yml"
+  push:
+    branches: [dev, main, "mobile/**"]
+    paths:
+      - "apps/mobile/**"
+      - "web/contracts/**"
+      - "web/features/chat/transport/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/mobile
+
+jobs:
+  test:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --runInBand
+
+  android:
+    name: Android debug build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - run: bash ./gradlew --no-daemon :app:assembleDebug -PreactNativeArchitectures=x86_64
+        working-directory: apps/mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deeptutor-android-emulator-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  ios:
+    name: iOS simulator build
+    runs-on: macos-26-intel
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/mobile
+      - run: npm ci
+      - run: bundle exec pod install
+        working-directory: apps/mobile/ios
+      - env:
+          EXPO_OFFLINE: "1"
+        run: >-
+          xcodebuild -workspace ios/DeepTutorMobile.xcworkspace
+          -scheme DeepTutorMobile -configuration Release
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/deeptutor-mobile"
+          ARCHS="$(uname -m)" CODE_SIGNING_ALLOWED=NO build
+      - name: Verify the initial screen on an iOS simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          device="$(xcrun simctl list devices available -j | node -e '
+            const { devices } = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const phone = Object.entries(devices)
+              .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
+              .flatMap(([, entries]) => entries)
+              .find(entry => entry.isAvailable && entry.name.startsWith("iPhone"));
+            if (!phone) throw new Error("No iPhone simulator found");
+            console.log(phone.udid);
+          ')"
+          app="$RUNNER_TEMP/deeptutor-mobile/Build/Products/Release-iphonesimulator/DeepTutorMobile.app"
+          test -s "$app/main.jsbundle"
+          cat >"$RUNNER_TEMP/recognize-screen.swift" <<'SWIFT'
+          import Foundation
+          import Vision
+
+          let request = VNRecognizeTextRequest()
+          request.recognitionLevel = .accurate
+          try VNImageRequestHandler(url: URL(fileURLWithPath: CommandLine.arguments[1]))
+            .perform([request])
+          for observation in request.results ?? [] {
+            if let text = observation.topCandidates(1).first?.string {
+              print(text)
+            }
+          }
+          SWIFT
+          xcrun swiftc "$RUNNER_TEMP/recognize-screen.swift" -o "$RUNNER_TEMP/recognize-screen"
+          cleanup() {
+            xcrun simctl shutdown "$device" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" org.reactjs.native.example.DeepTutorMobile
+          screenshot="$RUNNER_TEMP/deeptutor-mobile-screen.png"
+          for ((attempt = 0; attempt < 24; attempt++)); do
+            xcrun simctl io "$device" screenshot "$screenshot"
+            visible="$("$RUNNER_TEMP/recognize-screen" "$screenshot")"
+            if grep -qi 'DeepTutor' <<<"$visible" && grep -qi 'Server address' <<<"$visible"; then
+              echo "The iOS app rendered its server connection screen with the embedded bundle."
+              exit 0
+            fi
+            sleep 5
+          done
+          printf 'Last visible text:\n%s\n' "$visible"
+          exit 1

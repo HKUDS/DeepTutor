@@ -500,12 +500,60 @@ def _unreadable_choice_result(answer: str, options: dict[str, str]) -> ToolResul
                 if blank
                 else f"Could not tell which option {answer!r} picks, so it was NOT graded. "
             )
-            + f"The options are: {shown}. Ask the learner which one they choose (or "
-            "call mastery_quiz to put the question back in front of them), then call "
-            "mastery_grade with the option label. Do not treat this as a wrong answer."
+            + f"The options are: {shown}. Do NOT call mastery_grade again in this turn: "
+            "mastery_grade always reads the learner's own message, not your answer argument. "
+            "Ask the learner which one they choose (or call mastery_quiz to put the question "
+            "back in front of them), or if they asked to skip or void the question, call "
+            "mastery_skip_question or mastery_repair_question. Do not treat this as a wrong answer."
         ),
         success=False,
     )
+
+
+# Fixed guidance carried by mastery_status results. The per-turn snapshot
+# leaves these out and the system prompt states them once instead (see
+# :mod:`deeptutor.capabilities.mastery.snapshot`), so each lives here only.
+INTAKE_INSTRUCTION = (
+    "This learner has not been asked about themselves yet. Before "
+    "designing the outline, ask what they can already do, what "
+    "'done' looks like for them, how much time they have, and how "
+    "they want it taught — then record the answers with "
+    "mastery_profile. Ask only what you cannot read off the "
+    "materials yourself."
+)
+WORKING_BRIEF_INSTRUCTION = (
+    "This is the current working brief, not the full outline. Counts describe the whole path; "
+    "only the current/focused objective, pending group, prerequisites and first three due "
+    "reviews are expanded. Call mastery_status for the full map before selecting an omitted "
+    "lesson or editing the outline. "
+    "Current learner requests and fresh corrections override historical summaries."
+)
+GROUP_REPLY_INSTRUCTION = (
+    "Keep committed child replies verbatim. Grade only actual replies; "
+    "unanswered children remain open and earn no score. Continue at the requested "
+    "pace; explain reported gaps, but never infer confusion from an unanswered "
+    "item or invent a missing reply."
+)
+OPEN_QUESTION_INSTRUCTION = (
+    "A question is already open. If the learner has answered it "
+    "anywhere in this conversation — on the card or in an ordinary "
+    "message — call mastery_grade with their answer and this "
+    "question_id. If they asked you something instead, answer that "
+    "first and leave the question open; re-posing it over their "
+    "question is how the same card came back four times while it "
+    "went unanswered. Call mastery_quiz to put it back in front of "
+    "them once they are ready — the engine holds the original and "
+    "re-poses it verbatim, so what you pass is ignored, and that "
+    "call ends the turn."
+)
+EARLIER_CONVERSATION_INSTRUCTION = (
+    "This pending card belongs to an earlier conversation. For fresh practice "
+    "in this conversation, submit a new source-supported mastery_quiz with "
+    "pending_action='retain'; once it validates the old card is archived. "
+    "Use resume only when the learner requests that previous card. "
+    "Previously committed answers must be assessed before archiving. "
+    "Never grade an unanswered question or copy its answer key as a reply."
+)
 
 
 def _json_result(payload: dict[str, Any], *, meta_key: str, success: bool = True) -> ToolResult:
@@ -553,14 +601,7 @@ def _profile_status(
         return {
             "learner_profile": None,
             "intake_needed": True,
-            "intake_instruction": (
-                "This learner has not been asked about themselves yet. Before "
-                "designing the outline, ask what they can already do, what "
-                "'done' looks like for them, how much time they have, and how "
-                "they want it taught — then record the answers with "
-                "mastery_profile. Ask only what you cannot read off the "
-                "materials yourself."
-            ),
+            "intake_instruction": INTAKE_INSTRUCTION,
         }
     from deeptutor.learning.teaching import teaching_guidance
 
@@ -788,13 +829,7 @@ class MasteryStatusTool(BaseTool):
             payload[key] = {kp: value for kp, value in payload[key].items() if kp in selected}
         payload["due_review_ids"] = [task.knowledge_point_id for task in reviews[:3]]
         payload["state_scope"] = "working_brief"
-        payload["inspection_instruction"] = (
-            "This is the current working brief, not the full outline. Counts describe the whole path; "
-            "only the current/focused objective, pending group, prerequisites and first three due "
-            "reviews are expanded. Call mastery_status for the full map before selecting an omitted "
-            "lesson or editing the outline. "
-            "Current learner requests and fresh corrections override historical summaries."
-        )
+        payload["inspection_instruction"] = WORKING_BRIEF_INSTRUCTION
         return payload
 
     def get_definition(self) -> ToolDefinition:
@@ -913,12 +948,7 @@ class MasteryStatusTool(BaseTool):
                     for q in interaction.question.questions
                     if q.question_id not in graded_ids
                 ]
-                pending_interaction["instruction"] = (
-                    "Keep committed child replies verbatim. Grade only actual replies; "
-                    "unanswered children remain open and earn no score. Continue at the requested "
-                    "pace; explain reported gaps, but never infer confusion from an unanswered "
-                    "item or invent a missing reply."
-                )
+                pending_interaction["instruction"] = GROUP_REPLY_INSTRUCTION
             elif interaction.status == InteractionStatus.ANSWERED:
                 # The answer is learner-authored state, not the hidden answer
                 # key. Returning it lets a restart grade rather than ask twice.
@@ -928,29 +958,11 @@ class MasteryStatusTool(BaseTool):
                 # question in the composer — that reply never reaches the
                 # interaction, so without this the tutor re-posed the same
                 # question forever and the path stalled on answer_pending.
-                pending_interaction["instruction"] = (
-                    "A question is already open. If the learner has answered it "
-                    "anywhere in this conversation — on the card or in an ordinary "
-                    "message — call mastery_grade with their answer and this "
-                    "question_id. If they asked you something instead, answer that "
-                    "first and leave the question open; re-posing it over their "
-                    "question is how the same card came back four times while it "
-                    "went unanswered. Call mastery_quiz to put it back in front of "
-                    "them once they are ready — the engine holds the original and "
-                    "re-poses it verbatim, so what you pass is ignored, and that "
-                    "call ends the turn."
-                )
+                pending_interaction["instruction"] = OPEN_QUESTION_INSTRUCTION
             pending_interaction["session_id"] = interaction.session_id
             session_id = _resolve_session_id(kwargs)
             if session_id and interaction.session_id and interaction.session_id != session_id:
-                pending_interaction["instruction"] = (
-                    "This pending card belongs to an earlier conversation. For fresh practice "
-                    "in this conversation, submit a new source-supported mastery_quiz with "
-                    "pending_action='retain'; once it validates the old card is archived. "
-                    "Use resume only when the learner requests that previous card. "
-                    "Previously committed answers must be assessed before archiving. "
-                    "Never grade an unanswered question or copy its answer key as a reply."
-                )
+                pending_interaction["instruction"] = EARLIER_CONVERSATION_INSTRUCTION
             payload["pending_interaction"] = pending_interaction
         if kwargs.get("_working_brief"):
             payload = self._working_brief(payload, progress)

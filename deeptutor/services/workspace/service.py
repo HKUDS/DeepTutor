@@ -820,6 +820,19 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
             raise WorkspaceError("The presented workspace item is unavailable.")
         return blob, item
 
+    def resolve_published_original(self, item: WorkspaceItem) -> Path | None:
+        """Look up the current copy behind an already authorized snapshot."""
+        try:
+            binding = self.binding_by_id(item.workspace_id)
+            relative = _normalise_relative(item.relative_path)
+            self._assert_no_symlink_components(binding, relative, operation="presented file")
+            candidate = self.resolve(binding, relative)
+            if _INTERNAL_DIR not in candidate.relative_to(binding.root).parts:
+                return candidate
+        except (OSError, WorkspaceError):
+            pass
+        return None
+
 
 _service = ContentWorkspaceService()
 

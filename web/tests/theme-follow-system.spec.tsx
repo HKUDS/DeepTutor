@@ -5,7 +5,12 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import ThemeScript from "@/components/ThemeScript";
-import { THEME_STORAGE_KEY, initializeTheme, setTheme } from "@/lib/theme";
+import {
+  THEME_STORAGE_KEY,
+  initializeTheme,
+  setTheme,
+  subscribeToThemeChanges,
+} from "@/lib/theme";
 
 type SchemeListener = (event: { matches: boolean; media: string }) => void;
 
@@ -175,6 +180,53 @@ describe("theme script before hydration", () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("glass");
     expect(document.documentElement.classList.contains("theme-glass")).toBe(true);
     expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+});
+
+describe("desktop theme event", () => {
+  const dispatchTheme = (theme: unknown) =>
+    window.dispatchEvent(new CustomEvent("deeptutor:theme", { detail: { theme } }));
+
+  it("applies an explicit theme pushed from the desktop shell without a reload", () => {
+    installColorScheme(false);
+    initializeTheme();
+    const seen: string[] = [];
+    const unsubscribe = subscribeToThemeChanges((theme) => seen.push(theme));
+
+    dispatchTheme("glass");
+
+    expect(document.documentElement.classList.contains("theme-glass")).toBe(true);
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("glass");
+    expect(seen).toContain("glass");
+    unsubscribe();
+  });
+
+  it("follows the OS when the shell reports the system preference", () => {
+    const media = installColorScheme(true);
+    initializeTheme();
+
+    dispatchTheme("system");
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+
+    media.setDark(false);
+
+    expect(document.documentElement.classList.contains("theme-snow")).toBe(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
+  it("ignores unknown values instead of storing them", () => {
+    installColorScheme(false);
+    initializeTheme();
+
+    dispatchTheme("neon");
+    dispatchTheme(undefined);
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.classList.contains("theme-glass")).toBe(false);
+    expect(document.documentElement.classList.contains("theme-snow")).toBe(true);
   });
 });
 

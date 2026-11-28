@@ -42,6 +42,11 @@ from deeptutor.runtime.agentic import (
 )
 from deeptutor.runtime.agentic.messages import assistant_message, assistant_message_with_tool_calls
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
+from deeptutor.runtime.agentic.usage import (
+    UsageTracker,
+    message_content_chars,
+    record_streamed_usage,
+)
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config.loader import get_capability_params
@@ -49,6 +54,8 @@ from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_toke
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
+from deeptutor.services.llm.request_compat import is_stream_options_unsupported
+from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
@@ -126,7 +133,6 @@ async def _bounded_stream_chunks(stream: Any):
 class _CallResult:
     text: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    output_chars: int = 0
     # Streamed to the trace and also kept: a thinking model's provider needs
     # it echoed on the assistant turn that issued the tool calls.
     reasoning_content: str = ""
@@ -293,8 +299,6 @@ class ContextExplorer:
         chunk_meta = merge_trace_metadata(stage_meta, {"trace_kind": "llm_chunk"})
 
         investigation = ""
-        total_in = 0
-        total_out = 0
         nudged_empty_finish = False
         forced_finish_appended = False
         async with stream.stage(EXPLORE_STAGE, source=EXPLORE_SOURCE, metadata=stage_meta):
@@ -313,7 +317,6 @@ class ContextExplorer:
                     # tool-less finish from what has been gathered.
                     messages.append({"role": "user", "content": self._forced_finish_instruction()})
                     forced_finish_appended = True
-                total_in += sum(_content_chars(m) for m in messages)
                 result = await self._call_llm(
                     client,
                     messages,
@@ -321,8 +324,8 @@ class ContextExplorer:
                     chunk_meta,
                     stream,
                     context.session_id,
+                    usage=usage,
                 )
-                total_out += result.output_chars
                 if not result.tool_calls:
                     investigation = result.text
                     if (
@@ -382,7 +385,6 @@ class ContextExplorer:
                 ),
             )
 
-        self._account_usage(usage, total_in, total_out, investigation)
         return investigation
 
     async def _call_llm(
@@ -393,6 +395,8 @@ class ContextExplorer:
         chunk_meta: dict[str, Any],
         stream: StreamBus,
         session_id: str,
+        *,
+        usage: UsageTracker | None = None,
     ) -> _CallResult:
         """One streamed LLM call. All output streams to the *thinking* channel
         (never CONTENT — that is the answer loop's channel); the returned text
@@ -401,6 +405,7 @@ class ContextExplorer:
             "model": self.model,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True},
             **build_completion_kwargs(
                 temperature=0.2,
                 model=self.model,
@@ -421,15 +426,24 @@ class ContextExplorer:
         thinking_blocks: list[dict[str, Any]] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
+        last_usage = None
         # Bound connection setup as well as the idle reads below, the same way
         # the answer loop does: a provider that hangs while opening the stream
         # parks the turn just as effectively as one that stalls mid-stream.
-        response_stream = await asyncio.wait_for(
-            client.chat.completions.create(**kwargs),
-            _STREAM_IDLE_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(_STREAM_IDLE_TIMEOUT_SECONDS):
+            try:
+                response_stream = await client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                if not is_stream_options_unsupported(exc):
+                    raise
+                del kwargs["stream_options"]
+                response_stream = await client.chat.completions.create(**kwargs)
         try:
             async for chunk in _bounded_stream_chunks(response_stream):
+                # Usage can be cumulative across chunks or arrive in a choices=[] trailer.
+                frame = getattr(chunk, "usage", None)
+                if frame is not None:
+                    last_usage = usage_breakdown(frame) or last_usage
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
@@ -471,11 +485,16 @@ class ContextExplorer:
                 with suppress(Exception):
                     await close()
 
+        record_streamed_usage(
+            usage,
+            last_usage,
+            input_chars=sum(message_content_chars(message) for message in messages),
+            output_chars=output_chars,
+        )
         tool_calls = tool_acc.collected()
         return _CallResult(
             text="".join(text_parts),
             tool_calls=tool_calls,
-            output_chars=output_chars,
             reasoning_content="".join(reasoning_parts),
             response_output_items=response_output_items,
             thinking_blocks=thinking_blocks,
@@ -639,17 +658,10 @@ class ContextExplorer:
         mode: str,
         manifest: str,
     ) -> list[dict[str, Any]]:
-        """Lay the investigation out so the repeatable bytes come first.
+        """Keep preloaded source text in the shared prefix on follow-up turns.
 
-        Provider prompt caches match a *prefix*, so only the bytes before the
-        first per-turn difference can ever be reused. The original layout put
-        the user's question at the top of the first message, which meant the
-        longest shared prefix with the previous turn ended a few tokens in and
-        every byte the pre-pass re-read — including tens of thousands of tokens
-        of unchanged source text — was billed at the miss rate, every turn.
-        Here the question is the *last* message and everything ahead of it
-        (mode, manifest, attached sources) is byte-stable for as long as the
-        attachments are, so it becomes a cache hit.
+        The manifest replaces fresh previews with references on later turns,
+        so it belongs with the current mode and question after the source text.
 
         Returns ``[]`` when the localized split prompts are absent, leaving the
         caller on the original single-message layout.
@@ -659,15 +671,15 @@ class ContextExplorer:
         if not preamble_template or not question_template:
             return []
         selected = self._preload_selection(source_index)
-        sources_text = self._render_preloaded_sources(source_index, selected)
+        fields = {
+            "sources": self._render_preloaded_sources(source_index, selected) or "(none)",
+            "mode": mode,
+            "manifest": manifest,
+            "question": question,
+        }
         return [
-            {
-                "role": "user",
-                "content": preamble_template.format(
-                    mode=mode, manifest=manifest, sources=sources_text or "(none)"
-                ),
-            },
-            {"role": "user", "content": question_template.format(question=question)},
+            {"role": "user", "content": preamble_template.format(**fields)},
+            {"role": "user", "content": question_template.format(**fields)},
         ]
 
     def _preload_selection(self, source_index: dict[str, str]) -> list[str]:
@@ -775,15 +787,6 @@ def _assistant_message_with_provider_state(result: _CallResult) -> dict[str, Any
     if normalized is not None:
         message["_provider_response_state"] = normalized
     return message
-
-
-def _content_chars(message: dict[str, Any]) -> int:
-    content = message.get("content")
-    if isinstance(content, str):
-        return len(content)
-    if isinstance(content, list):
-        return sum(len(str(part.get("text") or "")) for part in content if isinstance(part, dict))
-    return 0
 
 
 __all__ = ["ContextExplorer", "EXPLORE_STAGE"]

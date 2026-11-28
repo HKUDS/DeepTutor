@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
 import pytest
 
+from deeptutor.services.config import runtime_settings
 from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.services.config.runtime_settings import (
     SETTINGS_DERIVED_ENV_KEYS,
@@ -286,6 +288,53 @@ def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
     assert _read_json(settings_dir / "auth.json")["enabled"] is False
     assert _read_json(settings_dir / "integrations.json")["pocketbase_url"] == ""
     assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == set(SERVICE_NAMES)
+
+
+def test_unparseable_system_json_is_not_replaced_with_defaults(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    system_path = service.path_for("system")
+    system_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # A hand-edited document with a trailing comma: the settings are there, but
+    # the file does not decode, so it must be kept rather than reset.
+    broken = b'{"backend_port": 9000, "cors_origins": ["https://tutor.example.com"],}'
+    system_path.write_bytes(broken)
+
+    with caplog.at_level(logging.WARNING, logger="deeptutor.services.config.runtime_settings"):
+        assert service.load_system()["backend_port"] == 8001
+        assert service.load_system()["backend_port"] == 8001
+
+    assert system_path.read_bytes() == broken
+    # One report per warning window, not one per load_system() call.
+    unreadable = [
+        record for record in caplog.records if "unreadable" in record.getMessage().lower()
+    ]
+    assert len(unreadable) == 1
+    assert str(system_path) in unreadable[0].getMessage()
+    assert "JSONDecodeError" in unreadable[0].getMessage()
+
+    # The suppression is time-based, not permanent: past the window the same
+    # document is reported again, so a log configured after the startup load
+    # still receives the warning.
+    caplog.clear()
+    with monkeypatch.context() as patch:
+        patch.setattr(runtime_settings, "_UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS", 0.0)
+        with caplog.at_level(logging.WARNING, logger="deeptutor.services.config.runtime_settings"):
+            assert service.load_system()["backend_port"] == 8001
+    assert len([r for r in caplog.records if "unreadable" in r.getMessage().lower()]) == 1
+
+    # A document that decodes but is not a JSON object is kept too.
+    not_an_object = b"[1, 2, 3]"
+    system_path.write_bytes(not_an_object)
+    assert service.load_system()["backend_port"] == 8001
+    assert system_path.read_bytes() == not_an_object
+
+    # An absent document is still created from the defaults.
+    system_path.unlink()
+    assert service.load_system()["backend_port"] == 8001
+    assert _read_json(system_path)["backend_port"] == 8001
 
 
 def test_mineru_defaults_and_normalization(tmp_path: Path) -> None:

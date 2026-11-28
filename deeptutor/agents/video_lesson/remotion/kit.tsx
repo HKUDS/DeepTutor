@@ -1,7 +1,7 @@
 // Lesson kit: the only building blocks a video lesson may use. DeepTutor's cream/terracotta palette,
 // Lora + Geist type, and restrained motion live here, so the model composes content instead of
 // inventing styling. Every component reads the frame from its enclosing <Sequence>.
-import React, {createContext, useContext} from "react";
+import React, {createContext, useContext, useLayoutEffect, useRef} from "react";
 import {AbsoluteFill, Easing, Html5Audio, Sequence, Series, interpolate, useCurrentFrame} from "remotion";
 import outline from "./china_outline.json";
 import {VOICE} from "./voice";
@@ -18,6 +18,9 @@ type Tone = "ink" | "soft" | "accent" | "muted" | "blue" | "green";
 const tone = (t: Tone = "ink") => ({ink: T.ink, soft: T.soft, accent: T.accent, muted: T.muted, blue: T.blue, green: T.green}[t]);
 
 const ease = Easing.bezier(0.2, 0.8, 0.2, 1);
+const FirstScene = createContext(false);
+const InContentFlow = createContext(false);
+const ForceOpening = createContext(false);
 /** 0→1 progress that starts `delay` frames into the current Sequence and lasts `dur` frames. */
 export function useProgress(delay = 0, dur = 18): number {
   const f = useCurrentFrame();
@@ -37,28 +40,159 @@ export const Stage: React.FC<{eyebrow?: string; page?: string; children?: React.
   </AbsoluteFill>
 );
 
-/** Fades in and rises 14px; wrap any absolutely placed content in it. */
-export const Reveal: React.FC<{delay?: number; dur?: number; x?: number; y?: number; w?: number;
-  style?: React.CSSProperties; children?: React.ReactNode}> = ({delay = 0, dur = 16, x, y, w, style, children}) => {
-  const p = useProgress(delay, dur);
-  const placed: React.CSSProperties = x !== undefined || y !== undefined
-    ? {position: "absolute", left: x ?? 0, top: y ?? 0, width: w} : {};
+const SVG_NS = "http://www.w3.org/2000/svg";
+const GRAPHIC_PADDING = 40;
+const MAX_GRAPHIC_SHAPES = 2048;
+const GRAPHIC_SHAPES = "circle, ellipse, foreignObject, image, line, path, polygon, polyline, rect, text, use";
+const SVG_DEFINITIONS = "clipPath, defs, marker, mask, pattern, symbol";
+
+function fitSceneGraphic(frame: HTMLDivElement) {
+  const svg = frame.firstElementChild;
+  frame.style.transform = "";
+  if (!svg || svg.namespaceURI !== SVG_NS || svg.localName !== "svg" || frame.childElementCount !== 1) {
+    frame.dataset.sceneGraphicFit = "native";
+    return;
+  }
+
+  // The composition slot owns clipping. An author viewport must not discard
+  // the drawing before the renderer can fit its complete painted bounds.
+  const svgStyle = (svg as SVGSVGElement).style;
+  if (svgStyle.getPropertyValue("overflow") !== "visible" || svgStyle.getPropertyPriority("overflow") !== "important") {
+    svgStyle.setProperty("overflow", "visible", "important");
+  }
+  const frameRect = frame.getBoundingClientRect();
+  const width = frame.clientWidth, height = frame.clientHeight;
+  if (!frameRect.width || !frameRect.height || width <= 2 * GRAPHIC_PADDING || height <= 2 * GRAPHIC_PADDING) {
+    frame.dataset.sceneGraphicFit = "unmeasurable";
+    return;
+  }
+
+  const shapes = svg.querySelectorAll<SVGGraphicsElement>(GRAPHIC_SHAPES);
+  if (shapes.length > MAX_GRAPHIC_SHAPES) {
+    frame.dataset.sceneGraphicFit = "unmeasurable";
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const shape of shapes) {
+    if (shape.closest(SVG_DEFINITIONS)) continue;
+    const rect = shape.getBoundingClientRect();
+    if (!rect.width && !rect.height) continue;
+    const css = getComputedStyle(shape);
+    const stroke = css.stroke === "none" ? 0 : (parseFloat(css.strokeWidth) || 0) / 2;
+    const matrix = stroke && css.vectorEffect !== "non-scaling-stroke" ? shape.getScreenCTM() : null;
+    // Include stroke extents conservatively, including square/acute joins.
+    const miter = css.strokeLinejoin === "miter" && /^(path|polygon|polyline)$/.test(shape.localName)
+      ? Math.max(1, parseFloat(css.strokeMiterlimit) || 1) : Math.SQRT2;
+    const padX = stroke * miter * (matrix ? Math.hypot(matrix.a, matrix.c) : 1);
+    const padY = stroke * miter * (matrix ? Math.hypot(matrix.b, matrix.d) : 1);
+    minX = Math.min(minX, rect.left - padX);
+    minY = Math.min(minY, rect.top - padY);
+    maxX = Math.max(maxX, rect.right + padX);
+    maxY = Math.max(maxY, rect.bottom + padY);
+  }
+  if (minX === Infinity) {
+    frame.dataset.sceneGraphicFit = "empty";
+    return;
+  }
+
+  const unitX = width / frameRect.width, unitY = height / frameRect.height;
+  const drawingWidth = (maxX - minX) * unitX;
+  const drawingHeight = (maxY - minY) * unitY;
+  const scale = Math.min((width - 2 * GRAPHIC_PADDING) / drawingWidth, (height - 2 * GRAPHIC_PADDING) / drawingHeight);
+  if (!Number.isFinite(scale) || scale <= 0) {
+    frame.dataset.sceneGraphicFit = "unmeasurable";
+    return;
+  }
+
+  const x = (width - drawingWidth * scale) / 2 - (minX - frameRect.left) * unitX * scale;
+  const y = (height - drawingHeight * scale) / 2 - (minY - frameRect.top) * unitY * scale;
+  frame.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  frame.dataset.sceneGraphicFit = "ready";
+}
+
+const SceneGraphic: React.FC<{children: React.ReactNode}> = ({children}) => {
+  const frame = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const fit = () => { if (element.isConnected) fitSceneGraphic(element); };
+    fit();
+    // React mutates SVG geometry as it animates. Refit only after actual geometry,
+    // text or style changes; fades and dashed line reveals keep their full bounds.
+    const observer = new MutationObserver((records) => {
+      if (records.some((record) => record.target !== element &&
+          !["opacity", "stroke-dasharray", "stroke-dashoffset"].includes(record.attributeName ?? ""))) fit();
+    });
+    observer.observe(element, {subtree: true, childList: true, attributes: true, characterData: true});
+    void document.fonts?.ready.then(fit);
+    window.addEventListener("resize", fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, []);
+  return <div data-scene-graphic="" style={{position: "absolute", left: 960, top: 140,
+    width: 840, height: 720, overflow: "hidden"}}>
+    <div ref={frame} data-scene-graphic-frame="" data-scene-graphic-fit="pending"
+      style={{position: "relative", width: "100%", height: "100%", transformOrigin: "0 0"}}>{children}</div>
+  </div>;
+};
+
+/** Fixed content and optional graphic regions, above the caption band. */
+export const SceneLayout: React.FC<{eyebrow?: string; page?: string; content: React.ReactNode;
+  graphic?: React.ReactNode}> = ({eyebrow, page, content, graphic}) => {
+  const hasGraphic = graphic !== undefined && graphic !== null && graphic !== false;
+  return <Stage eyebrow={eyebrow} page={page}>
+    <div data-scene-content="" style={{position: "absolute", left: 120, top: 140,
+      width: hasGraphic ? 760 : 1680, height: 720, overflow: "hidden"}}>{content}</div>
+    {hasGraphic && <SceneGraphic>{graphic}</SceneGraphic>}
+  </Stage>;
+};
+
+/** Stack blocks by their rendered heights rather than guessed y coordinates. */
+export const ContentFlow: React.FC<{gap?: number; children?: React.ReactNode}> = ({gap = 24, children}) => (
+  <InContentFlow.Provider value={true}>
+    <div data-content-flow="" style={{display: "flex", flexDirection: "column", alignItems: "stretch",
+      gap: Math.max(0, gap), width: "100%", paddingTop: 8, boxSizing: "border-box"}}>{children}</div>
+  </InContentFlow.Provider>
+);
+
+/** Compact first-scene problem: givens and goal stay together and are visible immediately. */
+export const Problem: React.FC<{children?: React.ReactNode}> = ({children}) => (
+  <ForceOpening.Provider value={true}>
+    <ContentFlow gap={14}>{children}</ContentFlow>
+  </ForceOpening.Provider>
+);
+
+/** Fades in and rises 14px; `opening` opts into a visible first scene. */
+export const Reveal: React.FC<{delay?: number; dur?: number; x?: number; y?: number; w?: number; opening?: boolean;
+  style?: React.CSSProperties; children?: React.ReactNode}> = ({delay = 0, dur = 16, x, y, w, opening = false, style, children}) => {
+  const progress = useProgress(delay, dur);
+  const firstScene = useContext(FirstScene);
+  const inFlow = useContext(InContentFlow);
+  const forcedOpening = useContext(ForceOpening);
+  const p = firstScene && (opening || forcedOpening) ? 1 : progress;
+  const placed: React.CSSProperties = inFlow
+    ? {position: "relative", width: w === undefined ? "100%" : `min(${w}px, 100%)`, flexShrink: 0}
+    : x !== undefined || y !== undefined ? {position: "absolute", left: x ?? 0, top: y ?? 0, width: w} : {};
   return <div style={{...placed, ...style, opacity: p, transform: `translateY(${(1 - p) * 14}px)`}}>{children}</div>;
 };
 
 /** Serif headline with an optional small kicker above it. */
-export const Title: React.FC<{kicker?: string; x?: number; y?: number; w?: number; size?: number; delay?: number;
-  children?: React.ReactNode}> = ({kicker, x = 120, y = 150, w = 1500, size = 76, delay = 0, children}) => (
-  <Reveal x={x} y={y} w={w} delay={delay}>
-    {kicker && <div style={{font: `600 28px ${T.sans}`, color: T.accent, marginBottom: 18, letterSpacing: "0.04em"}}>{kicker}</div>}
-    <div style={{font: `500 ${size}px/1.22 ${T.serif}`, color: T.ink}}>{children}</div>
+export const Title: React.FC<{kicker?: string; x?: number; y?: number; w?: number; size?: number; delay?: number; opening?: boolean;
+  children?: React.ReactNode}> = ({kicker, x = 120, y = 150, w = 1500, size = 76, delay = 0, opening, children}) => (
+  <Reveal x={x} y={y} w={w} delay={delay} opening={opening}>
+    <div data-title="">
+      {kicker && <div style={{font: `600 28px ${T.sans}`, color: T.accent, marginBottom: 18, letterSpacing: "0.04em"}}>{kicker}</div>}
+      <div style={{font: `500 ${size}px/1.22 ${T.serif}`, color: T.ink}}>{children}</div>
+    </div>
   </Reveal>
 );
 
 /** Body paragraph. */
-export const Body: React.FC<{x: number; y: number; w?: number; size?: number; delay?: number; color?: Tone;
-  children?: React.ReactNode}> = ({x, y, w = 760, size = 36, delay = 0, color = "soft", children}) => (
-  <Reveal x={x} y={y} w={w} delay={delay}>
+export const Body: React.FC<{x?: number; y?: number; w?: number; size?: number; delay?: number; color?: Tone; opening?: boolean;
+  children?: React.ReactNode}> = ({x, y, w = 760, size = 36, delay = 0, color = "soft", opening, children}) => (
+  <Reveal x={x} y={y} w={w} delay={delay} opening={opening}>
     <div style={{font: `400 ${size}px/1.65 ${T.sans}`, color: tone(color)}}>{children}</div>
   </Reveal>
 );
@@ -95,9 +229,9 @@ export const Narration: React.FC<{lines: {at: number; text: React.ReactNode}[]}>
 };
 
 /** A note card with a left rule; good for a definition, a treaty, or one key fact. */
-export const Card: React.FC<{x: number; y: number; w?: number; title?: string; tone?: Tone; delay?: number;
-  children?: React.ReactNode}> = ({x, y, w = 560, title, tone: t = "accent", delay = 0, children}) => (
-  <Reveal x={x} y={y} w={w} delay={delay}>
+export const Card: React.FC<{x?: number; y?: number; w?: number; title?: string; tone?: Tone; delay?: number; opening?: boolean;
+  children?: React.ReactNode}> = ({x, y, w = 560, title, tone: t = "accent", delay = 0, opening, children}) => (
+  <Reveal x={x} y={y} w={w} delay={delay} opening={opening}>
     <div style={{background: "#fff", border: `1.5px solid ${T.rule}`, borderLeft: `6px solid ${tone(t)}`, borderRadius: 8,
       padding: "22px 28px"}}>
       {title && <div style={{font: `600 32px ${T.sans}`, color: T.ink, marginBottom: 8}}>{title}</div>}
@@ -175,10 +309,11 @@ const usePlot = () => {
 /** Axes in a frame rectangle; children draw in data coordinates. */
 export const Plot: React.FC<{x: number; y: number; w: number; h: number; xDomain: [number, number];
   yDomain: [number, number]; xTicks?: number[]; yTicks?: number[]; xLabel?: string; yLabel?: string; delay?: number;
-  tickFormat?: (v: number) => string; children?: React.ReactNode}> = (props) => {
-  const {x, y, w, h, xDomain, yDomain, xTicks = [], yTicks = [], xLabel, yLabel, delay = 0, children} = props;
+  opening?: boolean; tickFormat?: (v: number) => string; children?: React.ReactNode}> = (props) => {
+  const {x, y, w, h, xDomain, yDomain, xTicks = [], yTicks = [], xLabel, yLabel, delay = 0, opening = false, children} = props;
   const fmt = props.tickFormat || ((v: number) => String(v));
-  const p = useProgress(delay, 20);
+  const progress = useProgress(delay, 20);
+  const p = useContext(FirstScene) && opening ? 1 : progress;
   const sx = (v: number) => x + ((v - xDomain[0]) / (xDomain[1] - xDomain[0])) * w;
   const sy = (v: number) => y + h - ((v - yDomain[0]) / (yDomain[1] - yDomain[0])) * h;
   return (
@@ -204,11 +339,12 @@ export const Plot: React.FC<{x: number; y: number; w: number; h: number; xDomain
 
 /** y = fn(x), drawn left to right. */
 export const Curve: React.FC<{fn: (x: number) => number; domain?: [number, number]; delay?: number; dur?: number;
-  tone?: Tone; width?: number; dashed?: boolean; label?: string; labelAt?: number}> = (props) => {
+  opening?: boolean; tone?: Tone; width?: number; dashed?: boolean; label?: string; labelAt?: number}> = (props) => {
   const c = usePlot();
-  const {fn, delay = 0, dur = 36, tone: t = "ink", width = 4, dashed, label} = props;
+  const {fn, delay = 0, dur = 36, opening = false, tone: t = "ink", width = 4, dashed, label} = props;
   const [a, b] = props.domain || c.xDomain;
-  const p = useProgress(delay, dur);
+  const progress = useProgress(delay, dur);
+  const p = useContext(FirstScene) && opening ? 1 : progress;
   const pts: string[] = [];
   for (let i = 0; i <= 160; i++) {
     const xv = a + ((b - a) * i) / 160, yv = fn(xv);
@@ -419,23 +555,45 @@ const clip = (id: string): Clip => {
   return c;
 };
 // A scene lasts as long as planned, or longer when its narration needs the time.
-const sceneLength = (s: Scene) => Math.max(s.frames, LEAD + clip(s.voice).frames + 20);
+const sceneLength = (s: Scene, c: Clip = clip(s.voice)) => Math.max(s.frames, LEAD + c.frames + 20);
 
 /** Total length of a lesson built from `scenes`; use it for LESSON.durationInFrames. */
 export const lessonLength = (scenes: Scene[]) => scenes.reduce((n, s) => n + sceneLength(s), 0);
 
-/** Plays the scenes back to back, each with its voice-over and captions timed to the voice. */
-export const Scenes: React.FC<{scenes: Scene[]}> = ({scenes}) => (
+type TimedScene = {content: React.ReactNode; clip: Clip; length: number};
+const renderScenes = (scenes: readonly TimedScene[]) => (
   <Series>
-    {scenes.map((s, i) => {
-      const c = clip(s.voice);
-      return (
-        <Series.Sequence key={i} durationInFrames={sceneLength(s)}>
-          {s.content}
-          {c.src ? <Sequence from={LEAD} layout="none"><Html5Audio src={c.src} /></Sequence> : null}
-          <Narration lines={c.captions.map((l) => ({at: LEAD + l.at, text: l.text}))} />
-        </Series.Sequence>
-      );
-    })}
+    {scenes.map((s, i) => (
+      <Series.Sequence key={i} durationInFrames={s.length}>
+        <FirstScene.Provider value={i === 0}>{s.content}</FirstScene.Provider>
+        {s.clip.src ? <Sequence from={LEAD} layout="none"><Html5Audio src={s.clip.src} /></Sequence> : null}
+        <Narration lines={s.clip.captions.map((l) => ({at: LEAD + l.at, text: l.text}))} />
+      </Series.Sequence>
+    ))}
   </Series>
 );
+
+/** Plays the scenes back to back, each with its voice-over and captions timed to the voice. */
+export const Scenes: React.FC<{scenes: Scene[]}> = ({scenes}) => renderScenes(
+  scenes.map((s) => { const c = clip(s.voice); return {content: s.content, clip: c, length: sceneLength(s, c)}; })
+);
+
+/** Host-only fixed snapshot for explicitly opted-in lessons. Null preserves the legacy path. */
+export function createFixedScenes(input: unknown, duration: number): {Lesson: React.FC; lengths: number[]} | null {
+  try {
+    if (!Array.isArray(input) || !input.length || input.length > 64 || !Number.isSafeInteger(duration) || duration <= 0) return null;
+    const scenes: TimedScene[] = input.map((raw) => {
+      if (!raw || typeof raw.voice !== "string" || !Number.isSafeInteger(raw.frames) || raw.frames <= 0) throw new Error("invalid scene");
+      const source = clip(raw.voice);
+      if (!Number.isSafeInteger(source.frames) || source.frames < 0 || !Array.isArray(source.captions)) throw new Error("invalid clip");
+      const c = {...source, captions: source.captions.map((caption) => ({...caption}))};
+      const scene: Scene = {voice: raw.voice, frames: raw.frames, content: raw.content};
+      const length = sceneLength(scene, c);
+      if (!Number.isSafeInteger(length) || length <= 0 || length > duration) throw new Error("invalid length");
+      return {content: scene.content, clip: c, length};
+    });
+    const lengths = scenes.map((scene) => scene.length);
+    if (lengths.reduce((sum, length) => sum + length, 0) !== duration) return null;
+    return {Lesson: () => renderScenes(scenes), lengths};
+  } catch (_) { return null; }
+}

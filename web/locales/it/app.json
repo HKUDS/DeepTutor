@@ -1972,6 +1972,8 @@
   "Close tab": "Chiudi scheda",
   "Close viewer": "Chiudi visualizzatore",
   "Back to conversation": "Torniamo alla conversazione",
+  "This file is unavailable.": "Questo file non è disponibile.",
+  "Conversation snapshot": "Istantanea della conversazione",
   "Loading {{host}}…": "Caricamento {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Molti siti rifiutano di incorporarsi per motivi di sicurezza. Se la pagina sottostante rimane vuota, utilizzare \"Apri nel browser\".",
   "Open URL": "Apri l'URL",

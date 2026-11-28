@@ -55,11 +55,10 @@ _SIMPLE_LLM_DEFAULTS: dict[str, dict[str, Any]] = {
     "solve": {"temperature": 0.3, "max_tokens": 8192},
     "research": {"temperature": 0.5, "max_tokens": 16834},
     "question": {"temperature": 0.7, "max_tokens": 4096},
-    # The visualize loop's own defaults, unchanged from when they were written
-    # into the pipeline construction: a user who never touches this keeps the
-    # behaviour they had, and one whose reasoning model eats the budget can now
-    # raise it (#1546).
-    "visualize": {"temperature": 0.15, "max_tokens": 16000},
+    # The visualize loop's budget is configurable because a reasoning model can
+    # spend most of it thinking (#1546). 32k leaves room for that; each request
+    # is still capped to the model's output limit (services/llm/output_limits).
+    "visualize": {"temperature": 0.15, "max_tokens": 32768},
     "co_writer": {"temperature": 0.6, "max_tokens": 4096},
     "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
     "math_animator": {"temperature": 0.2, "max_tokens": 16834},
@@ -97,6 +96,13 @@ _MAIN_YAML_RUNTIME_DEFAULTS: dict[str, dict[str, Any]] = {
                 "max_tokens": 1024,
             },
         },
+    },
+    "math_animator": {
+        # Runtime fallback for one code-repair call in the render-fix loop. It is
+        # deliberately omitted from the Settings DTO until explicitly configured,
+        # because the page PUTs that DTO back verbatim; injecting the default here
+        # would persist 180 on an unrelated save and shadow the loop's own default.
+        "repair_timeout": 180,
     },
 }
 
@@ -305,6 +311,16 @@ def _build_main_runtime_block(main_cfg: dict[str, Any], capability: str) -> dict
                 },
             },
         }
+    if capability == "math_animator":
+        animator_cfg = _get_at(main_cfg, ("capabilities", "math_animator"))
+        return {
+            "repair_timeout": _coerce_int(
+                animator_cfg.get("repair_timeout"),
+                defaults["repair_timeout"],
+                lo=1,
+                hi=3600,
+            ),
+        }
     return {}
 
 
@@ -317,6 +333,10 @@ def capabilities_settings_dict() -> dict[str, Any]:
     for cap in _AGENTS_YAML_CAPABILITY_SECTIONS:
         block = _build_simple_llm_block(agents_cfg, cap)
         block.update(_build_main_runtime_block(main_cfg, cap))
+        if cap == "math_animator":
+            animator_cfg = _get_at(main_cfg, ("capabilities", "math_animator"))
+            if not isinstance(animator_cfg, dict) or "repair_timeout" not in animator_cfg:
+                block.pop("repair_timeout", None)
         result[cap] = block
     return result
 
@@ -419,6 +439,15 @@ def _apply_main_runtime(
                 "max_tokens": _coerce_int(sm.get("max_tokens"), d["tool_summarizer"]["max_tokens"]),
             },
         }
+    if capability == "math_animator" and "repair_timeout" in block:
+        main_payload.setdefault("capabilities", {})["math_animator"] = {
+            "repair_timeout": _coerce_int(
+                block.get("repair_timeout"),
+                defaults["repair_timeout"],
+                lo=1,
+                hi=3600,
+            ),
+        }
 
 
 def save_capabilities_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -473,8 +502,24 @@ def get_solve_params() -> dict[str, Any]:
     return {**llm, **runtime}
 
 
+def get_math_animator_params() -> dict[str, Any]:
+    """Runtime math-animator knobs, read through the same coerce path as the UI.
+
+    Today this is the code-repair overall deadline (#2767): ``run_render`` used to
+    build ``CodeRetryManager`` with a hardcoded 180s timeout that no setting could
+    move, so a long reasoning model repairing a book animation was cancelled
+    mid-edit with no recourse. The pipeline reads this once per render, so an
+    in-flight render keeps the value it started with. The agents read their LLM
+    params (``temperature`` / ``max_tokens``) through their own loader seam, so
+    this getter returns only the runtime knob the render loop reads here.
+    """
+    main_cfg = ConfigManager().load_config()
+    return _build_main_runtime_block(main_cfg, "math_animator")
+
+
 __all__ = [
     "capabilities_settings_dict",
+    "get_math_animator_params",
     "get_solve_params",
     "get_visualize_params",
     "save_capabilities_settings",

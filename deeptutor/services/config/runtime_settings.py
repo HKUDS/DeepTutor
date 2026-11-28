@@ -6,6 +6,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import threading
+import time
 from typing import Any, Callable
 
 from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
@@ -487,14 +489,55 @@ def _deepcopy_default(defaults: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(defaults)
 
 
-def _json_object(path: Path) -> dict[str, Any]:
+# An unparseable document is reported at most once per interval per path.
+# The startup load runs before logging is configured, so that first record
+# reaches only the process output; the throttle lets a later load — after
+# logging is set up — report the same document again, without letting a
+# per-request load flood the log.
+_UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS = 60.0
+_unreadable_document_warned_at: dict[Path, float] = {}
+_unreadable_document_warning_lock = threading.Lock()
+
+
+def _warn_unreadable_document(name: str, path: Path, problem: str) -> None:
+    """Report a settings document that cannot be parsed, once a minute per path."""
+    now = time.monotonic()
+    with _unreadable_document_warning_lock:
+        last_warned_at = _unreadable_document_warned_at.get(path)
+        if (
+            last_warned_at is not None
+            and now - last_warned_at < _UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS
+        ):
+            return
+        _unreadable_document_warned_at[path] = now
+    logger.warning(
+        "Ignoring unreadable %s settings document %s (%s); using defaults for this "
+        "process and leaving the file untouched.",
+        name,
+        path,
+        problem,
+    )
+
+
+def _json_document(path: Path) -> tuple[dict[str, Any], str]:
+    """Read one settings document, reporting why it is not usable.
+
+    Returns ``(document, problem)``. ``problem`` is empty both for a usable
+    document and for a file that is merely absent or empty — the caller then
+    creates it from defaults. A file that exists but does not decode, or
+    decodes to something other than a JSON object, is reported instead of
+    being flattened to ``{}``, so the caller can keep the operator's bytes
+    rather than overwrite them with defaults.
+    """
     if not path.exists() or path.stat().st_size == 0:
-        return {}
+        return {}, ""
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
+    except Exception as exc:  # noqa: BLE001 - the message is what we report
+        return {}, f"{type(exc).__name__}: {exc}"
+    if not isinstance(loaded, dict):
+        return {}, f"expected a JSON object, found {type(loaded).__name__}"
+    return loaded, ""
 
 
 def _string(value: Any) -> str:
@@ -901,12 +944,21 @@ class RuntimeSettingsService:
         normalizer: Callable[[dict[str, Any]], dict[str, Any]],
     ) -> dict[str, Any]:
         path = self.path_for(name)
-        loaded = _json_object(path)
+        loaded, problem = _json_document(path)
         if loaded:
             normalized = normalizer({**defaults, **loaded})
             if normalized != loaded:
                 _atomic_write_json(path, normalized)
             return normalized
+
+        if problem:
+            # The document exists but is not a JSON object. Keep the operator's
+            # bytes and serve the defaults for this process: rewriting the file
+            # would silently drop settings the operator wrote by hand, and
+            # raising is not an option because load_system also runs per
+            # request.
+            _warn_unreadable_document(name, path, problem)
+            return normalizer(_deepcopy_default(defaults))
 
         normalized = normalizer(_deepcopy_default(defaults))
         _atomic_write_json(path, normalized)

@@ -106,6 +106,13 @@ export function probe(url, { timeout = 2500 } = {}) {
   });
 }
 
+/** Settles like `work`, or rejects with `message` once `ms` passes. The race also handles a late failure of `work`. */
+export function withinTime(work, ms, message) {
+  let timer;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 export async function waitReady(url, { signal, alive = () => true, timeout = 180000 } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {

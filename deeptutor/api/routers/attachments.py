@@ -18,11 +18,11 @@ trust). Once multi-user auth lands we should swap this for signed URLs.
 from __future__ import annotations
 
 import logging
-import mimetypes
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
+from deeptutor.api.desktop_files import browser_file_media_type
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.services.storage import (
     LocalDiskAttachmentStore,
@@ -38,10 +38,12 @@ _content_disposition = content_disposition
 
 
 @router.get("/{session_id}/{attachment_id}/{filename:path}")
+@router.head("/{session_id}/{attachment_id}/{filename:path}", include_in_schema=False)
 async def get_attachment(
     session_id: str,
     attachment_id: str,
     filename: str,
+    request: Request,
 ):
     """Serve a previously uploaded chat attachment.
 
@@ -65,9 +67,7 @@ async def get_attachment(
     if target is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
 
-    media_type, _ = mimetypes.guess_type(target.name)
-    if not media_type:
-        media_type = "application/octet-stream"
+    media_type = browser_file_media_type(request, target.name)
 
     # ``inline`` lets the browser preview the file when possible while still
     # honouring the suggested filename for the drawer's download action.
@@ -76,4 +76,6 @@ async def get_attachment(
         # User-uploaded data; do not let intermediaries cache it.
         "Cache-Control": "private, max-age=0, must-revalidate",
     }
-    return FileResponse(path=str(target), media_type=media_type, headers=headers)
+    return FileResponse(
+        path=str(target), media_type=media_type or "application/octet-stream", headers=headers
+    )

@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "DeepTutor",
+    "slug": "deeptutor-mobile",
+    "scheme": "deeptutor-mobile",
+    "android": { "package": "com.deeptutormobile" },
+    "ios": { "bundleIdentifier": "org.reactjs.native.example.DeepTutorMobile" }
+  }
+}

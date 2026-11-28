@@ -1840,6 +1840,8 @@
   "Close tab": "Fechar aba",
   "Close viewer": "Fechar visualizador",
   "Back to conversation": "Voltar à conversa",
+  "This file is unavailable.": "Este arquivo está indisponível.",
+  "Conversation snapshot": "Instantâneo da conversa",
   "Loading {{host}}…": "Carregando {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Muitos sites recusam a incorporação por motivos de segurança. Se a página abaixo ficar em branco, use “Abrir no navegador”.",
   "Open URL": "Abrir URL",

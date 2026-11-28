@@ -175,7 +175,13 @@ def replay_group(
             original_input = str(rows[0].get("content") or "")
             for message in messages:
                 content = message.get("content")
-                if message.get("role") != "user" or not isinstance(content, str):
+                if (
+                    message.get("role") != "user"
+                    or not isinstance(content, str)
+                    # A tagged snapshot is the current format, already its own
+                    # message; replay it byte-for-byte to keep the cache prefix.
+                    or isinstance(message.get("_context_snapshot"), str)
+                ):
                     continue
                 # Older prepared inputs fused a fresh status read with the
                 # learner's words. Remove only that exact valid suffix, never

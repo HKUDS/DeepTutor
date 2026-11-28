@@ -73,3 +73,19 @@ def test_put_returns_resolvable_url(tmp_path: Path) -> None:
     )
     assert isinstance(path, Path)
     assert path.read_bytes() == b"notes"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("filename", ["a" * 240 + ".txt", "é" * 120 + ".pdf"])
+async def test_put_shortens_names_that_exceed_the_filesystem_limit(
+    tmp_path: Path, filename: str
+) -> None:
+    store = LocalDiskAttachmentStore(tmp_path)
+    attachment_id = "x" * 32
+
+    await store.put(session_id="s", attachment_id=attachment_id, filename=filename, data=b"abc")
+
+    resolved = store.resolve_path(session_id="s", attachment_id=attachment_id, filename=filename)
+    assert resolved is not None and resolved.read_bytes() == b"abc"
+    assert len(resolved.name.encode()) <= 255
+    assert resolved.suffix == Path(filename).suffix

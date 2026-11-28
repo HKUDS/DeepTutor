@@ -447,6 +447,9 @@ async def test_credential_tool_rejects_an_unknown_service(isolated_settings: Pat
         "switch the chat model to something faster",
         "install a better pdf parser",
         "set up web search for me",
+        "把对话模型换成 deepseek",
+        "把语言模型换成更快的那个",
+        "change the embedding model to bge-m3",
     ],
 )
 def test_activates_on_a_configuration_request(message: str) -> None:
@@ -465,6 +468,13 @@ def test_activates_on_a_configuration_request(message: str) -> None:
         "这个引擎的原理是什么",
         "search for papers about transformers",
         "解释一下 embedding 的原理",
+        "如果把理想气体模型换成范德瓦尔斯模型，熵的表达式要怎么调整？",
+        "怎么调整模型的超参数",
+        "把线性回归模型换成决策树会怎样",
+        "把这个向量换成单位向量",
+        "调整词嵌入的维度有什么影响",
+        "switch the model to a CNN and retrain it",
+        "change the embedding dimension to 512",
         "",
     ],
 )

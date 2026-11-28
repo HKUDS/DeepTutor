@@ -39,6 +39,11 @@ _PATH_BINDING_TOOLS = frozenset({"mastery_switch", "mastery_leave"})
 #: module having to import the loop engine back.
 NATIVE_LOOP_FLAG = "mastery_native_loop"
 
+#: Key in ``context.extension("mastery")`` under which the pipeline leaves a
+#: callable that loads every deferred outline tool into the live request.
+#: Called when the turn switches into outline mode (see ``_mode_binder``).
+OUTLINE_TOOL_LOADER = "load_outline_tools"
+
 
 class MasteryLoopCapability:
     """Turn-scoped integration for mastery-path tutoring.
@@ -259,6 +264,9 @@ class MasteryLoopCapability:
                         state["quiz_recovery_receipt"] = {
                             **context.metadata["mastery_lesson_objective"],
                             "revision": progress.version,
+                            "lesson_evidence_id": str(
+                                (progress.lesson_evidence.get(kp_id) or {}).get("id") or ""
+                            ),
                         }
 
                 updated["_bind_lesson_objective"] = bind_lesson
@@ -309,11 +317,16 @@ class MasteryLoopCapability:
         ):
             return None
         progress = LearningStore().load(path_id)
-        if (
-            progress is None
-            or progress.version != receipt["revision"]
-            or next_objective(progress).knowledge_point_id != receipt["policy_id"]
-        ):
+        if progress is None or next_objective(progress).knowledge_point_id != receipt["policy_id"]:
+            return None
+        evidence_id = str(receipt.get("lesson_evidence_id") or "")
+        if evidence_id:
+            current_evidence_id = str(
+                (progress.lesson_evidence.get(receipt["kp_id"]) or {}).get("id") or ""
+            )
+            if current_evidence_id != evidence_id:
+                return None
+        elif progress.version != receipt["revision"]:
             return None
         state["quiz_recovery_used"] = True
         return (
@@ -448,14 +461,14 @@ class MasteryLoopCapability:
             or json.loads(result.content).get("path_id") != str(binding[0]).strip()
         ):
             return None
+        from deeptutor.capabilities.mastery.snapshot import SNAPSHOT_HEADER, compact_status
+
+        # How to read the snapshot is stated once in the system prompt; the
+        # message itself carries only this turn's state.
+        state = compact_status(json.loads(result.content))
         block = PromptBlock(
             "mastery_status_snapshot",
-            "[Current-turn mastery_status snapshot]\n"
-            "The runtime has already read mastery_status for this turn and active path. "
-            "Use this result directly; do not call mastery_status again just to begin. "
-            "Refresh with mastery_status after changing the path, mode, outline, or progress "
-            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
-            + result.content,
+            SNAPSHOT_HEADER + json.dumps(state, ensure_ascii=False),
         )
         context.extension("mastery")["status_snapshot"] = block.content
         return block
@@ -655,10 +668,16 @@ def _mode_binder(context: UnifiedContext) -> Callable[[str], None]:
     """
 
     def bind(mode: str) -> None:
+        from deeptutor.capabilities.mastery.mode import OUTLINE, normalize_mode
+
         context.metadata["mastery_session_mode"] = mode
         # Read back by the turn runtime after the turn, so the conversation
         # resumes in the mode it ended in rather than the one it began in.
         context.metadata["mastery_session_mode_changed"] = True
+        if normalize_mode(mode) == OUTLINE:
+            load_outline_tools = context.extension("mastery").get(OUTLINE_TOOL_LOADER)
+            if callable(load_outline_tools):
+                load_outline_tools()
 
     return bind
 
