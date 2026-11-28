@@ -406,13 +406,9 @@ function ThreadPanel({
         ref={containerRef}
         data-chat-scroll-root="true"
         className="dt-note-companion-thread"
-        onScroll={() => {
-          const el = containerRef.current
-          if (!el) return
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 80)
-            shouldAutoScrollRef.current = true
-          else if (!streaming) handleScroll()
-        }}
+        // The shared gesture-aware heuristic, unconditionally — the same
+        // handler /chat uses.
+        onScroll={handleScroll}
         style={{ WebkitMaskImage: COMPOSER_FADE, maskImage: COMPOSER_FADE }}
       >
         {messages.length ? (
