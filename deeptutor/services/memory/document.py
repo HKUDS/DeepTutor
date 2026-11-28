@@ -52,7 +52,7 @@ _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
 # token that is part of the entry text (e.g. prose ending in ``[^note]``),
 # dropping it on the round-trip.
 _NEW_BULLET_RE = re.compile(
-    rf"^\s*-\s+(?P<text>.*?)(?P<markers>(?:\s*,?\s*\[\^\d+\])*)\s*<!--\s*(?P<id>{_ENTRY_ID_RE})\s*-->\s*$"
+    rf"^\s*-\s+(?P<text>.*?)(?P<markers>(?:\s*,?\s*(?<!\\)\[\^\d+\])*)\s*<!--\s*(?P<id>{_ENTRY_ID_RE})\s*-->\s*$"
 )
 # Legacy bullet: "- text[^m_xxx]"
 _OLD_BULLET_RE = re.compile(rf"^\s*-\s+(?P<text>.*?)\[\^(?P<id>{_ENTRY_ID_RE})\]\s*$")
@@ -63,6 +63,12 @@ _OLD_FOOTNOTE_RE = re.compile(rf"^\[\^(?P<id>{_ENTRY_ID_RE})\]:\s*(?P<refs>.*?)\
 _NEW_FOOTNOTE_RE = re.compile(r"^\[\^(?P<label>[^\]]+)\]:\s*(?P<ref>.*?)\s*$")
 
 _MARKER_RE = re.compile(r"\[\^([^\]]+)\]")
+# A literal numeric footnote-like token at the end of entry text is escaped as
+# ``\[^1]`` when serialized, so a citation label defined on another bullet
+# cannot be attached to text that never cited it. The lookbehind in
+# ``_NEW_BULLET_RE`` keeps an escaped token out of the marker group.
+_LITERAL_MARKER_TAIL_RE = re.compile(r"(?:\s*,?\s*\[\^\d+\])+$")
+_ESCAPED_MARKER_RE = re.compile(r"\\\[\^(\d+)\]")
 
 
 @dataclass
@@ -156,13 +162,29 @@ def parse(md: str) -> Document:
         m_new_b = _NEW_BULLET_RE.match(line)
         if m_new_b and current_entries is not None and current_section is not None:
             entry_id = m_new_b.group("id")
-            text = m_new_b.group("text").rstrip()
-            markers = _MARKER_RE.findall(m_new_b.group("markers") or "")
+            text = _ESCAPED_MARKER_RE.sub(
+                lambda escaped: f"[^{escaped.group(1)}]", m_new_b.group("text").rstrip()
+            )
+            raw_markers = m_new_b.group("markers") or ""
             entry_refs: list[str] = []
-            for marker in markers:
-                ref = ref_by_label.get(marker)
-                if ref is not None and ref not in entry_refs:
+            kept_markers: list[str] = []
+            last_kept_end = 0
+            for marker in _MARKER_RE.finditer(raw_markers):
+                label = marker.group(1)
+                ref = ref_by_label.get(label)
+                if ref is None:
+                    # No footnote definition for this label: the token is part of
+                    # the entry text (e.g. someone quoted a paper's ``[^1]``), not
+                    # a citation. Keep it, and keep the separator it was written
+                    # with, instead of silently dropping either.
+                    separator = raw_markers[last_kept_end : marker.start()] if kept_markers else " "
+                    kept_markers.append(separator + marker.group(0))
+                    last_kept_end = marker.end()
+                elif ref not in entry_refs:
                     entry_refs.append(ref)
+                    last_kept_end = marker.end()
+            if kept_markers:
+                text = text + "".join(kept_markers)
             current_entries.append(
                 Entry(id=entry_id, section=current_section, text=text, refs=entry_refs)
             )
@@ -219,7 +241,9 @@ def serialize(doc: Document) -> str:
             # "¹, ²" not "¹²" — important when the same bullet cites two
             # different sources.
             markers = ", ".join(f"[^{ref_to_label[r]}]" for r in entry.refs if r in ref_to_label)
-            text = entry.text.rstrip()
+            text = _LITERAL_MARKER_TAIL_RE.sub(
+                lambda tail: tail.group(0).replace("[", "\\["), entry.text.rstrip()
+            )
             if markers:
                 lines.append(f"- {text} {markers} <!--{entry.id}-->")
             else:
