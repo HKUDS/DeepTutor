@@ -15,6 +15,8 @@ loop keeps ticking while a slow store call is in flight.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from pathlib import Path
 import time
 
@@ -104,14 +106,55 @@ async def _ticks_during(window: dict[str, float], slow_request) -> tuple[int, in
 async def test_upload_does_not_block_the_event_loop(
     reading_home: Path, stored_material, monkeypatch
 ) -> None:
-    """A concurrent request must be answered during an upload's extraction."""
+    """Native work holding the worker's GIL must leave the API loop running."""
     window: dict[str, float] = {}
     real_store = ReadingStore()
 
     monkeypatch.setattr(reading_router_module, "_store", lambda: real_store)
     monkeypatch.setattr(reading_router_module, "_catalog", lambda: ReadingCatalogStore())
-    # The route calls ``store.ingest`` on the instance, so patch the class.
-    monkeypatch.setattr(ReadingStore, "ingest", _slow(ReadingStore.ingest, window))
+    marker = reading_home / "worker-window.json"
+    module = reading_home / "reading_upload_probe.py"
+    module.write_text(
+        """import ctypes
+import json
+import os
+from pathlib import Path
+import time
+
+def ingest(source_path, *, root, filename):
+    # PyDLL deliberately retains the GIL, unlike CDLL/WinDLL or time.sleep.
+    library = ctypes.PyDLL("kernel32.dll" if os.name == "nt" else None)
+    pause = library.Sleep if os.name == "nt" else library.usleep
+    pause.argtypes = [ctypes.c_ulong if os.name == "nt" else ctypes.c_uint]
+    pause.restype = None if os.name == "nt" else ctypes.c_int
+    start = time.perf_counter()
+    pause(600 if os.name == "nt" else 600_000)
+    end = time.perf_counter()
+    Path(os.environ["DEEPTUTOR_TEST_INGEST_WINDOW"]).write_text(
+        json.dumps({"start": start, "end": end, "pid": os.getpid()})
+    )
+    from deeptutor.runtime.worker_tasks import ingest_reading_material
+    return ingest_reading_material(source_path, root=root, filename=filename)
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPTUTOR_TEST_INGEST_WINDOW", str(marker))
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(
+            [
+                str(reading_home),
+                str(Path(__file__).resolve().parents[2]),
+                os.getenv("PYTHONPATH", ""),
+            ]
+        ),
+    )
+    real_run = reading_router_module.run_in_isolated_process
+
+    async def run_probe(_callable_path, *args, **kwargs):
+        return await real_run("reading_upload_probe:ingest", *args, **kwargs)
+
+    monkeypatch.setattr(reading_router_module, "run_in_isolated_process", run_probe)
 
     payload = (reading_home / "notes.txt").read_bytes()
 
@@ -121,6 +164,9 @@ async def test_upload_does_not_block_the_event_loop(
             files={"file": ("notes.txt", payload, "text/plain")},
         )
         assert response.status_code in {200, 201}, response.text
+        result = json.loads(marker.read_text())
+        assert result["pid"] != os.getpid()
+        window.update(result)
 
     inside, total = await _ticks_during(window, upload)
 

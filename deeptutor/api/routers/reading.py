@@ -61,7 +61,12 @@ from deeptutor.reading.knowledge_capture import (
     organize_workspace_notes,
     send_workspace_to_notebook,
 )
-from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
+from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS, MaterialManifest
+from deeptutor.runtime.isolated_worker import (
+    IsolatedWorkerError,
+    IsolatedWorkerTimeout,
+    run_in_isolated_process,
+)
 from deeptutor.services.session.workspace_preferences import WORKSPACE_MODE_READING
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -164,6 +169,18 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ReadingError):
         return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, IsolatedWorkerTimeout):
+        return HTTPException(status_code=504, detail=str(exc))
+    if isinstance(exc, IsolatedWorkerError):
+        error_types = {
+            cls.__name__: cls for cls in (ReadingError, MaterialNotFound, ReadingUpgradeConflict)
+        }
+        if exc.remote_module == ReadingError.__module__:
+            error_type = error_types.get(exc.remote_type)
+            if error_type is not None:
+                return _http_error(error_type(str(exc)))
+        if exc.remote_module == "builtins" and exc.remote_type == "PermissionError":
+            return HTTPException(status_code=403, detail=str(exc))
     logger.warning("unexpected reading error", exc_info=True)
     return HTTPException(status_code=500, detail="The reader could not complete that request.")
 
@@ -1087,9 +1104,15 @@ async def upload_material(
             background_tasks.add_task(service.process_media, record.material_id)
             return await _detail_off_loop(store, store.manifest(record.material_id))
         else:
-            # Parsing a document walks an entire EPUB spine or every PDF page;
-            # run it in a worker thread so the loop keeps serving requests.
-            manifest = await asyncio.to_thread(store.ingest, tmp_path, filename=filename)
+            # Native PDF decoding can hold the GIL even on a worker thread.
+            # Keep it in a separate process so API health checks stay responsive.
+            manifest = await run_in_isolated_process(
+                "deeptutor.runtime.worker_tasks:ingest_reading_material",
+                str(tmp_path.resolve()),
+                kwargs={"root": str(store.root.resolve()), "filename": filename},
+            )
+            if not isinstance(manifest, MaterialManifest):
+                raise IsolatedWorkerError("Reading ingestion worker returned an invalid manifest")
             catalog = _catalog()
             if reuse or catalog.get_material(manifest.material_id) is None:
                 catalog.register_manifest(manifest)
