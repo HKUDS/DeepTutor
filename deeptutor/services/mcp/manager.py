@@ -80,6 +80,24 @@ class ConnectionLost(RuntimeError):
     """A server's connection task ended while one of its tools was in flight."""
 
 
+async def _list_server_tools(session: Any) -> list[Any]:
+    """Collect every tools/list page before publishing the server's tools."""
+    from mcp.types import PaginatedRequestParams
+
+    tools: list[Any] = []
+    seen_cursors: set[str] = set()
+    listing = await session.list_tools()
+    while True:
+        tools.extend(listing.tools)
+        cursor = listing.nextCursor
+        if cursor is None:
+            return tools
+        if cursor in seen_cursors:
+            raise ValueError("MCP server returned a repeated tools/list cursor")
+        seen_cursors.add(cursor)
+        listing = await session.list_tools(params=PaginatedRequestParams(cursor=cursor))
+
+
 def _connection_lost_result(server_name: str, exc: BaseException) -> str:
     """What the model is told when the transport died under its tool call."""
     return f"(MCP server {server_name!r} connection failed during the call: {exc})"
@@ -701,7 +719,8 @@ class MCPConnectionManager:
                 )
                 session = await stack.enter_async_context(ClientSession(read, write))
                 await session.initialize()
-                listing = await session.list_tools()
+                async with asyncio.timeout(_CONNECT_TIMEOUT_S):
+                    tool_definitions = await _list_server_tools(session)
                 adapters = [
                     MCPToolAdapter(
                         manager=self,
@@ -712,7 +731,7 @@ class MCPConnectionManager:
                         input_schema=tool_def.inputSchema,
                         tool_timeout=conn.config.tool_timeout,
                     )
-                    for tool_def in listing.tools
+                    for tool_def in tool_definitions
                     if conn.config.tool_allowed(
                         tool_def.name, wrapped_tool_name(conn.name, tool_def.name)
                     )
@@ -975,8 +994,8 @@ async def probe_server(
             )
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
-            listing = await session.list_tools()
-            tools = [{"name": t.name, "description": t.description or ""} for t in listing.tools]
+            tool_definitions = await _list_server_tools(session)
+            tools = [{"name": t.name, "description": t.description or ""} for t in tool_definitions]
         return tools
 
     try:
