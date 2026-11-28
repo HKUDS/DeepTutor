@@ -1165,15 +1165,21 @@ class AgenticLoopPipeline:
         loader = self._deferred_loader
         loaded = loader.loaded_names if loader is not None else set()
         notes: list[str] = list(getattr(self, "_eager_guides", []))
-        from deeptutor.tools.research_tools import SCIENTIFIC_TOOL_NAMES, scientific_context
+        from deeptutor.modules.catalog import module_enabled
 
-        research = [n for n in SCIENTIFIC_TOOL_NAMES if n in local_deferred and n not in loaded]
-        if research and scientific_context(context.user_message):
-            notes.append(
-                self._t("notices.research_tools_hint").format(
-                    tools=", ".join(f"`{name}`" for name in research)
+        # The research module may not be installed (a minimal install ships
+        # without ``deeptutor.tools.research_tools``); then there is nothing to
+        # point at, and the setup tools alone must not pull it in.
+        if module_enabled("research"):
+            from deeptutor.tools.research_tools import SCIENTIFIC_TOOL_NAMES, scientific_context
+
+            research = [n for n in SCIENTIFIC_TOOL_NAMES if n in local_deferred and n not in loaded]
+            if research and scientific_context(context.user_message):
+                notes.append(
+                    self._t("notices.research_tools_hint").format(
+                        tools=", ".join(f"`{name}`" for name in research)
+                    )
                 )
-            )
         from deeptutor.capabilities import all_loop_capabilities
 
         for cap in all_loop_capabilities(context):

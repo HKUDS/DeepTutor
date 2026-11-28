@@ -211,3 +211,34 @@ async def test_unchanged_toggles_give_byte_identical_tools(
     assert "reason" not in third["names"]
     fourth = await chat.turn("hi again", enabled_tools=["web_search"])
     assert json.dumps(fourth["tools"]) == json.dumps(third["tools"])
+
+
+@pytest.mark.asyncio
+async def test_a_turn_without_the_research_module_never_imports_it(
+    _isolated_runtime: dict[str, bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A minimal install has no ``deeptutor.tools.research_tools``.
+
+    The setup tools alone are deferred there, and building the turn's notes for
+    them must not reach for the research module.
+    """
+    import sys
+
+    from deeptutor.modules import catalog
+
+    real_enabled = catalog.module_enabled
+
+    def enabled(name: str, *args: Any, **kwargs: Any) -> bool:
+        return name != "research" and real_enabled(name, *args, **kwargs)
+
+    monkeypatch.setattr(catalog, "module_enabled", enabled)
+    # ``None`` in sys.modules makes any import of the module raise ImportError.
+    monkeypatch.setitem(sys.modules, "deeptutor.tools.research_tools", None)
+
+    chat = _Conversation()
+    first = await chat.turn("请帮我找一篇关于导数教学的论文")
+    assert "load_tools" in first["names"]
+    assert not set(SCIENTIFIC_TOOL_NAMES) & set(first["names"])
+    # The setup tools are still offered on demand, the research hint is not.
+    assert "inspect_setup" in first["manifest"]
+    assert "preprint" not in first["note"]
