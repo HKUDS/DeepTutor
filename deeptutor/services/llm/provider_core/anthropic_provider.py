@@ -37,6 +37,9 @@ def _gen_tool_id() -> str:
     return "toolu_" + "".join(secrets.choice(_ALNUM) for _ in range(22))
 
 
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
+
+
 class AnthropicProvider(LLMProvider):
     """LLM provider using the native Anthropic SDK for Claude models."""
 
@@ -44,7 +47,7 @@ class AnthropicProvider(LLMProvider):
         self,
         api_key: str | None = None,
         api_base: str | None = None,
-        default_model: str = "claude-sonnet-4-20250514",
+        default_model: str = DEFAULT_ANTHROPIC_MODEL,
         extra_headers: dict[str, str] | None = None,
         supports_prompt_caching: bool = True,
         binding: str = "anthropic",

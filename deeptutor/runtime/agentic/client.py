@@ -340,11 +340,12 @@ def agentic_client_pool_size() -> int:
 
 def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
     from deeptutor.services.llm.provider_core import AnthropicProvider
+    from deeptutor.services.llm.provider_core.anthropic_provider import DEFAULT_ANTHROPIC_MODEL
 
     anthropic_provider = AnthropicProvider(
         api_key=primary_api_key(config.api_key),
         api_base=config.base_url or spec.default_api_base_for(config.api_format) or None,
-        default_model=config.model or "claude-sonnet-4-20250514",
+        default_model=config.model or DEFAULT_ANTHROPIC_MODEL,
         extra_headers=config.extra_headers,
         supports_prompt_caching=spec.supports_prompt_caching,
         binding=spec.name,
