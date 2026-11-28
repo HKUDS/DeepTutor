@@ -1,4 +1,5 @@
 status:
+  narration_synthesizing: "正在生成第 {index}/{total} 段语音讲解（{model}）。"
   code_prepared: "Manim 代码已准备完成。"
   retry: "第 {attempt} 次重试：{error}"
   rendering: "正在以 quality={quality} 渲染 {mode}。"

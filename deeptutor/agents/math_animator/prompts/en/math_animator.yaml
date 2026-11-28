@@ -1,4 +1,5 @@
 status:
+  narration_synthesizing: "Synthesizing narration {index}/{total} ({model})."
   code_prepared: "Manim code prepared."
   retry: "Retry {attempt}: {error}"
   rendering: "Rendering {mode} with quality={quality}."
