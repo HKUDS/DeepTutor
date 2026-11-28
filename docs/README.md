@@ -152,8 +152,6 @@ Set `ASTRO_TELEMETRY_DISABLED=1` if the Astro telemetry directory cannot be crea
 
 ## Checks
 
-[中文流程图和本地检查命令](WORKFLOW.zh-CN.md)
-
 From the repository root, check your edits before committing:
 
 ```bash
