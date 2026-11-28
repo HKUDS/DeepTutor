@@ -499,6 +499,37 @@ def test_visual_document_is_searchable_with_text_embeddings(tmp_path: Path, monk
     assert result["sources"][0]["chunk_id"] == "visual-node"
 
 
+def test_long_visual_caption_does_not_exhaust_chunk_metadata_budget(tmp_path: Path, monkeypatch):
+    """#2865: a long figure caption must not fail indexing at the default chunk size."""
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.node_parser import SentenceSplitter
+
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+
+    kb_dir, source, _image, parsed = _fixture(tmp_path, suffix=".epub")
+    caption = "图4.1-2 抛物线与直线相交于两点，讨论参数变化对交点位置和图像形状的影响。" * 12
+    parsed.blocks[0]["image_caption"] = [caption]
+
+    class Parser:
+        def parse(self, _source, **_kwargs):
+            return parsed
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: Parser())
+    documents = asyncio.run(
+        LlamaIndexDocumentLoader().load([str(source)], kb_dir=kb_dir, visual_candidates=[])
+    )
+    visual = [doc for doc in documents if doc.metadata.get("content_type") == "source_visual"]
+    assert len(visual) == 1
+
+    nodes = SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents(visual)
+
+    assert nodes
+    assert nodes[0].text.startswith("[Source visual] lesson.epub: 图4.1-2")
+    assert all(node.metadata["caption"] == caption for node in nodes)
+    assert all(node.metadata["visual_asset_id"] for node in nodes)
+
+
 def test_visual_preview_enforces_kb_scope_and_verified_bytes(tmp_path: Path, monkeypatch):
     import importlib
 

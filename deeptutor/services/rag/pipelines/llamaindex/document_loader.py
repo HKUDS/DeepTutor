@@ -50,6 +50,19 @@ IMAGE_DESCRIPTION_PROMPT = (
 # has no model download, and can run without changing the user's global parser.
 _PDF_OCR_FALLBACK_ENGINE = DOCUMENT_PARSING_ENGINE_LITEPARSE
 
+# Figure metadata that stays on the node for citations and pixel delivery but is
+# kept out of the embedded/LLM text. The caption is already in the document
+# text, and the splitter subtracts metadata tokens from every chunk, so a long
+# caption plus ids and paths could exceed the chunk size and fail indexing.
+_VISUAL_METADATA_EXCLUDED_FROM_TEXT = (
+    "file_path",
+    "visual_asset_id",
+    "source_document_id",
+    "bbox",
+    "caption",
+    "source_locator",
+)
+
 
 @dataclass(frozen=True)
 class _ImageSource:
@@ -310,6 +323,8 @@ class LlamaIndexDocumentLoader:
                         "caption": record["caption"],
                         "source_locator": record["source_locator"],
                     },
+                    excluded_embed_metadata_keys=list(_VISUAL_METADATA_EXCLUDED_FROM_TEXT),
+                    excluded_llm_metadata_keys=list(_VISUAL_METADATA_EXCLUDED_FROM_TEXT),
                 )
             )
 
