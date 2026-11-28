@@ -373,3 +373,41 @@ async def test_generate_queries_strips_list_markers_not_leading_numbers(
     queries = await retriever._generate_queries("some context", 3)
 
     assert queries == ["2024 budget forecast", "5G network rollout", "climate policy"]
+
+
+@pytest.mark.asyncio
+async def test_smart_retrieve_ignores_cancelled_search_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CancelledError derives from BaseException, not Exception.
+
+    asyncio.gather(..., return_exceptions=True) can therefore return a
+    CancelledError alongside normal results; SmartRetriever must skip it
+    instead of calling .get() on it.
+    """
+
+    async def _search(*, query: str, kb_name: str) -> dict:
+        if query == "cancelled":
+            raise asyncio.CancelledError()
+        return {"content": f"passage:{query}", "query": query, "provider": "x"}
+
+    async def _fake_aggregate(_self, _ctx, passages):
+        return "AGG:" + "|".join(passages)
+
+    monkeypatch.setattr(SmartRetriever, "_aggregate", _fake_aggregate, raising=True)
+    retriever = SmartRetriever(search=_search)
+
+    out = await retriever.retrieve(context="ctx", kb_name="kb", query_hints=["ok", "cancelled"])
+    assert out == {
+        "answer": "AGG:passage:ok",
+        "sources": [{"query": "ok", "provider": "x"}],
+    }
+
+    async def _always_cancelled(**_kwargs: object) -> dict:
+        raise asyncio.CancelledError()
+
+    all_cancelled = SmartRetriever(search=_always_cancelled)
+    assert await all_cancelled.retrieve("ctx", "kb", query_hints=["q"]) == {
+        "answer": "",
+        "sources": [],
+    }
