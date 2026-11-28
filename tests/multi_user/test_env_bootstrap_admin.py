@@ -66,6 +66,26 @@ def test_admin_can_still_create_an_explicit_admin_when_env_admin_exists(env_admi
 # ---------------------------------------------------------------------------
 
 
+def test_single_user_info_only_formats_the_requested_account(env_admin, monkeypatch):
+    from unittest.mock import Mock
+
+    from deeptutor.multi_user import identity
+    from deeptutor.services import auth
+
+    identity.save_user("student1", "$2b$12$placeholder")
+    expected = {user["username"]: user for user in auth.list_users()}
+    project = Mock(wraps=identity.public_permission_dict)
+    monkeypatch.setattr(identity, "public_permission_dict", project)
+
+    for username, info in expected.items():
+        project.reset_mock()
+        assert auth.get_user_info(username) == info
+        project.assert_called_once()
+    project.reset_mock()
+    assert auth.get_user_info("missing") is None
+    project.assert_not_called()
+
+
 def test_env_admin_still_resolves_after_first_account_is_created(env_admin, bootstrap_hash):
     from deeptutor.multi_user.identity import load_users, save_user
 

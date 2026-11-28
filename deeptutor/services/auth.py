@@ -232,10 +232,10 @@ def set_avatar(username: str, avatar: str) -> bool:
 
 def get_user_info(username: str) -> dict | None:
     """Return the public info dict for a single user, or None if unknown."""
-    for item in list_users():
-        if item.get("username") == username:
-            return item
-    return None
+    from deeptutor.multi_user.identity import public_user_info
+
+    record = _load_users().get(username)
+    return public_user_info(username, record) if record is not None else None
 
 
 def get_learner_profile(username: str) -> dict[str, Any] | None:
