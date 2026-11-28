@@ -903,10 +903,10 @@ def print_notebook_table(notebooks: list[dict[str, Any]]) -> None:
     table.add_column("Description")
     for notebook in notebooks:
         table.add_row(
-            str(notebook.get("id", "")),
-            str(notebook.get("name", "")),
-            str(notebook.get("record_count", 0)),
-            str(notebook.get("description", "")),
+            Text(str(notebook.get("id", ""))),
+            Text(str(notebook.get("name", ""))),
+            Text(str(notebook.get("record_count", 0))),
+            Text(str(notebook.get("description", ""))),
         )
     console.print(table)
 
