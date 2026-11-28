@@ -86,14 +86,20 @@ _PROBE = r"""
       // SVG canvases can be larger than their drawing (the kit uses full-frame canvases).
       // Exclude those canvases while measuring HTML overflow; the actual SVG paths are
       // checked against clipping ancestors below. Restore inline styles synchronously.
+      // A graphic the kit has fitted is scaled by a transform on its full-size frame, so its
+      // canvas and the scaled frame box can exceed the region while the drawing itself fits.
       const svgs = [...region.querySelectorAll('svg')].filter((svg) =>
-        !svg.parentElement.closest('svg') && /^(absolute|fixed)$/.test(getComputedStyle(svg).position));
+        !svg.parentElement.closest('svg') && (/^(absolute|fixed)$/.test(getComputedStyle(svg).position) ||
+          svg.parentElement.matches('[data-scene-graphic-fit="ready"]')));
       const displays = svgs.map((svg) => [svg, svg.style.getPropertyValue('display'), svg.style.getPropertyPriority('display')]);
+      const fitted = [...region.querySelectorAll('[data-scene-graphic-fit="ready"]')].map((el) => [el, el.style.transform]);
       let htmlOverflow;
       try {
         for (const [svg] of displays) svg.style.setProperty('display', 'none', 'important');
+        for (const [el] of fitted) el.style.transform = '';
         htmlOverflow = region.scrollHeight > region.clientHeight + 2 || region.scrollWidth > region.clientWidth + 2;
       } finally {
+        for (const [el, value] of fitted) el.style.transform = value;
         for (const [svg, value, priority] of displays) {
           if (value) svg.style.setProperty('display', value, priority);
           else svg.style.removeProperty('display');

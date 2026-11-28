@@ -114,6 +114,31 @@ window.addEventListener('load', () => setTimeout(() => {
         assert f'data-opacities="{expected}"' in proc.stdout
 
 
+@pytest.mark.skipif(chrome_path() is None, reason="Chrome is required for the layout check")
+async def test_fitted_graphic_is_not_reported_as_overflow(tmp_path: Path) -> None:
+    # A small drawing on a canvas wider than the region: the kit scales and centres
+    # it, so the scaled frame and the canvas exceed the region but the drawing fits.
+    code = """
+import {SceneLayout, ContentFlow, Title, Body, Scenes, lessonLength} from "./kit";
+const Drawing = () => <svg width={880} height={330}>
+  <line x1={300} y1={150} x2={560} y2={150} stroke="black" strokeWidth={4} />
+  <text x={300} y={200} fontSize={28}>x</text></svg>;
+export const VIDEO_LESSON_SCENES = [{voice: "s1", frames: 60, content: <SceneLayout
+  content={<ContentFlow><Title opening>题目</Title><Body opening>已知条件</Body></ContentFlow>}
+  graphic={<Drawing />} />}];
+export const LESSON = {durationInFrames: lessonLength(VIDEO_LESSON_SCENES), fps: 30, width: 1920, height: 1080, sceneContract: "fixed-v1"};
+export const Lesson = () => <Scenes scenes={VIDEO_LESSON_SCENES} />;
+"""
+    voice = 'export const VOICE = {s1: {text: "", frames: 30, captions: []}};'
+    lesson = runtime.prepare_workdir(tmp_path, code, voice=voice)
+    result = await runtime.build_lesson(lesson, tmp_path / "player.js")
+    assert result.ok, result.errors
+    page = runtime.write_page(
+        tmp_path / "player.js", tmp_path / "lesson.html", title="test", language="zh"
+    )
+    assert check_layout(page, [0, 30], require_player_frame=True, expected_scene_lengths=[60]) == []
+
+
 async def test_fixed_timeline_uses_narration_and_keeps_legacy_fallback(tmp_path: Path) -> None:
     code = """
 import {Scenes, Stage, Title, lessonLength} from "./kit";
