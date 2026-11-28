@@ -158,10 +158,13 @@ _ACTION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Bare "model/engine/embedding/vector" are everyday words in a tutoring product
+# (physical models, ML models, word embeddings), so only qualified forms count.
 _OBJECT_PATTERN = re.compile(
-    r"(语言|界面|主题|皮肤|模型|嵌入|向量|解析引擎|解析器|引擎"
-    r"|搜索引擎|搜索服务|联网搜索|偏好设置|设置项)"
-    r"|(\blanguage\b|\btheme\b|\bmodel\b|\bembedding\b|\bparser\b|\bparsing\b|\bengine\b"
+    r"(语言|界面|主题|皮肤|语言模型|对话模型|聊天模型|嵌入模型|向量模型|大模型|默认模型"
+    r"|解析引擎|解析器|搜索引擎|搜索服务|联网搜索|偏好设置|设置项)"
+    r"|(\blanguage\b|\btheme\b|\b(?:chat|language|embedding|llm|ai|default)\s+model\b"
+    r"|\bparser\b|\bparsing\b|\b(?:parsing|search)\s+engine\b"
     r"|\bweb\s+search\b|\bsearch\s+provider\b|\bprovider\b|\bpreferences?\b)",
     re.IGNORECASE,
 )
