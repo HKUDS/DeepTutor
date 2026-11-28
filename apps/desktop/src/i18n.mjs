@@ -52,6 +52,20 @@ const en = {
   mediaPrompt: 'Allow Open DeepTutor to use the microphone or camera?',
   deny: "Don't Allow",
   allow: 'Allow',
+  settings: 'Settings…',
+  preferences: 'Preferences',
+  moreLanguages: 'More Languages',
+  theme: 'Theme',
+  themeSystem: 'System',
+  themeDefault: 'Default',
+  themeCream: 'Cream',
+  themeDark: 'Dark',
+  themeGlass: 'Glass',
+  layout: 'Layout',
+  layoutModern: 'Modern',
+  layoutClassic: 'Classic',
+  alwaysOnTop: 'Always on Top',
+  forceReload: 'Force Reload',
 };
 
 const zh = {
@@ -105,6 +119,20 @@ const zh = {
   mediaPrompt: '允许 Open DeepTutor 使用麦克风或摄像头？',
   deny: '不允许',
   allow: '允许',
+  settings: '设置…',
+  preferences: '偏好',
+  moreLanguages: '更多语言',
+  theme: '主题',
+  themeSystem: '系统',
+  themeDefault: '默认',
+  themeCream: '奶油',
+  themeDark: '深色',
+  themeGlass: '琉璃',
+  layout: '界面布局',
+  layoutModern: '现代',
+  layoutClassic: '经典',
+  alwaysOnTop: '窗口置顶',
+  forceReload: '强制刷新',
 };
 
 const de = {
@@ -158,6 +186,20 @@ const de = {
   mediaPrompt: 'Open DeepTutor Zugriff auf Mikrofon oder Kamera erlauben?',
   deny: 'Nicht erlauben',
   allow: 'Erlauben',
+  settings: 'Einstellungen…',
+  preferences: 'Einstellungen',
+  moreLanguages: 'Weitere Sprachen',
+  theme: 'Design',
+  themeSystem: 'System',
+  themeDefault: 'Standard',
+  themeCream: 'Creme',
+  themeDark: 'Dunkel',
+  themeGlass: 'Glas',
+  layout: 'Layout',
+  layoutModern: 'Modern',
+  layoutClassic: 'Klassisch',
+  alwaysOnTop: 'Immer im Vordergrund',
+  forceReload: 'Erzwungen neu laden',
 };
 
 const fr = {
@@ -211,6 +253,20 @@ const fr = {
   mediaPrompt: 'Autoriser Open DeepTutor à utiliser le micro ou la caméra ?',
   deny: 'Refuser',
   allow: 'Autoriser',
+  settings: 'Paramètres…',
+  preferences: 'Préférences',
+  moreLanguages: 'Autres langues',
+  theme: 'Thème',
+  themeSystem: 'Système',
+  themeDefault: 'Par défaut',
+  themeCream: 'Crème',
+  themeDark: 'Sombre',
+  themeGlass: 'Verre',
+  layout: 'Disposition',
+  layoutModern: 'Moderne',
+  layoutClassic: 'Classique',
+  alwaysOnTop: 'Toujours au premier plan',
+  forceReload: 'Forcer le rechargement',
 };
 
 const pl = {
@@ -264,6 +320,20 @@ const pl = {
   mediaPrompt: 'Zezwolić Open DeepTutor na użycie mikrofonu lub kamery?',
   deny: 'Nie zezwalaj',
   allow: 'Zezwól',
+  settings: 'Ustawienia…',
+  preferences: 'Preferencje',
+  moreLanguages: 'Więcej języków',
+  theme: 'Motyw',
+  themeSystem: 'Systemowy',
+  themeDefault: 'Domyślny',
+  themeCream: 'Kremowy',
+  themeDark: 'Ciemny',
+  themeGlass: 'Szkło',
+  layout: 'Układ',
+  layoutModern: 'Nowoczesny',
+  layoutClassic: 'Klasyczny',
+  alwaysOnTop: 'Zawsze na wierzchu',
+  forceReload: 'Wymuś odświeżenie',
 };
 
 const uk = {
@@ -317,6 +387,20 @@ const uk = {
   mediaPrompt: 'Дозволити Open DeepTutor використовувати мікрофон або камеру?',
   deny: 'Не дозволяти',
   allow: 'Дозволити',
+  settings: 'Налаштування…',
+  preferences: 'Налаштування',
+  moreLanguages: 'Інші мови',
+  theme: 'Тема',
+  themeSystem: 'Системна',
+  themeDefault: 'Стандартна',
+  themeCream: 'Кремова',
+  themeDark: 'Темна',
+  themeGlass: 'Скло',
+  layout: 'Макет',
+  layoutModern: 'Сучасний',
+  layoutClassic: 'Класичний',
+  alwaysOnTop: 'Поверх усіх вікон',
+  forceReload: 'Примусово перезавантажити',
 };
 
 const vi = {
@@ -370,6 +454,20 @@ const vi = {
   mediaPrompt: 'Cho phép Open DeepTutor dùng micrô hoặc camera?',
   deny: 'Không cho phép',
   allow: 'Cho phép',
+  settings: 'Cài đặt…',
+  preferences: 'Tùy chọn',
+  moreLanguages: 'Ngôn ngữ khác',
+  theme: 'Giao diện',
+  themeSystem: 'Theo hệ thống',
+  themeDefault: 'Mặc định',
+  themeCream: 'Kem',
+  themeDark: 'Tối',
+  themeGlass: 'Kính',
+  layout: 'Bố cục',
+  layoutModern: 'Hiện đại',
+  layoutClassic: 'Cổ điển',
+  alwaysOnTop: 'Luôn hiển thị trên cùng',
+  forceReload: 'Tải lại bắt buộc',
 };
 
 const pt = {
@@ -436,7 +534,21 @@ const pt = {
   "reopen": "Reabrir versão anterior",
   "mediaPrompt": "Permitir que o Open DeepTutor use o microfone ou a câmera?",
   "deny": "Não permitir",
-  "allow": "Permitir"
+  "allow": "Permitir",
+  "settings": "Configurações…",
+  "preferences": "Preferências",
+  "moreLanguages": "Mais idiomas",
+  "theme": "Tema",
+  "themeSystem": "Sistema",
+  "themeDefault": "Padrão",
+  "themeCream": "Creme",
+  "themeDark": "Escuro",
+  "themeGlass": "Vidro",
+  "layout": "Layout",
+  "layoutModern": "Moderno",
+  "layoutClassic": "Clássico",
+  "alwaysOnTop": "Sempre no topo",
+  "forceReload": "Forçar recarregamento"
 };
 
 const tr = {
@@ -503,7 +615,21 @@ const tr = {
   "reopen": "Önceki sürümü yeniden aç",
   "mediaPrompt": "Open DeepTutor'ın mikrofonu veya kamerayı kullanmasına izin verilsin mi?",
   "deny": "İzin verme",
-  "allow": "İzin ver"
+  "allow": "İzin ver",
+  "settings": "Ayarlar…",
+  "preferences": "Tercihler",
+  "moreLanguages": "Diğer diller",
+  "theme": "Tema",
+  "themeSystem": "Sistem",
+  "themeDefault": "Varsayılan",
+  "themeCream": "Krem",
+  "themeDark": "Koyu",
+  "themeGlass": "Cam",
+  "layout": "Düzen",
+  "layoutModern": "Modern",
+  "layoutClassic": "Klasik",
+  "alwaysOnTop": "Her zaman üstte",
+  "forceReload": "Zorla yeniden yükle"
 };
 
 export const MESSAGES = { en, zh, de, fr, pl, uk, vi, pt, tr };

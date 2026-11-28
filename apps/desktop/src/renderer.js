@@ -40,6 +40,9 @@ const SLOW_START_MS = 15000;
 let currentStep = '';
 let currentProgress = 8;
 let lastPhase = '';
+const menusNav = el('titlebar-menus');
+let menuSignature = '';
+let activeMenuId = null;
 let swapTimer;
 let slowTimer;
 
@@ -83,6 +86,52 @@ function setStep(next) {
   }, 140);
 }
 
+function renderMenus(menus) {
+  if (window.desktop.platform !== 'win32' || !Array.isArray(menus) || !menusNav) return;
+  const sig = menus.map(m => `${m.id}:${m.label}`).join('|');
+  if (sig === menuSignature) return;
+  menuSignature = sig;
+  menusNav.textContent = '';
+
+  for (const item of menus) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = item.id === 'app' ? 'titlebar-menu-btn is-brand' : 'titlebar-menu-btn';
+    btn.dataset.menuId = item.id;
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'false');
+
+    if (item.id === 'app') {
+      const icon = document.createElement('img');
+      icon.className = 'brand-mono';
+      icon.src = '../assets/mark.png';
+      icon.alt = '';
+      icon.draggable = false;
+      btn.appendChild(icon);
+    }
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    btn.appendChild(label);
+
+    // Prevent stealing focus from WebContentsView on click so Edit actions target the web page.
+    btn.addEventListener('mousedown', event => event.preventDefault());
+    btn.addEventListener('click', async () => {
+      if (activeMenuId === item.id) return;
+      activeMenuId = item.id;
+      btn.setAttribute('aria-expanded', 'true');
+      const rect = btn.getBoundingClientRect();
+      try {
+        await window.desktop.popupMenu(item.id, { x: rect.left, y: rect.bottom + 2 });
+      } finally {
+        btn.setAttribute('aria-expanded', 'false');
+        if (activeMenuId === item.id) activeMenuId = null;
+      }
+    });
+
+    menusNav.appendChild(btn);
+  }
+}
+
 function apply(state) {
   if (!state) return;
   const phase = state.phase || 'starting';
@@ -90,6 +139,12 @@ function apply(state) {
   root.dataset.theme = state.theme || 'light';
   root.dataset.phase = phase;
   root.dataset.content = state.contentVisible ? 'visible' : 'hidden';
+  if (window.desktop.platform === 'win32') {
+    root.dataset.palette = state.palette;
+    if (state.chromeBg) root.style.setProperty('--bg', state.chromeBg);
+    else root.style.removeProperty('--bg');
+    renderMenus(state.menus);
+  }
 
   tagline.textContent = state.tagline || '';
   edition.textContent = state.edition || '';

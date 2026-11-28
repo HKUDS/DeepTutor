@@ -25,10 +25,15 @@ requirements.
   The web UI recognises the app by the `OpenDeepTutor/<version> (macOS; arm64)`
   user-agent marker (`(macOS; x64)`, `(Windows; x64)`); names live in
   `src/platform.mjs` and `web/lib/version.ts`.
-- The shell (start screen, menus, dialogs) starts in English and then follows
-  the interface language and theme chosen in DeepTutor's Settings
-  (`data/user/settings/interface.json`), including live changes. Copy lives in
-  `src/i18n.mjs` for every language the web UI ships.
+- The shell (start screen, menus, dialogs) follows the interface language and
+  theme in `data/user/settings/interface.json`, including live changes. On
+  Windows, Preferences also changes these settings: it updates the Web page's
+  localStorage and sends `/api/settings/ui`, falling back to the settings file
+  while the backend is unavailable. The Web interface supports 13 languages;
+  shell copy in `src/i18n.mjs` currently covers English, Chinese, German, French,
+  Polish, Ukrainian, Vietnamese, Portuguese and Turkish. Japanese, Korean,
+  Italian and Hungarian remain valid Web preferences but shell copy falls back
+  to English. Selecting one does not change the saved language to English.
 
 ## Layout
 
@@ -59,8 +64,14 @@ Every build file of a target goes to `.local/<target>/`; downloads go to `out/`.
 | Data     | `~/Library/Application Support/Open DeepTutor/workspace/data` | `%LOCALAPPDATA%\Open DeepTutor\workspace\data` |
 | Runtimes | `…/Open DeepTutor/runtimes/<runtime-id>`               | same, under `%LOCALAPPDATA%`              |
 | Logs     | `…/Open DeepTutor/logs/runtime.log`                    | same, under `%LOCALAPPDATA%`              |
-| Window   | the shell's own title bar under the traffic lights     | native title bar and menu bar             |
+| Window   | the shell's own title bar under the traffic lights     | overlay title bar with shell buttons and native popup menus             |
 | Shutdown | SIGTERM to each service's process group, then SIGKILL  | `taskkill /T /F` on each service's tree   |
+
+On Windows, **Open DeepTutor**, **Preferences**, **View**, and **Core** are
+in the title bar. Preferences changes language, theme and Modern/Classic layout;
+**View** also offers always-on-top and force reload. Use the window caption to
+minimize and the focused editor's shortcuts for cut, copy, paste, undo, redo and
+select all. macOS keeps its existing menu structure.
 
 Quitting stops the services this app started. It does not stop a separately
 running `deeptutor start`. Web content has no preload, Node integration or

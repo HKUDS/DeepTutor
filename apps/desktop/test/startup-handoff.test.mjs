@@ -7,7 +7,7 @@ const renderer = readFileSync(new URL('../src/renderer.js', import.meta.url), 'u
 
 // Run the shipped private-shell renderer against status events from its preload.
 function openShell() {
-  const root = { dataset: {} };
+  const root = { dataset: {}, style: { setProperty() {}, removeProperty() {} } };
   const elements = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
