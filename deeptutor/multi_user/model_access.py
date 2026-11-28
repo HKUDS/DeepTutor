@@ -154,8 +154,12 @@ def allowed_llm_options() -> dict[str, Any]:
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
             "provider": item.get("provider") or "",
-            "reasoning_effort": item.get("reasoning_effort"),
-            "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
+            **({"reasoning_effort": item["reasoning_effort"]} if item.get("reasoning_effort") else {}),
+            **(
+                {"supported_reasoning_efforts": item["supported_reasoning_efforts"]}
+                if item.get("supported_reasoning_efforts") is not None
+                else {}
+            ),
             **{key: item[key] for key in ("declared_reasoning", "declared_vision") if key in item},
             "source": item.get("source") or "admin",
             "is_active_default": (
