@@ -17,7 +17,7 @@ import { getTraceMeta } from "@/features/chat/trace";
  * tokens, so it matches the side viewer and follows light/dark theme.
  */
 const MONO_FONT =
-  'Monaco, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
+  'Monaco, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", monospace';
 const RESULT_PREVIEW_LINES = 3;
 
 export default function SubagentRunTranscript({

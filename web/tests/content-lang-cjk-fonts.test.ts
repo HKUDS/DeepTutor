@@ -49,18 +49,44 @@ function stackOrder(css: string, selectorBlock: string, earlier: string, later: 
   assert.ok(a < b, `${earlier} must precede ${later} in ${selectorBlock}`);
 }
 
+function stackOrderGroup(
+  css: string,
+  selectorBlock: string,
+  equivalentFonts: string[],
+  later: string,
+) {
+  equivalentFonts.forEach((font) => {
+    stackOrder(css, selectorBlock, font, later);
+  });
+}
+
 test("globals.css :lang CJK stacks put regional faces before SimSun/Songti SC", () => {
   const css = read("app/globals.css");
 
   stackOrder(css, ".prose:lang(ja)", "Yu Mincho", "SimSun");
-  stackOrder(css, ".prose:lang(ja)", "Noto Serif JP", "SimSun");
+  stackOrderGroup(
+    css,
+    ".prose:lang(ja)",
+    ["Noto Serif JP", "Source Han Serif JP"],
+    "SimSun",
+  );
   stackOrder(css, ".prose:lang(ja)", "Hiragino Mincho ProN", "Songti SC");
 
-  stackOrder(css, ".prose:lang(ko)", "Noto Serif KR", "SimSun");
+  stackOrderGroup(
+    css,
+    ".prose:lang(ko)",
+    ["Noto Serif KR", "Source Han Serif KR"],
+    "SimSun",
+  );
   stackOrder(css, ".prose:lang(ko)", "Batang", "Songti SC");
 
   stackOrder(css, ".prose:lang(zh-Hant)", "Songti TC", "SimSun");
-  stackOrder(css, ".prose:lang(zh-Hant)", "Noto Serif TC", "Songti SC");
+  stackOrderGroup(
+    css,
+    ".prose:lang(zh-Hant)",
+    ["Noto Serif TC", "Source Han Serif TC"],
+    "Songti SC",
+  );
 
   const tw = read("tailwind.config.js");
   const serifIdx = tw.indexOf("serif:");
@@ -68,6 +94,7 @@ test("globals.css :lang CJK stacks put regional faces before SimSun/Songti SC", 
   assert.ok(serifSlice.includes("Songti SC"));
   assert.ok(!serifSlice.includes("Yu Mincho"));
   assert.ok(!serifSlice.includes("Noto Serif JP"));
+  assert.ok(!serifSlice.includes("Source Han Serif JP"));
 });
 
 test("AssistantResponse sets lang from contentLang(language)", () => {

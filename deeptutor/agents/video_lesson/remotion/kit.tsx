@@ -9,8 +9,8 @@ import {VOICE} from "./voice";
 export const T = {
   paper: "#fdfcf9", paper2: "#f5f2ea", ink: "#1c1816", soft: "#3b3430", muted: "#6d645a",
   rule: "#e6decc", accent: "#b0501e", blue: "#2f5d8a", green: "#3d6b4f",
-  serif: "Lora, 'Noto Serif SC', 'Songti SC', 'SimSun', serif",
-  sans: "Geist, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif",
+  serif: "Lora, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif",
+  sans: "Geist, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', sans-serif",
   mono: "'Geist Mono', ui-monospace, monospace",
 };
 export const W = 1920, H = 1080;
