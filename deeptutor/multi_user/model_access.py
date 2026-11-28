@@ -47,6 +47,21 @@ def _model_by_id(profile: dict[str, Any], model_id: str) -> dict[str, Any] | Non
     return None
 
 
+def supported_reasoning_levels_field(model: dict[str, Any] | None) -> dict[str, Any]:
+    """The ``supported_reasoning_efforts`` wire field, only when levels are declared.
+
+    Consumers treat *absence* as "no live list; fall back to the provider
+    tables"; a JSON ``null`` is neither. The web option list builds the
+    reasoning selector straight from this field and crashed on ``null.map()``
+    for every granted model without Codex-published levels (#641 fallout:
+    the non-admin option path passed ``.get()`` through, while the admin
+    builder in ``services/model_selection/llm.py`` only emits the key when
+    the value is a list). Ordinary users must see the same shape as admins.
+    """
+    levels = (model or {}).get("codex_supported_reasoning_levels")
+    return {"supported_reasoning_efforts": levels} if isinstance(levels, list) else {}
+
+
 #: Bindings whose credential is one person's own subscription login rather than
 #: a billable team key. Codex stamps ``owner_bound`` onto the managed profile it
 #: publishes, but a profile can also be created by hand in the settings editor —
@@ -111,9 +126,7 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                     "provider": effective.get("binding") or "",
                     "profile_name": effective.get("name") or profile_id,
                     "reasoning_effort": (model or {}).get("reasoning_effort"),
-                    "supported_reasoning_efforts": (model or {}).get(
-                        "codex_supported_reasoning_levels"
-                    ),
+                    **supported_reasoning_levels_field(model),
                     **{
                         f"declared_{key}": value
                         for key, value in ((model or {}).get("capabilities") or {}).items()
@@ -155,8 +168,11 @@ def allowed_llm_options() -> dict[str, Any]:
             "model": item.get("model") or "",
             "provider": item.get("provider") or "",
             "reasoning_effort": item.get("reasoning_effort"),
-            "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
-            **{key: item[key] for key in ("declared_reasoning", "declared_vision") if key in item},
+            **{
+                key: item[key]
+                for key in ("supported_reasoning_efforts", "declared_reasoning", "declared_vision")
+                if key in item
+            },
             "source": item.get("source") or "admin",
             "is_active_default": (
                 item.get("profile_id") == active_profile_id

@@ -32,6 +32,7 @@ from typing import Any
 
 from deeptutor.services.config.model_catalog import ModelCatalogService
 
+from .model_access import supported_reasoning_levels_field
 from .paths import get_owner_path_service
 
 _CODEX_MANAGED_BY = "openai_codex_oauth"
@@ -112,7 +113,7 @@ def personal_llm_rows() -> list[dict[str, Any]]:
                     "model": model.get("model") or "",
                     "provider": profile.get("binding") or "",
                     "reasoning_effort": model.get("reasoning_effort"),
-                    "supported_reasoning_efforts": model.get("codex_supported_reasoning_levels"),
+                    **supported_reasoning_levels_field(model),
                     **{
                         f"declared_{key}": value
                         for key, value in (model.get("capabilities") or {}).items()

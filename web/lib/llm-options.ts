@@ -14,7 +14,10 @@ export interface LLMOption extends LLMSelection {
   provider_label?: string;
   context_window?: number;
   reasoning_effort?: string;
-  supported_reasoning_efforts?: string[];
+  /** Absent when the model declares no live list; `null` appears on older
+   *  payloads from the pre-redaction option path and must not be treated as
+   *  a list (the selector reads this field directly). */
+  supported_reasoning_efforts?: string[] | null;
   /** The model's own Settings declaration of reasoning support, when present. */
   declared_reasoning?: boolean;
   supports_vision?: boolean;
