@@ -92,6 +92,10 @@ class ReadingViewport(BaseModel):
     selection: str | None = None
     # Playback position of a video material, reported by the reader on each turn.
     time_seconds: float | None = Field(default=None, ge=0)
+    # A marked PDF page area: ``{"locator": n, "box": [x0, y0, x1, y1]}`` in
+    # page-normalised coordinates. Loosely typed on purpose: an unusable area
+    # is dropped by the session layer instead of failing the whole turn.
+    region: dict[str, Any] | None = None
 
 
 class TimedMediaViewport(BaseModel):

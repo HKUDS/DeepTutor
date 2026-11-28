@@ -80,6 +80,9 @@ export type MaterialId = string;
 export type Revision = number;
 export type ReadingReferences = ReadingReference[];
 export type Locator = number | null;
+export type Region = {
+  [k: string]: unknown;
+} | null;
 export type Selection = string | null;
 export type TimeSeconds = number | null;
 export type ReadingWorkspaceId = string | null;
@@ -439,6 +442,7 @@ export interface ReadingReference {
  */
 export interface ReadingViewport {
   locator?: Locator;
+  region?: Region;
   selection?: Selection;
   time_seconds?: TimeSeconds;
 }

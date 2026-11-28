@@ -100,7 +100,9 @@ import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
   normalizeReadingMaterialId,
   normalizeReadingMaterialRevision,
+  normalizeReadingRegion,
   readingTurnFields,
+  type ReadingRegion,
 } from "@/lib/reading-turn-state";
 import {
   decideIdleTurnRecovery,
@@ -366,6 +368,8 @@ export interface MessageRequestSnapshot {
   readingMaterialRevision?: number;
   /** The passage the question was asked about, and the unit it came from. */
   readingSelection?: ReadingSelectionSnapshot;
+  /** The page area the question was asked about (#2741). */
+  readingRegion?: ReadingRegion;
   /** Complete wire context captured at first send for deterministic retry. */
   readingTurnFields?: ReturnType<typeof readingTurnFields>;
   watchingTurnFields?: { timed_media_id?: string; timed_media_viewport?: { time_seconds: number } };
@@ -2041,6 +2045,7 @@ function hydrateRequestSnapshot(
       ? String(stored.timedMediaId ?? stored.timed_media_id).trim()
       : "";
   const readingSelection = asReadingSelection(stored.readingSelection);
+  const readingRegion = normalizeReadingRegion(stored.readingRegion);
 
   if (config && Object.keys(config).length) snapshot.config = config;
   if (notebookReferences.length)
@@ -2084,6 +2089,7 @@ function hydrateRequestSnapshot(
   }
   if (timedMediaId) snapshot.timedMediaId = timedMediaId;
   if (readingSelection) snapshot.readingSelection = readingSelection;
+  if (readingRegion) snapshot.readingRegion = readingRegion;
   if (stored.capabilityOnce === true) snapshot.capabilityOnce = true;
   return snapshot;
 }
@@ -3204,6 +3210,8 @@ export function ChatStateAdapterProvider({
         questionNotebookReferences;
       const liveReadingFields = exactReplay ? {} : readingTurnFields(effectiveWorkspaceMode);
       const replaySelection = replaySnapshot?.readingSelection;
+      // A regenerate crops the same marked area, not whatever is marked now.
+      const replayRegion = replaySnapshot?.readingRegion;
       const effectiveReadingTurnFields = exactReplay
         ? (replaySnapshot?.readingTurnFields ?? (replaySnapshot?.readingMaterialId
           ? {
@@ -3211,9 +3219,14 @@ export function ChatStateAdapterProvider({
               ...(replaySnapshot.readingMaterialRevision
                 ? { reading_material_revision: replaySnapshot.readingMaterialRevision }
                 : {}),
-              ...(replaySelection
-                ? { reading_viewport: { selection: replaySelection.quote,
-                    locator: replaySelection.locator } }
+              ...(replaySelection || replayRegion
+                ? { reading_viewport: {
+                    ...(replaySelection
+                      ? { selection: replaySelection.quote,
+                          locator: replaySelection.locator }
+                      : {}),
+                    ...(replayRegion ? { region: replayRegion } : {}),
+                  } }
                 : {}),
             }
           : {}))
@@ -3228,13 +3241,18 @@ export function ChatStateAdapterProvider({
               : {}),
             // A regenerate answers the same passage, not whatever the reader
             // happens to have selected now.
-            ...(replaySelection
+            ...(replaySelection || replayRegion
               ? {
                   reading_viewport: {
-                    selection: replaySelection.quote,
-                    ...(replaySelection.locator
-                      ? { locator: replaySelection.locator }
+                    ...(replaySelection
+                      ? {
+                          selection: replaySelection.quote,
+                          ...(replaySelection.locator
+                            ? { locator: replaySelection.locator }
+                            : {}),
+                        }
                       : {}),
+                    ...(replayRegion ? { region: replayRegion } : {}),
                   },
                 }
               : {}),
@@ -3248,6 +3266,11 @@ export function ChatStateAdapterProvider({
               quote: liveViewport.selection,
               locator: liveViewport.locator ?? 0,
             }
+          : undefined);
+      const effectiveReadingRegion: ReadingRegion | undefined =
+        replayRegion ??
+        (liveReadingFields.reading_material_id && liveViewport?.region
+          ? liveViewport.region
           : undefined);
       const effectiveReadingMaterialId =
         effectiveReadingTurnFields.reading_material_id;
@@ -3321,6 +3344,9 @@ export function ChatStateAdapterProvider({
           : {}),
         ...(effectiveReadingSelection
           ? { readingSelection: effectiveReadingSelection }
+          : {}),
+        ...(effectiveReadingRegion
+          ? { readingRegion: effectiveReadingRegion }
           : {}),
         ...(Object.keys(effectiveReadingTurnFields).length
           ? { readingTurnFields: effectiveReadingTurnFields }

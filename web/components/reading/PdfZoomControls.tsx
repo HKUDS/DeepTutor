@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { RotateCcw, SquareDashedMousePointer, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ import {
   PDF_ZOOM_OPTIONS,
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
+import Tooltip from "@/shared/ui/Tooltip";
 import { PreferenceButton } from "./ReaderDisplayControls";
 
 /**
@@ -31,6 +32,8 @@ export function PdfZoomControls({
   onSelect,
   onReset,
   onActiveChange,
+  regionMode,
+  onToggleRegionMode,
 }: {
   preference: PdfZoomPreference;
   /** The percentage actually rendered, which clamping can lower. */
@@ -54,6 +57,9 @@ export function PdfZoomControls({
   onReset: () => void;
   /** Reports pointer presence so hovering the bar does not hide it. */
   onActiveChange: (active: boolean) => void;
+  /** Area mode (#2741); `undefined` where the reader offers no area mode. */
+  regionMode?: boolean;
+  onToggleRegionMode?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -194,6 +200,27 @@ export function PdfZoomControls({
           icon={RotateCcw}
           onClick={onReset}
         />
+        {onToggleRegionMode && (
+          <>
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+            <Tooltip label={t("Mark an area on the page to ask about it")}>
+              <button
+                type="button"
+                aria-pressed={Boolean(regionMode)}
+                aria-label={t("Mark area")}
+                onClick={onToggleRegionMode}
+                className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] transition ${
+                  regionMode
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "opacity-80 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-100"
+                }`}
+              >
+                <SquareDashedMousePointer size={15} />
+                <span>{t("Mark area")}</span>
+              </button>
+            </Tooltip>
+          </>
+        )}
 
         {open && (
           <div

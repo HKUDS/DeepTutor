@@ -1,6 +1,6 @@
 'use client'
 
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { loadPdfjs, outputScale, type PdfDocument } from '@/lib/pdfjs-loader'
 import type { AnnotationItem } from '@/lib/reading-api'
@@ -12,6 +12,7 @@ import {
 } from '@/lib/pdf-page-geometry'
 import { canvasPixelRatio } from '@/lib/reading-zoom'
 import { AnnotationLayer } from './AnnotationLayer'
+import { PdfRegionLayer } from './PdfRegionLayer'
 
 export interface PdfPageProps {
   doc: PdfDocument
@@ -49,6 +50,14 @@ export interface PdfPageProps {
    * material must never show the previous one's crop.
    */
   inkKey?: string
+  /** Area mode is on: a drag on the page marks a rectangle (#2741). */
+  regionSelecting?: boolean
+  /** The area marked on this page, if any. */
+  markedRegion?: NormalisedBox | null
+  /** Actions offered next to the marked area. */
+  regionActions?: ReactNode
+  /** Reports a marked area in page-normalised coordinates. */
+  onRegionSelect?: (locator: number, box: NormalisedBox) => void
 }
 
 /** Debounce before the single final repaint once a resize settles. */
@@ -111,6 +120,10 @@ export function PdfPage({
   onCropRatio,
   onImageClick,
   inkKey = `${doc ? 'doc' : 'none'}:${locator}`,
+  regionSelecting = false,
+  markedRegion = null,
+  regionActions,
+  onRegionSelect,
 }: PdfPageProps) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -503,6 +516,15 @@ export function PdfPage({
           flashRects={flashRects}
           onAnnotationClick={onAnnotationClick}
         />
+        {onRegionSelect && (
+          <PdfRegionLayer
+            locator={locator}
+            selecting={regionSelecting}
+            marked={markedRegion}
+            actions={regionActions}
+            onSelect={onRegionSelect}
+          />
+        )}
       </div>
       {!active && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

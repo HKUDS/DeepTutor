@@ -642,6 +642,14 @@ def _reading_viewport(value: Any) -> dict[str, Any]:
             seconds = -1.0
         if math.isfinite(seconds) and seconds >= 0:
             viewport["time_seconds"] = min(24 * 60 * 60, seconds)
+    # A marked page area (#2741). An unusable one is dropped here, quietly:
+    # the question still runs, just without the crop.
+    if value.get("region") is not None:
+        from deeptutor.reading.page_render import normalise_region
+
+        region = normalise_region(value.get("region"))
+        if region is not None:
+            viewport["region"] = region
     return viewport
 
 
@@ -665,26 +673,46 @@ def _reading_viewport_page_render(material_id: str, locator: int) -> dict | None
         return None
 
 
-def _reading_viewport_image_attachments(material_id: str, viewport: dict[str, Any]) -> list[dict]:
-    """Attachments for the open page: its render first, embedded figures after.
+def _reading_viewport_region_render(material_id: str, viewport: dict[str, Any]) -> dict | None:
+    """Crop of the page area the reader marked, or ``None`` without one."""
+    region = viewport.get("region")
+    if not material_id or not isinstance(region, dict):
+        return None
+    try:
+        from deeptutor.reading.page_render import region_render_record
 
-    A drawn page leads with the whole-page raster (the only way a vision model
-    sees a vector diagram); embedded rasters follow. The render consumes one of
-    the ``READING_VIEWPORT_MAX_IMAGES`` slots, and the total is capped there.
-    Pages that do not qualify fall back to the embedded-image records alone.
+        return region_render_record(
+            material_id, int(region.get("locator") or 0), list(region.get("box") or [])
+        )
+    except Exception:
+        logger.warning("reading viewport region render failed", exc_info=True)
+        return None
+
+
+def _reading_viewport_image_attachments(material_id: str, viewport: dict[str, Any]) -> list[dict]:
+    """Attachments for the open page: marked area, page render, embedded figures.
+
+    A marked area leads: its crop is what the question is about. A drawn page
+    follows with the whole-page raster (the only way a vision model sees a
+    vector diagram); embedded rasters come last. The crop and the render each
+    consume one of the ``READING_VIEWPORT_MAX_IMAGES`` slots, and the total is
+    capped there. Pages that do not qualify fall back to the embedded-image
+    records alone.
     """
     viewport = viewport if isinstance(viewport, dict) else {}
+    region = _reading_viewport_region_render(material_id, viewport)
+    lead = [region] if region is not None else []
     embedded = _reading_viewport_image_records(material_id, viewport)
     try:
         locator = int(viewport.get("locator") or 0)
     except (TypeError, ValueError):
         locator = 0
-    if not material_id or locator <= 0:
-        return embedded[:READING_VIEWPORT_MAX_IMAGES]
-    rendered = _reading_viewport_page_render(material_id, locator)
-    if rendered is None:
-        return embedded[:READING_VIEWPORT_MAX_IMAGES]
-    return [rendered, *embedded[: READING_VIEWPORT_MAX_IMAGES - 1]]
+    rendered = (
+        _reading_viewport_page_render(material_id, locator) if material_id and locator > 0 else None
+    )
+    if rendered is not None:
+        lead.append(rendered)
+    return [*lead, *embedded][:READING_VIEWPORT_MAX_IMAGES]
 
 
 def _reading_viewport_image_records(material_id: str, viewport: dict[str, Any]) -> list[dict]:
@@ -923,6 +951,9 @@ def _request_snapshot_metadata(
             "quote": viewport["selection"],
             "locator": viewport.get("locator", 0),
         }
+    # Same for a marked page area: a regenerate has to crop the same area.
+    if reading_material_id and viewport.get("region"):
+        snapshot["readingRegion"] = dict(viewport["region"])
     timed_media_id = _timed_media_id(payload.get("timed_media_id"))
     if timed_media_id:
         snapshot["timedMediaId"] = timed_media_id

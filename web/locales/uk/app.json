@@ -6686,5 +6686,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "Позначити область",
+  "Mark an area on the page to ask about it": "Позначте область на сторінці, щоб запитати про неї",
+  "Drag to mark an area": "Перетягніть, щоб позначити область",
+  "Ask about this area": "Запитати про цю область",
+  "Explain this area": "Поясни цю область",
+  "Remove marked area": "Прибрати позначену область",
+  "Area on page {{page}}": "Область на сторінці {{page}}"
 }

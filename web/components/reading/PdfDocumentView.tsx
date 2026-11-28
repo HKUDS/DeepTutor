@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, MessageCircleQuestion, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   loadPdfjs,
@@ -50,7 +50,7 @@ import {
   zoomedPageWidth,
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
-import type { NormalisedBox } from "@/lib/pdf-page-geometry";
+import { boxToTuple, type NormalisedBox } from "@/lib/pdf-page-geometry";
 import { isEditableTarget } from "@/lib/shortcuts";
 import { PdfImageZoomOverlay } from "./PdfImageZoomOverlay";
 import { PdfPage } from "./PdfPage";
@@ -126,6 +126,15 @@ export interface PdfDocumentViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  /**
+   * Ask about a marked page area (#2741). Present only where a reading
+   * conversation can take the question; without it there is no area mode.
+   * `prompt` sends a ready question (Explain) instead of focusing the box.
+   */
+  onAskRegion?: (
+    region: { locator: number; box: [number, number, number, number] },
+    prompt?: string,
+  ) => void;
 }
 
 /**
@@ -146,8 +155,43 @@ export function PdfDocumentView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  onAskRegion,
 }: PdfDocumentViewProps) {
   const { t } = useTranslation();
+  // Area mode (#2741): while on, a drag on a page marks a rectangle instead of
+  // scrolling or selecting text. Off by default, and off again once the area
+  // is handed to the conversation, so ordinary reading is never affected.
+  const [regionMode, setRegionMode] = useState(false);
+  const [markedRegion, setMarkedRegion] = useState<{
+    locator: number;
+    box: NormalisedBox;
+  } | null>(null);
+  const toggleRegionMode = useCallback(() => {
+    setRegionMode((on) => !on);
+    setMarkedRegion(null);
+  }, []);
+  const askRegion = useCallback(
+    (prompt?: string) => {
+      if (!markedRegion || !onAskRegion) return;
+      onAskRegion(
+        { locator: markedRegion.locator, box: boxToTuple(markedRegion.box) },
+        prompt,
+      );
+      setMarkedRegion(null);
+      setRegionMode(false);
+    },
+    [markedRegion, onAskRegion],
+  );
+  useEffect(() => {
+    if (!regionMode && !markedRegion) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMarkedRegion(null);
+      setRegionMode(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [regionMode, markedRegion]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Loaded document and load error are both tagged with the material they
   // belong to, so switching documents invalidates them by derivation instead of
@@ -1069,6 +1113,45 @@ export function PdfDocumentView({
                   onImageClick={(targetLocator, box) =>
                     setZoomTarget({ locator: targetLocator, box })
                   }
+                  regionSelecting={regionMode}
+                  markedRegion={
+                    markedRegion?.locator === locator ? markedRegion.box : null
+                  }
+                  onRegionSelect={
+                    onAskRegion
+                      ? (targetLocator, box) =>
+                          setMarkedRegion({ locator: targetLocator, box })
+                      : undefined
+                  }
+                  regionActions={
+                    markedRegion?.locator === locator ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => askRegion()}
+                          className="inline-flex h-7 items-center gap-1 rounded-md bg-[var(--primary)] px-2 text-[12px] font-medium text-[var(--primary-foreground)] hover:opacity-90"
+                        >
+                          <MessageCircleQuestion size={13} />
+                          {t("Ask about this area")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => askRegion(t("Explain this area"))}
+                          className="inline-flex h-7 items-center rounded-md px-2 text-[12px] text-[var(--foreground)] hover:bg-[var(--muted)]"
+                        >
+                          {t("Explain")}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t("Remove marked area")}
+                          onClick={() => setMarkedRegion(null)}
+                          className="inline-flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    ) : undefined
+                  }
                 />
               ),
             )}
@@ -1092,7 +1175,10 @@ export function PdfDocumentView({
         <PdfZoomControls
           preference={zoom}
           effectivePercent={zoomPercent}
-          visible={controlsVisible}
+          // Kept up while area mode is on: the toggle is how to leave it.
+          visible={controlsVisible || regionMode}
+          regionMode={onAskRegion ? regionMode : undefined}
+          onToggleRegionMode={onAskRegion ? toggleRegionMode : undefined}
           // Asked of the same function the buttons call, so a control is
           // disabled exactly when pressing it would draw the same width.
           canZoomIn={canStepPdfZoom(

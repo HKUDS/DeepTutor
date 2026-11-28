@@ -47,7 +47,7 @@ import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContin
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { copyText } from "@/lib/clipboard";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
-import { setReadingViewport } from "@/lib/reading-turn-state";
+import { setReadingViewport, type ReadingRegion } from "@/lib/reading-turn-state";
 import {
   fetchReadingAskHint,
   type ReadingConversation,
@@ -82,7 +82,9 @@ export function ReadingCompanion({
   linkedSessionIds,
   activeLocator,
   selection,
+  region = null,
   onClearSelection,
+  onClearRegion,
   onOpenLinker,
   prefillInputRef,
   head,
@@ -96,7 +98,10 @@ export function ReadingCompanion({
   /** Where the reader is, used to write a placeholder about this page. */
   activeLocator: number;
   selection: { quote: string; locator: number } | null;
+  /** A marked page area the next message is about (#2741). */
+  region?: ReadingRegion | null;
   onClearSelection: () => void;
+  onClearRegion?: () => void;
   onOpenLinker: () => void;
   prefillInputRef: React.MutableRefObject<((text: string) => void) | null>;
   /** The sheet's own header, with the companion's controls. */
@@ -503,6 +508,8 @@ export function ReadingCompanion({
           placeholder={askHint || t("Ask about this material…")}
           placeholderCompletion={askHint}
           selection={selection}
+          region={region}
+          onRemoveRegion={onClearRegion}
           onSent={onClearSelection}
           onRemoveSelection={() => {
             onClearSelection();
