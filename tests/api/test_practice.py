@@ -5,11 +5,14 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import io
 import json
+import re
 import sqlite3
+import zipfile
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.chart import BarChart, Reference
 import pytest
 
 from deeptutor.api.routers import practice, question_notebook
@@ -192,6 +195,70 @@ def test_oversized_spreadsheet_dimensions_and_csv_cells_are_rejected(bank):
     ]:
         response = client.post("/practice/import/preview", files={"file": (name, data)})
         assert response.status_code == 422
+
+
+def _chart_active_workbook(*, keep_worksheet: bool = True) -> bytes:
+    """A workbook saved from a chart tab, as Excel records that view.
+
+    ``activeTab`` in the workbook view is the tab the file was closed from, so
+    a bank saved from a chart sheet reopens with an openpyxl ``Chartsheet`` as
+    ``Workbook.active``.
+    """
+    book = Workbook()
+    questions = book.active
+    questions.title = "Questions"
+    questions.append(["question", "answer", "question_type", "options"])
+    questions.append(["2 + 2 = ?", "A", "single_choice", '{"A": "4", "B": "5"}'])
+
+    chart = BarChart()
+    chart.add_data(Reference(questions, min_col=1, min_row=1, max_row=2))
+    book.create_chartsheet(title="Answer key chart").add_chart(chart)
+    if not keep_worksheet:
+        # Only the chart tab remains, and openpyxl already saves it as active.
+        del book["Questions"]
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    if not keep_worksheet:
+        return buffer.getvalue()
+
+    with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    view = members["xl/workbook.xml"].decode("utf-8")
+    view = re.sub(r'(<workbookView[^>]*?)activeTab="\d+"', r'\1activeTab="1"', view)
+    if 'activeTab="1"' not in view:
+        view = view.replace("<workbookView ", '<workbookView activeTab="1" ')
+    members["xl/workbook.xml"] = view.encode("utf-8")
+    patched = io.BytesIO()
+    with zipfile.ZipFile(patched, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, blob in members.items():
+            archive.writestr(name, blob)
+    return patched.getvalue()
+
+
+def test_chart_tab_saved_in_front_still_imports_the_questions(bank):
+    _, repo, client = bank
+    data = _chart_active_workbook()
+
+    # The fixture really is the reported case: openpyxl reports a Chartsheet.
+    book = load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)
+    try:
+        assert type(book.active).__name__ == "Chartsheet"
+    finally:
+        book.close()
+
+    result = preview(data, "questions.xlsx")
+    assert [row["question"] for row in result["questions"]] == ["2 + 2 = ?"]
+
+    response = client.post("/practice/import/preview", files={"file": ("questions.xlsx", data)})
+    assert response.status_code == 200
+    assert (response.json()["valid"], response.json()["errors"]) == (1, [])
+    assert repo.overview("UTC")["total"] == 0  # preview stays read-only
+
+
+def test_chart_only_workbook_is_rejected_with_the_import_message():
+    with pytest.raises(ValueError, match="no active worksheet"):
+        preview(_chart_active_workbook(keep_worksheet=False), "chart-only.xlsx")
 
 
 def test_import_preview_commit_retries_dedup_tags_and_no_source_overwrite(bank):

@@ -94,7 +94,13 @@ def parse_rows(data: bytes, filename: str) -> list[tuple[int, dict]]:
                 raise ValueError("The workbook contains too many parts")
         book = load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)
         try:
+            worksheets = book.worksheets
             sheet = book.active
+            # A workbook saved with a chart tab in front reports that
+            # Chartsheet as active, and it has none of the worksheet API read
+            # below. Fall back to the first worksheet it actually contains.
+            if not any(sheet is worksheet for worksheet in worksheets):
+                sheet = worksheets[0] if worksheets else None
             if sheet is None:
                 raise ValueError("The workbook has no active worksheet")
             if (sheet.max_column or 0) > MAX_COLUMNS:
