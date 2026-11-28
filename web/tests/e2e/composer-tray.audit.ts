@@ -128,7 +128,17 @@ test('upward tray menus keep their final option reachable above the composer', a
   await openConversation(page)
   // Older container-query implementations impose layout containment, which
   // creates a stacking context. Exercise it on current CI browsers too.
-  await page.locator('.dt-composer-tray').evaluate(tray => {
+  const tray = page.locator('.dt-composer-tray')
+  await expect(tray).toHaveAttribute('data-position', 'above')
+  const [trayBox, surfaceBox] = await Promise.all([
+    tray.boundingBox(),
+    page.locator('.dt-composer-surface').boundingBox(),
+  ])
+  expect(trayBox).not.toBeNull()
+  expect(surfaceBox).not.toBeNull()
+  expect(trayBox!.y).toBeLessThan(surfaceBox!.y)
+
+  await tray.evaluate(tray => {
     ;(tray as HTMLElement).style.contain = 'layout'
   })
   const trigger = page.locator('.dt-tray-button').filter({ hasText: 'Mode' })

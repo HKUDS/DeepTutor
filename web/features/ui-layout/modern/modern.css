@@ -407,6 +407,19 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
   -webkit-user-select: none; user-select: none;
   transition: background-color 160ms;
 }
+/* In a conversation the sheet sits above the box, so the input stays on the
+   bottom edge and the on-screen keyboard cannot cover the controls. Its
+   travel is negative: the open end is the top, the folded end is behind the
+   box below, and the drag maps the same way. */
+.dt-composer-tray[data-position="above"] {
+  --dt-tray-travel: -23px;
+  margin-top: 0; margin-bottom: calc(-1 * var(--dt-tray-tuck));
+  padding: 4px 8px calc(var(--dt-tray-tuck) + 3px);
+}
+.dt-composer-tray[data-position="above"] .dt-tray-grip-anchor {
+  top: calc(var(--dt-tray-reveal, 1) * 3px - 2px);
+  bottom: auto;
+}
 .dt-composer-tray[data-folded] { cursor: grab; touch-action: none; }
 .dt-composer-tray[data-folded]:hover { background: color-mix(in srgb, var(--secondary) 85%, var(--background)); }
 .dt-composer-tray[data-dragging], .dt-composer-tray[data-dragging] * { cursor: grabbing; }
@@ -415,11 +428,12 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
    reaches them. On the buttons, not the row: an open list must stay out of
    any stacking context the fade would make. */
 .dt-composer-tray .dt-tray-button { opacity: clamp(0, calc(var(--dt-tray-reveal, 1) * 2 - 1), 1); }
-/* The grip takes no room of its own: a hairline near the lower edge, set
-   the way Claude's panels set theirs — halfway between the edge and the
-   labels' line, 8px up — and centred in the lip once folded. Shown only
-   while the pointer is on the tray (always, where there is no hover). It
-   comes before the row, so where the two meet the row's buttons win. */
+/* The grip takes no room of its own: a hairline near the edge away from
+   the box, set the way Claude's panels set theirs — halfway between the
+   edge and the labels' line, 8px up — and centred in the lip once folded.
+   Shown only while the pointer is on the tray (always, where there is no
+   hover). It comes before the row, so where the two meet the row's buttons
+   win. */
 .dt-tray-grip-anchor {
   position: absolute; left: calc(50% - 20px);
   bottom: calc(var(--dt-tray-reveal, 1) * 3px - 2px);

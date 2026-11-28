@@ -88,7 +88,7 @@ interface Drag {
  * sheet comes out for it and goes back when it closes, without touching the
  * preference.
  */
-export function useTrayFold(summoned: boolean) {
+export function useTrayFold(summoned: boolean, above = false) {
   const folded = useSyncExternalStore(subscribe, readFolded, () => false);
   const away = folded && !summoned;
   const reveal = useMotionValue(away ? 0 : 1);
@@ -174,7 +174,17 @@ export function useTrayFold(summoned: boolean) {
       move.preventDefault();
       const span = current.travel;
       const px = current.from * span + (move.clientY - current.startY);
-      reveal.set((px > span ? span + resist(px - span) : px < 0 ? -resist(-px) : px) / span);
+      // Above the box the travel is negative, so the open and closed ends
+      // swap sides; resist past whichever end the pull is leaving.
+      const openEnd = span >= 0 ? 0 : span;
+      const closedEnd = span >= 0 ? span : 0;
+      const bounded =
+        px > closedEnd
+          ? closedEnd + resist(px - closedEnd)
+          : px < openEnd
+            ? openEnd - resist(openEnd - px)
+            : px;
+      reveal.set(bounded / span);
     };
     const onEnd = (end: PointerEvent) => {
       if (end.pointerId !== pointer) return;
@@ -208,7 +218,11 @@ export function useTrayFold(summoned: boolean) {
   };
 
   const onGripKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const open = event.key === "ArrowDown" ? true : event.key === "ArrowUp" ? false : null;
+    // Below the box, pulling down brings the sheet out; above it, pulling
+    // down puts it away.
+    const openKey = above ? "ArrowUp" : "ArrowDown";
+    const closeKey = above ? "ArrowDown" : "ArrowUp";
+    const open = event.key === openKey ? true : event.key === closeKey ? false : null;
     if (open === null || open === !away) return;
     event.preventDefault();
     settle(open);
