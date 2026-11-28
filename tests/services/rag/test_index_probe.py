@@ -302,3 +302,63 @@ def test_provider_failure_summary_reuses_precomputed_versions(tmp_path: Path) ->
     assert provider_failure_summary(tmp_path, "llamaindex", versions=versions) == (
         "Missing LlamaIndex docstore.json."
     )
+
+
+def test_doc_count_cache_holds_every_version_in_the_catalogue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A catalogue sweep must not evict its own working set (issue #2772).
+
+    ``list_knowledge_bases`` / ``get_info`` probe every ``version-N`` directory
+    of every KB, and real KBs keep dozens of superseded versions each. When the
+    cache was capped at 128 entries the sweep evicted what it had just read, so
+    the hit rate stayed at 0% and every UI navigation re-parsed every
+    multi-MB docstore.json.
+    """
+    from deeptutor.services.rag import index_probe as probe_module
+    from deeptutor.services.rag.index_probe import _read_json
+
+    # Two KBs whose combined version count exceeds the old 128-entry cap.
+    kb_dirs: list[Path] = []
+    for kb_index in range(2):
+        kb_dir = tmp_path / f"kb-{kb_index}"
+        for version in range(1, 101):
+            version_dir = kb_dir / f"version-{version}"
+            version_dir.mkdir(parents=True)
+            (version_dir / "docstore.json").write_text(
+                json.dumps({"docstore/data": {"doc-1": {}}}),
+                encoding="utf-8",
+            )
+            (version_dir / "index_store.json").write_text("{}", encoding="utf-8")
+            (version_dir / "meta.json").write_text(
+                json.dumps(
+                    {
+                        "version": version_dir.name,
+                        "provider": "llamaindex",
+                        "signature": "llamaindex",
+                        "layout": "flat",
+                    }
+                ),
+                encoding="utf-8",
+            )
+        kb_dirs.append(kb_dir)
+
+    real_read = _read_json
+    reads: list[str] = []
+
+    def counting_read(path: Path) -> dict[str, Any] | None:
+        reads.append(str(path))
+        return real_read(path)
+
+    monkeypatch.setattr(probe_module, "_read_json", counting_read)
+    probe_module._llamaindex_doc_count_cached.cache_clear()
+
+    for kb_dir in kb_dirs:
+        inspect_kb_versions(kb_dir, "llamaindex")
+    parses_after_cold_scan = len(reads)
+    assert parses_after_cold_scan == 200
+
+    # A second sweep over the same catalogue must be fully cached.
+    for kb_dir in kb_dirs:
+        inspect_kb_versions(kb_dir, "llamaindex")
+    assert len(reads) == parses_after_cold_scan
