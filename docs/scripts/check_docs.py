@@ -327,6 +327,8 @@ def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else "source"
     if mode == "staged-parity":
         errors = check_staged_parity()
+    elif mode == "links":
+        errors = check_links()
     else:
         errors = (
             check_parity()

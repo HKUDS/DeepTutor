@@ -152,15 +152,20 @@ Set `ASTRO_TELEMETRY_DISABLED=1` if the Astro telemetry directory cannot be crea
 
 ## Checks
 
-From the repository root, before opening a PR:
+[中文流程图和本地检查命令](WORKFLOW.zh-CN.md)
+
+From the repository root, check your edits before committing:
 
 ```bash
-python3 docs/scripts/check_docs.py
-cd docs && ASTRO_TELEMETRY_DISABLED=1 npm run build && cd ..
-python3 docs/scripts/check_docs.py dist
+python -m pip install pytest pytest-asyncio
+python docs/scripts/preflight.py
 ```
 
-`check_docs.py` checks that English and Chinese paths match, that every page except the splash homepage has `quadrant`, that copied screenshots match `assets/figs/web-dev/manifest.json`, and that channel schema pages name the source fields. `dist` also checks that internal links in the built HTML resolve. GitHub Actions runs the same steps in `.github/workflows/docs.yml`.
+The preflight checks sources and page examples across both locales. It uses the same CLI/API input paths as CI to decide whether to compare the snapshot with the live app. By default it checks your working tree against HEAD, including untracked inputs. After committing, pass `--base upstream/feat/public-docs` (use your own target remote) to include changes since the branch forked.
+
+For CLI/API changes, use the project Python environment with `requirements/full.txt` and `requirements/partners.txt` installed. If you deliberately changed a command or route, run `python docs/scripts/preflight.py --update-surface` to regenerate the JSON and find outdated examples in one pass. Review and commit the snapshot with the page fixes.
+
+Add `--build` to build the site and check its links after the source checks pass. This requires Node.js 22 and `npm ci` in `docs/`. To check an already built site independently, `python docs/scripts/check_docs.py dist` checks both sources and links.
 
 The `docs-locale-parity` and `docs-markdownlint` pre-commit hooks check locale paths and Markdown before a commit. To run them on the full checkout:
 

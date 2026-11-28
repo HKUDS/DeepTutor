@@ -1,0 +1,13 @@
+{
+  "surface": [
+    "deeptutor_cli/**",
+    "deeptutor/**",
+    "requirements/**",
+    "requirements.txt",
+    "pyproject.toml",
+    "scripts/export_docs_surface.py",
+    "docs/tests/docs_surface.json",
+    ".github/workflows/docs-surface.yml",
+    ".github/docs-surface-paths.json"
+  ]
+}

@@ -103,7 +103,7 @@ jobs:
 
       - name: Check built links
         working-directory: .
-        run: python3 docs/scripts/check_docs.py dist
+        run: python3 docs/scripts/check_docs.py links
 
       - name: Notify how to enable fork PR preview
         if: >-
@@ -257,7 +257,7 @@ jobs:
 
       - name: Check preview links
         working-directory: .
-        run: python3 docs/scripts/check_docs.py dist
+        run: python3 docs/scripts/check_docs.py links
         env:
           DOCS_BASE: ${{ steps.meta.outputs.docs_base }}
 

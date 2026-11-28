@@ -27,16 +27,7 @@ jobs:
         id: changes
         with:
           token: ''
-          filters: |
-            surface:
-              - 'deeptutor_cli/**'
-              - 'deeptutor/**'
-              - 'requirements/**'
-              - 'requirements.txt'
-              - 'pyproject.toml'
-              - 'scripts/export_docs_surface.py'
-              - 'docs/tests/docs_surface.json'
-              - '.github/workflows/docs-surface.yml'
+          filters: .github/docs-surface-paths.json
 
       - uses: actions/setup-python@v5
         if: steps.changes.outputs.surface == 'true'
