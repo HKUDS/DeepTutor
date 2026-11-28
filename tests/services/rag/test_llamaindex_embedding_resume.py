@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,6 +32,83 @@ def _records(kb_dir: Path, names: list[str]) -> dict[str, object]:
             source_hash=hashlib.sha256(source.read_bytes()).hexdigest(),
         )
     return records
+
+
+def test_rebuild_checkpoints_batches_and_flushes_the_tail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llama_index.core import Document, Settings
+    from llama_index.core.embeddings import MockEmbedding
+
+    from deeptutor.services.rag.pipelines.llamaindex import storage
+    from deeptutor.services.rag.source_pages import SOURCE_SCHEMA_VERSION
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    paths = [raw / f"source-{number}.txt" for number in range(1, 8)]
+    documents = []
+    for path in paths:
+        path.write_text(f"Contents of {path.name}", encoding="utf-8")
+        documents.append(
+            Document(
+                text=path.read_text(encoding="utf-8"),
+                metadata={
+                    "file_path": str(path),
+                    "document_key": path.name,
+                    "page_index": 0,
+                    "source_schema_version": SOURCE_SCHEMA_VERSION,
+                },
+            )
+        )
+    candidate = tmp_path / "version-1"
+    saved_counts = []
+    reported = []
+    now = 0.0
+    original_snapshot = storage._write_embedding_snapshot
+    original_chunk = storage.ingestion.documents_to_nodes
+
+    def record_snapshot(*args, **kwargs):
+        original_snapshot(*args, **kwargs)
+        saved_counts.append(len(kwargs["completed_keys"]))
+
+    def chunk(source_documents, **kwargs):
+        nonlocal now
+        if source_documents[0].metadata["file_path"] == str(paths[4]):
+            now = 31.0
+        return original_chunk(source_documents, **kwargs)
+
+    def record_completion(path: Path, reused: bool) -> None:
+        assert not reused
+        checkpoint = json.loads(
+            (candidate / ".embedding-checkpoint.json").read_text(encoding="utf-8")
+        )
+        assert checkpoint["sources"][path.name]["completed"]
+        reported.append(path)
+
+    monkeypatch.setattr(Settings, "_embed_model", MockEmbedding(embed_dim=4))
+    monkeypatch.setattr(storage, "_EMBEDDING_CHECKPOINT_SOURCE_LIMIT", 3)
+    monkeypatch.setattr(storage, "time", SimpleNamespace(monotonic=lambda: now))
+    monkeypatch.setattr(storage, "_write_embedding_snapshot", record_snapshot)
+    monkeypatch.setattr(storage.ingestion, "documents_to_nodes", chunk)
+    monkeypatch.setattr(
+        storage.retrievers, "persist_bm25_retriever", lambda *_args, **_kwargs: False
+    )
+
+    count = storage.create_resumable_index(
+        documents,
+        candidate,
+        source_records=_records(tmp_path, [path.name for path in paths]),
+        signature=_signature(),
+        show_progress=False,
+        checkpoint_callback=record_completion,
+    )
+
+    assert count == len(documents)
+    assert saved_counts == [1, 4, 5, 7]
+    assert reported == paths
+    storage.verify_persisted_index(candidate)
+    catalog = json.loads((candidate / "source_pages.json").read_text(encoding="utf-8"))
+    assert [page["document_key"] for page in catalog["pages"]] == [path.name for path in paths]
 
 
 @pytest.mark.asyncio
