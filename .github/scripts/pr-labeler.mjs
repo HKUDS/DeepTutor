@@ -143,18 +143,29 @@ export function decidePancakeRouting({ createdAt, existingLabels = [], requested
   const isPre170 = Boolean(createdAt && createdAt < V170_CUTOFF_ISO);
   const labels = new Set(existingLabels);
   const reviewersLower = requestedReviewers.map((u) => u.toLowerCase());
-  const assigneesLower = assignees.map((u) => u.toLowerCase());
+  const assigneesLower = new Set(assignees.map((u) => u.toLowerCase()));
+
+  // Unify Reviewers -> Assignees: mirror any requested reviewer (except stripped @pancacake) into assignees
+  const reviewersToSyncIntoAssignees = requestedReviewers.filter((u) => {
+    const low = u.toLowerCase();
+    if (low === PANCAKE_LOGIN && !isPre170 && !labels.has("needs-pancake")) {
+      return false;
+    }
+    return !assigneesLower.has(low);
+  });
 
   if (isPre170) {
     return {
-      assignPancake: !assigneesLower.includes(PANCAKE_LOGIN),
+      assignPancake: !assigneesLower.has(PANCAKE_LOGIN),
       stripPancakeReviewer: false,
+      reviewersToSyncIntoAssignees,
     };
   }
   return {
     assignPancake: false,
     stripPancakeReviewer:
       reviewersLower.includes(PANCAKE_LOGIN) && !labels.has("needs-pancake"),
+    reviewersToSyncIntoAssignees,
   };
 }
 
@@ -204,16 +215,16 @@ function runSelfTest() {
       requestedReviewers: [],
       assignees: [],
     }),
-    { assignPancake: true, stripPancakeReviewer: false },
+    { assignPancake: true, stripPancakeReviewer: false, reviewersToSyncIntoAssignees: [] },
   );
   assert.deepEqual(
     decidePancakeRouting({
       createdAt: "2026-11-26T00:00:00Z",
       existingLabels: ["web"],
-      requestedReviewers: ["pancacake"],
+      requestedReviewers: ["pancacake", "AleFlyX"],
       assignees: [],
     }),
-    { assignPancake: false, stripPancakeReviewer: true },
+    { assignPancake: false, stripPancakeReviewer: true, reviewersToSyncIntoAssignees: ["AleFlyX"] },
   );
   assert.deepEqual(
     decidePancakeRouting({
@@ -222,7 +233,7 @@ function runSelfTest() {
       requestedReviewers: ["pancacake"],
       assignees: [],
     }),
-    { assignPancake: false, stripPancakeReviewer: false },
+    { assignPancake: false, stripPancakeReviewer: false, reviewersToSyncIntoAssignees: ["pancacake"] },
   );
 
   console.log("pr-labeler self-test passed.");
@@ -279,6 +290,17 @@ async function main() {
       [422],
     );
     console.log(`PR #${prNumber}: removed @${PANCAKE_LOGIN} from requested_reviewers (post-v1.7.0 rule).`);
+  }
+  if (routing.reviewersToSyncIntoAssignees.length > 0) {
+    await ghRequest(
+      token,
+      repoFull,
+      "POST",
+      `/issues/${prNumber}/assignees`,
+      { assignees: routing.reviewersToSyncIntoAssignees },
+      [422],
+    );
+    console.log(`PR #${prNumber}: mirrored reviewers [${routing.reviewersToSyncIntoAssignees.join(", ")}] into assignees.`);
   }
 
   if (action === "review_requested") {
