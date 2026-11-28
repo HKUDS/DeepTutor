@@ -166,6 +166,7 @@ async def delete_connection(name: str):
     from deeptutor.modules.catalog import require_module
 
     require_module("knowledge")
+    from deeptutor.knowledge.catalog import KnowledgeBaseDeletionInProgress
     from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
 
     manager = account_kb_manager()
@@ -174,6 +175,8 @@ async def delete_connection(name: str):
         raise HTTPException(status_code=404, detail=f"No connected subagent named {name!r}.")
     try:
         manager.delete_knowledge_base(name, confirm=True)
+    except KnowledgeBaseDeletionInProgress as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("Error disconnecting subagent: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

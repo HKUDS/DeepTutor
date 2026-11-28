@@ -6,7 +6,7 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 """
 
 import asyncio
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime
 import json
 import logging
@@ -46,6 +46,11 @@ from deeptutor.knowledge.add_documents import (
     DocumentAdder,
     hashes_for_indexed_files,
     remove_raw_document,
+)
+from deeptutor.knowledge.catalog import (
+    KB_DELETION_LOCK,
+    KnowledgeBaseDeletionInProgress,
+    kb_catalog,
 )
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
@@ -99,6 +104,7 @@ from deeptutor.services.rag.pipelines.ima.config import (
 )
 from deeptutor.services.rag.visual_assets import VisualAssetStore
 from deeptutor.services.web_source.scheduler import get_web_source_sync_scheduler
+from deeptutor.services.workspace.activity import data_activity
 from deeptutor.services.workspace.knowledge import workspace_id_for_kb_base_dir
 from deeptutor.services.workspace.models import WorkspaceError
 from deeptutor.utils.document_extractor import (
@@ -150,6 +156,9 @@ def get_kb_manager():
     return current_kb_manager()
 
 
+_DEFAULT_GET_KB_MANAGER = get_kb_manager
+
+
 @contextmanager
 def _connected_kb_registration(name: str):
     """Register a connected KB in the workspace viewing the library."""
@@ -193,9 +202,8 @@ def _overridden_kb_manager() -> KnowledgeBaseManager | None:
     ``get_kb_manager`` directly, so we keep that seam without weakening the
     normal write guard.
     """
-    manager = get_kb_manager()
-    if kb_manager is not None or manager is not current_kb_manager():
-        return manager
+    if kb_manager is not None or get_kb_manager is not _DEFAULT_GET_KB_MANAGER:
+        return get_kb_manager()
     return None
 
 
@@ -956,8 +964,7 @@ def _resolve_registered_kb_name(manager: KnowledgeBaseManager, kb_name: str | No
 
 
 def _load_kb_entry_or_404(manager: KnowledgeBaseManager, kb_name: str) -> dict:
-    manager.config = manager._load_config()
-    kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name)
+    kb_entry = manager._load_config().get("knowledge_bases", {}).get(kb_name)
     if kb_entry is None:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     return kb_entry
@@ -2179,6 +2186,8 @@ async def update_kb_config(kb_name: str, config: dict):
         return {"status": "success", "kb_name": kb_name, "config": service.get_kb_config(kb_name)}
     except (HTTPException, AccessError):
         raise
+    except KnowledgeBaseDeletionInProgress as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as e:
         logger.error(f"Error updating config for KB '{kb_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -3400,12 +3409,32 @@ async def delete_kb_file(kb_name: str, filename: str):
 def _delete_kb(kb_name: str) -> dict[str, str]:
     """Delete ``kb_name``, whichever route addressed it."""
     try:
-        manager, resolved_name, _ = _writable_kb(kb_name)
-        success = manager.delete_knowledge_base(resolved_name, confirm=True)
+        from deeptutor.services.workspace.context import (
+            get_workspace_scope,
+            resolve_workspace_scope,
+        )
+
+        # The worker can outlive the HTTP request and its shared lease.
+        with data_activity(), ExitStack() as stack:
+            scope = get_workspace_scope()
+            if (
+                scope
+                and scope.workspace_id
+                and resolve_workspace_scope(scope.workspace_id).archived
+            ):
+                raise HTTPException(
+                    status_code=404, detail="Restore this workspace before changing its data."
+                )
+            with KB_DELETION_LOCK:
+                manager, resolved_name, _ = _writable_kb(kb_name)
+                delete = stack.enter_context(manager.reserve_deletion(resolved_name, confirm=True))
+            success = delete()
     except (HTTPException, AccessError):
         # Re-raised before the catch-all below, which used to turn a 404 from
         # ``_writable_kb`` into a 500 whose detail read "404: ... not found".
         raise
+    except (KnowledgeBaseDeletionInProgress, WorkspaceError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -3436,13 +3465,13 @@ async def delete_knowledge_base_by_name(payload: DeleteKnowledgeBaseRequest):
     declared ahead of the DELETE routes for linked folders, GitHub sources and
     web sources, and a greedy converter would silently swallow all three.
     """
-    return _delete_kb(payload.name)
+    return await asyncio.to_thread(_delete_kb, payload.name)
 
 
 @router.delete("/knowledge-bases/{kb_name}")
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""
-    return _delete_kb(kb_name)
+    return await asyncio.to_thread(_delete_kb, kb_name)
 
 
 @router.get("/knowledge-bases/tasks/{task_id}/stream")
@@ -3750,25 +3779,28 @@ async def _create_knowledge_base_owned(
             },
         )
         # Also store rag_provider in config (reload and update)
-        manager.config = manager._load_config()
-        if name in manager.config.get("knowledge_bases", {}):
-            manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
-            manager.config["knowledge_bases"][name]["needs_reindex"] = False
-            if embedding_selection:
-                from deeptutor.services.rag.embedding_binding import binding_fields
+        with kb_catalog(Path(manager.base_dir)).lock:
+            manager.config = manager._load_config()
+            if name in manager.config.get("knowledge_bases", {}):
+                manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
+                manager.config["knowledge_bases"][name]["needs_reindex"] = False
+                if embedding_selection:
+                    from deeptutor.services.rag.embedding_binding import binding_fields
 
-                manager.config["knowledge_bases"][name].update(
-                    binding_fields(embedding_selection, embedding_config)
-                )
-            if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
-                manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
-            if search_mode:
-                manager.config["knowledge_bases"][name]["search_mode"] = search_mode
-            if indexing_snapshot is not None and files:
-                pending_policy = indexing_snapshot.persisted_policy()
-                pending_policy["policy"] = "pending_pinned"
-                manager.config["knowledge_bases"][name]["pending_indexing_policy"] = pending_policy
-            manager._save_config()
+                    manager.config["knowledge_bases"][name].update(
+                        binding_fields(embedding_selection, embedding_config)
+                    )
+                if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
+                    manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
+                if search_mode:
+                    manager.config["knowledge_bases"][name]["search_mode"] = search_mode
+                if indexing_snapshot is not None and files:
+                    pending_policy = indexing_snapshot.persisted_policy()
+                    pending_policy["policy"] = "pending_pinned"
+                    manager.config["knowledge_bases"][name]["pending_indexing_policy"] = (
+                        pending_policy
+                    )
+                manager._save_config()
 
         progress_tracker = ProgressTracker(name, kb_base_dir)
 
@@ -3858,6 +3890,8 @@ async def _create_knowledge_base_owned(
 
     except (HTTPException, AccessError):
         raise
+    except KnowledgeBaseDeletionInProgress as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as e:
         logger.error(f"Failed to create KB: {e}")
         logger.debug(traceback.format_exc())
@@ -4049,25 +4083,26 @@ async def run_reindex_task(
                 # ProgressTracker persists through its own manager instance. Refresh
                 # this cached instance before clearing flags so stale processing
                 # state cannot overwrite the completed status it just wrote.
-                manager.config = manager._load_config()
-                # Clear the legacy mismatch / needs_reindex flags now that an
-                # index version matching the active config exists on disk.
-                kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
-                if kb_entry.get("status") != ("processing" if candidate_root else "ready"):
-                    raise RuntimeError(
-                        f"Re-index terminal state was not persisted for '{kb_name}'."
-                    )
-                if candidate_root is not None:
-                    return
-                mutated = False
-                if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("needs_reindex"):
-                    kb_entry["needs_reindex"] = False
-                    mutated = True
-                if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("embedding_mismatch"):
-                    kb_entry.pop("embedding_mismatch", None)
-                    mutated = True
-                if mutated:
-                    manager._save_config()
+                with kb_catalog(Path(manager.base_dir)).lock:
+                    manager.config = manager._load_config()
+                    # Clear the legacy mismatch / needs_reindex flags now that an
+                    # index version matching the active config exists on disk.
+                    kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
+                    if kb_entry.get("status") != ("processing" if candidate_root else "ready"):
+                        raise RuntimeError(
+                            f"Re-index terminal state was not persisted for '{kb_name}'."
+                        )
+                    if candidate_root is not None:
+                        return
+                    mutated = False
+                    if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("needs_reindex"):
+                        kb_entry["needs_reindex"] = False
+                        mutated = True
+                    if signature_hash != LIGHTRAG_PROVIDER and kb_entry.get("embedding_mismatch"):
+                        kb_entry.pop("embedding_mismatch", None)
+                        mutated = True
+                    if mutated:
+                        manager._save_config()
 
             success = await rag_service.initialize(
                 task_id=task_id,
@@ -4258,10 +4293,17 @@ async def reindex_knowledge_base(
         ):
             from deeptutor.services.rag.embedding_binding import binding_fields
 
-            kb_entry.update(binding_fields(embedding_selection, embedding_config))
-            kb_entry["needs_reindex"] = False
-            kb_entry["status"] = "ready"
-            manager._save_config()
+            with kb_catalog(Path(manager.base_dir)).lock:
+                manager.config = manager._load_config()
+                kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name)
+                if kb_entry is None:
+                    raise HTTPException(
+                        status_code=404, detail=f"Knowledge base '{kb_name}' not found"
+                    )
+                kb_entry.update(binding_fields(embedding_selection, embedding_config))
+                kb_entry["needs_reindex"] = False
+                kb_entry["status"] = "ready"
+                manager._save_config()
             return {
                 "message": "Embedding model updated for the empty knowledge base.",
                 "task_id": None,

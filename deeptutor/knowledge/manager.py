@@ -8,6 +8,7 @@ Manages multiple knowledge bases and provides utilities for accessing them.
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta
+from functools import partial
 import hashlib
 import json
 import logging
@@ -16,11 +17,15 @@ from pathlib import Path
 import shutil
 import stat
 import sys
-from threading import RLock
 import time
 from typing import Any
 from urllib.parse import urlparse
 
+from deeptutor.knowledge.catalog import (
+    KnowledgeBaseDeletionInProgress,
+    kb_catalog,
+    serialize_catalog,
+)
 from deeptutor.knowledge.kb_types import (
     IMA_KB_TYPE,
     LIGHTRAG_SERVER_KB_TYPE,
@@ -67,6 +72,8 @@ def _assert_move_id_available(base_dir: Path, name: str) -> None:
         workspace_id_for_kb_base_dir,
     )
 
+    if kb_catalog(base_dir).is_deleting(name):
+        raise KnowledgeBaseDeletionInProgress(name)
     workspace_id = workspace_id_for_kb_base_dir(base_dir)
     if workspace_id is None:
         # A manager targeting a partner's separate directory has no catalog ID.
@@ -328,7 +335,8 @@ class KnowledgeBaseManager:
 
         # Config file to track knowledge bases
         self.config_file = self.base_dir / "kb_config.json"
-        self._catalog_lock = RLock()
+        self._catalog = kb_catalog(self.base_dir)
+        self._catalog_lock = self._catalog.lock
         self._config_cache = None
         self._info_cache: dict[tuple, tuple] = {}
         self.config = self._load_config()
@@ -375,21 +383,22 @@ class KnowledgeBaseManager:
             )
             return config
 
+    def _read_config_file(self) -> dict:
+        try:
+            with self.config_file.open(encoding="utf-8") as handle:
+                with file_lock_shared(handle):
+                    content = handle.read()
+        except FileNotFoundError:
+            content = ""
+        config = json.loads(content) if content.strip() else {}
+        config.setdefault("knowledge_bases", {})
+        return config
+
     def _read_and_reconcile_config(self) -> dict:
         """Load knowledge base configuration from the canonical kb_config.json file."""
         if self.config_file.exists():
             try:
-                with open(self.config_file, encoding="utf-8") as f:
-                    with file_lock_shared(f):
-                        content = f.read()
-                        if not content.strip():
-                            # Empty file, return default
-                            return {"knowledge_bases": {}}
-                        config = json.loads(content)
-
-                # Ensure knowledge_bases key exists
-                if "knowledge_bases" not in config:
-                    config["knowledge_bases"] = {}
+                config = self._read_config_file()
 
                 # Migration: remove old "default" field if present
                 if "default" in config:
@@ -521,7 +530,13 @@ class KnowledgeBaseManager:
                 - file_name: Current file being processed
                 - error: Error message (if status is "error")
         """
-        # Reload config to get latest state
+        kb_config = self._write_kb_status(name, status, progress)
+        self._sync_kb_to_pb(name, kb_config)
+
+    @serialize_catalog
+    def _write_kb_status(self, name: str, status: str, progress: dict | None) -> dict:
+        if self._catalog.is_deleting(name):
+            raise KnowledgeBaseDeletionInProgress(name)
         self.config = self._load_config()
 
         if "knowledge_bases" not in self.config:
@@ -622,7 +637,7 @@ class KnowledgeBaseManager:
                 f"Failed to persist KB status update for '{name}' (status='{status}'): {exc}"
             )
             raise
-        self._sync_kb_to_pb(name, kb_config)
+        return kb_config
 
     def get_kb_entry(self, name: str) -> dict | None:
         """The KB's raw ``kb_config.json`` record, or ``None`` if unregistered.
@@ -632,14 +647,12 @@ class KnowledgeBaseManager:
         which additionally probes every index version on disk — and parses a
         provider's docstore to do it.
         """
-        self.config = self._load_config()
-        entry = self.config.get("knowledge_bases", {}).get(name)
+        entry = self._load_config().get("knowledge_bases", {}).get(name)
         return dict(entry) if isinstance(entry, dict) else None
 
     def get_kb_status(self, name: str) -> dict | None:
         """Get status and progress for a knowledge base."""
-        self.config = self._load_config()
-        kb_config = self.config.get("knowledge_bases", {}).get(name)
+        kb_config = self._load_config().get("knowledge_bases", {}).get(name)
         if not kb_config:
             return None
         return {
@@ -666,7 +679,8 @@ class KnowledgeBaseManager:
         self.config = self._load_config()
 
         config_kbs = self.config.get("knowledge_bases", {})
-        kb_list: set[str] = set()
+        deleting_names = self._catalog.deleting_names()
+        kb_list = deleting_names.copy()
         config_changed = False
 
         # Filter out orphan entries whose KB directory is gone. The on-disk
@@ -683,6 +697,8 @@ class KnowledgeBaseManager:
         base_exists = self.base_dir.exists()
         grace_cutoff = datetime.now() - timedelta(seconds=_ORPHAN_PRUNE_GRACE_SECONDS)
         for kb_name, kb_entry in list(config_kbs.items()):
+            if kb_name in deleting_names:
+                continue
             # Connected KBs (Obsidian vaults, linked indexes) live outside
             # ``base_dir`` — they have no on-disk KB folder by design, so the
             # orphan prune below would wrongly delete them. Keep them
@@ -836,6 +852,7 @@ class KnowledgeBaseManager:
 
         logger.info(f"Auto-registered KB '{name}' to kb_config.json")
 
+    @serialize_catalog
     def register_knowledge_base(self, name: str, description: str = "", set_default: bool = False):
         """Register a knowledge base"""
         name = validate_knowledge_base_name(name)
@@ -844,6 +861,7 @@ class KnowledgeBaseManager:
         if not kb_dir.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_dir}")
 
+        self.config = self._load_config()
         if "knowledge_bases" not in self.config:
             self.config["knowledge_bases"] = {}
 
@@ -855,6 +873,7 @@ class KnowledgeBaseManager:
 
         self._save_config()
 
+    @serialize_catalog
     def register_connected_entry(self, name: str, entry: dict) -> bool:
         """Adopt an already-built connected-KB entry under this manager.
 
@@ -870,6 +889,8 @@ class KnowledgeBaseManager:
         name = (name or "").strip()
         if not name:
             raise ValueError("Knowledge base name is required.")
+        if self._catalog.is_deleting(name):
+            return False
         if not is_connected_kb(entry):
             raise ValueError(f"Not a connected knowledge base entry: {name}")
         _assert_move_id_available(self.base_dir, name)
@@ -882,6 +903,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return True
 
+    @serialize_catalog
     def register_obsidian_vault(self, name: str, vault_path: str, description: str = "") -> dict:
         """Register a connected Obsidian vault as a pointer-type KB.
 
@@ -915,6 +937,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_linked_kb(
         self,
         name: str,
@@ -968,6 +991,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_subagent_connection(
         self,
         name: str,
@@ -1011,6 +1035,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_lightrag_server_kb(
         self,
         name: str,
@@ -1061,6 +1086,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_marginnote4_kb(
         self,
         name: str,
@@ -1134,6 +1160,7 @@ class KnowledgeBaseManager:
                 return other_name
         return None
 
+    @serialize_catalog
     def register_ima_kb(
         self,
         name: str,
@@ -1192,6 +1219,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_weknora_kb(
         self,
         name: str,
@@ -1235,6 +1263,7 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    @serialize_catalog
     def register_kiwix_kb(
         self,
         name: str,
@@ -1253,6 +1282,8 @@ class KnowledgeBaseManager:
         name = validate_knowledge_base_name(name)
         server_url = normalize_base_url(server_url)
         zim_name = validate_zim_name(zim_name)
+        if self._catalog.is_deleting(name):
+            raise KnowledgeBaseDeletionInProgress(name)
         self.config = self._load_config()
         bases = self.config.setdefault("knowledge_bases", {})
         if name in bases:
@@ -1282,13 +1313,13 @@ class KnowledgeBaseManager:
         ``base_dir`` — resolve them to their external pointer so callers that
         ask for "where is this KB's data" reach the right place.
         """
-        self.config = self._load_config()
+        config = self._load_config()
         if name is None:
-            name = self.config.get("default")
+            name = config.get("default")
             if name is None:
                 raise ValueError("No default knowledge base set")
 
-        entry = self.config.get("knowledge_bases", {}).get(name, {})
+        entry = config.get("knowledge_bases", {}).get(name, {})
         external = external_root_of(entry)
         if external:
             folder = Path(external).expanduser()
@@ -1310,7 +1341,7 @@ class KnowledgeBaseManager:
             resolve_storage_dir_for_read,
         )
 
-        entry = self.config.get("knowledge_bases", {}).get(name or kb_dir.name, {})
+        entry = self._load_config().get("knowledge_bases", {}).get(name or kb_dir.name, {})
         if entry.get("embedding_selection") and binding_status(entry)[0] != "ready":
             raise ValueError(
                 "The bound embedding model is unavailable or changed. Check this knowledge base's model settings."
@@ -1345,9 +1376,9 @@ class KnowledgeBaseManager:
 
         # Persist default KB selection via the canonical KB config service.
         try:
-            from deeptutor.services.config import get_kb_config_service
+            from deeptutor.services.config import KnowledgeBaseConfigService
 
-            kb_config_service = get_kb_config_service()
+            kb_config_service = KnowledgeBaseConfigService.get_instance(self.config_file)
             kb_config_service.set_default_kb(name)
         except Exception as e:
             logger.warning(f"Failed to save default to centralized config: {e}")
@@ -1369,9 +1400,9 @@ class KnowledgeBaseManager:
 
         # Try centralized config first
         try:
-            from deeptutor.services.config import get_kb_config_service
+            from deeptutor.services.config import KnowledgeBaseConfigService
 
-            kb_config_service = get_kb_config_service()
+            kb_config_service = KnowledgeBaseConfigService.get_instance(self.config_file)
             default_kb = kb_config_service.get_default_kb()
             if default_kb and default_kb in kb_list:
                 return default_kb
@@ -1409,8 +1440,7 @@ class KnowledgeBaseManager:
                 return {}
 
         # First, try kb_config.json (authoritative source)
-        self.config = self._load_config()
-        kb_config = self.config.get("knowledge_bases", {}).get(kb_name, {})
+        kb_config = self._load_config().get("knowledge_bases", {}).get(kb_name, {})
 
         if kb_config:
             # Build metadata from config
@@ -1507,20 +1537,19 @@ class KnowledgeBaseManager:
             default_name: A pre-resolved default name for bulk callers. This
                 avoids rescanning the knowledge-base list for every item.
         """
-        # Reload config to get latest status
-        if refresh_config:
-            self.config = self._load_config()
-
         resolved_default = default_name
         if resolved_default is None:
             resolved_default = self.get_default()
+
+        # Finding the default can auto-register on-disk indexes.
+        config = self._load_config() if refresh_config else self.config
 
         kb_name = name or resolved_default
         if kb_name is None:
             raise ValueError("No knowledge base name provided and no default set")
 
         # Get config from kb_config.json (authoritative source)
-        kb_config = self.config.get("knowledge_bases", {}).get(kb_name, {})
+        kb_config = config.get("knowledge_bases", {}).get(kb_name, {})
 
         # Connected KBs live outside ``base_dir``; resolve to their external
         # pointer so the on-disk stats/index-version scan below reflect reality.
@@ -1810,12 +1839,22 @@ class KnowledgeBaseManager:
         Returns:
             True if deleted successfully
         """
+        with self.reserve_deletion(name, confirm=confirm) as delete:
+            return delete()
+
+    @contextmanager
+    def reserve_deletion(self, name: str, *, confirm: bool):
+        """Reserve the name before running its storage and catalog removal."""
+        with self._catalog.reserve_deletion(name):
+            yield partial(self._delete_knowledge_base, name, confirm=confirm)
+
+    def _delete_knowledge_base(self, name: str, *, confirm: bool) -> bool:
         # Look up against the raw config rather than ``list_knowledge_bases``:
         # the latter prunes orphan entries (dir missing) as a side effect, so
         # calling it here would race-delete the entry we are about to clean up
         # and then raise "not found" on the now-empty config.
-        self.config = self._load_config()
-        config_kbs = self.config.get("knowledge_bases", {})
+        with self._catalog_lock:
+            config_kbs = self._read_config_file()["knowledge_bases"]
         if name not in config_kbs and not (self.base_dir / name).exists():
             raise ValueError(f"Knowledge base not found: {name}")
 
@@ -1885,16 +1924,13 @@ class KnowledgeBaseManager:
                 f"KB directory '{kb_dir}' missing on disk; cleaning up orphaned config entry."
             )
 
-        # Remove from config
-        if name in self.config.get("knowledge_bases", {}):
-            del self.config["knowledge_bases"][name]
-
-        # Update default if this was the default
-        if self.config.get("default") == name:
-            remaining = [n for n in self.config.get("knowledge_bases", {}).keys() if n != name]
-            self.config["default"] = sorted(remaining)[0] if remaining else None
-
-        self._save_config()
+        # Use the current on-disk entries. Removing a row does not need to
+        # reconcile other KBs' indexes while holding the catalog lock.
+        with self._catalog_lock:
+            self.config = self._read_config_file()
+            self.config.pop("default", None)  # Drop the legacy top-level default.
+            self.config["knowledge_bases"].pop(name, None)
+            self._save_config()
         return True
 
     def _delete_marginnote4_store(self, name: str, entry: dict) -> None:

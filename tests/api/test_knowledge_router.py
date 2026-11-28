@@ -3186,6 +3186,115 @@ def test_delete_reports_a_missing_knowledge_base_as_404(monkeypatch, tmp_path: P
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize("by_name", [False, True])
+@pytest.mark.asyncio
+async def test_delete_knowledge_base_keeps_event_loop_responsive(
+    monkeypatch, tmp_path: Path, by_name: bool
+) -> None:
+    from contextvars import ContextVar
+    from threading import Event, get_ident
+
+    from deeptutor.knowledge import manager as manager_module
+
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = manager.base_dir / "slow-kb"
+    kb_dir.mkdir()
+    manager.config["knowledge_bases"]["slow-kb"] = {"rag_provider": "llamaindex"}
+    manager._save_config()
+
+    request_scope = ContextVar("delete_workspace")
+    request_scope.set("workspace-a")
+    loop_thread = get_ident()
+    started, release = Event(), Event()
+    observed = []
+    real_rmtree = manager_module.shutil.rmtree
+
+    def slow_rmtree(path, *args, **kwargs):
+        if path == kb_dir:
+            observed.append((get_ident(), request_scope.get()))
+            started.set()
+            release.wait(timeout=2)
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(manager_module.shutil, "rmtree", slow_rmtree)
+    if by_name:
+        payload = knowledge_router_module.DeleteKnowledgeBaseRequest(name="slow-kb")
+        delete = knowledge_router_module.delete_knowledge_base_by_name(payload)
+    else:
+        delete = knowledge_router_module.delete_knowledge_base("slow-kb")
+    task = asyncio.create_task(delete)
+    try:
+        assert await asyncio.to_thread(started.wait, 3)
+        assert not task.done()
+        [(worker_thread, workspace)] = observed
+        assert worker_thread != loop_thread
+        assert workspace == "workspace-a"
+    finally:
+        release.set()
+        result = await task
+
+    assert result == {"message": "Knowledge base 'slow-kb' deleted successfully"}
+    assert not kb_dir.exists()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_delete_cannot_release_name_during_authorization(monkeypatch, tmp_path):
+    import asyncio
+    from threading import Event
+
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = manager.base_dir / "demo"
+    kb_dir.mkdir()
+    manager.config["knowledge_bases"]["demo"] = {"rag_provider": "llamaindex"}
+    manager._save_config()
+
+    deleting, may_delete, disk_done = Event(), Event(), Event()
+    resolved, may_reserve = Event(), Event()
+    delete = manager._delete_knowledge_base
+    writable = knowledge_router_module._writable_kb
+
+    def hold_delete(name, *, confirm):
+        deleting.set()
+        assert may_delete.wait(5)
+        result = delete(name, confirm=confirm)
+        disk_done.set()
+        return result
+
+    def hold_duplicate(name):
+        target = writable(name)
+        if deleting.is_set():
+            resolved.set()
+            assert may_reserve.wait(5)
+        return target
+
+    monkeypatch.setattr(manager, "_delete_knowledge_base", hold_delete)
+    monkeypatch.setattr(knowledge_router_module, "_writable_kb", hold_duplicate)
+    first = asyncio.create_task(knowledge_router_module.delete_knowledge_base("demo"))
+    duplicate = None
+    try:
+        assert await asyncio.to_thread(deleting.wait, 3)
+        duplicate = asyncio.create_task(
+            knowledge_router_module.delete_knowledge_base_by_name(
+                knowledge_router_module.DeleteKnowledgeBaseRequest(name="demo")
+            )
+        )
+        assert await asyncio.to_thread(resolved.wait, 3)
+        may_delete.set()
+        assert await asyncio.to_thread(disk_done.wait, 3)
+        assert "demo" in manager.list_knowledge_bases()
+        may_reserve.set()
+        with pytest.raises(HTTPException) as error:
+            await duplicate
+        assert error.value.status_code == 409
+    finally:
+        may_delete.set()
+        may_reserve.set()
+        await asyncio.gather(first, *([duplicate] if duplicate else []), return_exceptions=True)
+
+    assert first.result() == {"message": "Knowledge base 'demo' deleted successfully"}
+    assert "demo" not in manager.list_knowledge_bases()
+
+
 def test_delete_kb_file_success_and_traversal(monkeypatch, tmp_path: Path) -> None:
     manager = _real_manager(monkeypatch, tmp_path)
     kb_dir = tmp_path / "kbs" / "chem"

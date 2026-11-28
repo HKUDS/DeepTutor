@@ -5,6 +5,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from deeptutor.knowledge.catalog import (
+    KnowledgeBaseDeletionInProgress,
+    kb_catalog,
+    serialize_catalog,
+)
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
@@ -41,6 +46,7 @@ class KnowledgeBaseConfigService:
 
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
+        self._catalog = kb_catalog(self.config_path.parent)
         self._config = self._load_config()
 
     @classmethod
@@ -117,7 +123,7 @@ class KnowledgeBaseConfigService:
 
         Without this, every mutating call would rewrite the file from the
         in-memory snapshot taken at process start and undo any external
-        cleanup. Read-modify-write keeps the two writers consistent.
+        cleanup. Callers hold the shared catalog lock while editing.
         """
         self._config = self._load_config()
 
@@ -130,6 +136,7 @@ class KnowledgeBaseConfigService:
             }
         return knowledge_bases[kb_name]
 
+    @serialize_catalog
     def get_kb_config(self, kb_name: str) -> dict[str, Any]:
         self._refresh()
         defaults = dict(self._config.get("defaults", {}))
@@ -144,7 +151,10 @@ class KnowledgeBaseConfigService:
         merged["rag_provider"] = normalize_provider_name(merged.get("rag_provider"))
         return merged
 
+    @serialize_catalog
     def set_kb_config(self, kb_name: str, config: dict[str, Any]) -> None:
+        if self._catalog.is_deleting(kb_name):
+            raise KnowledgeBaseDeletionInProgress(kb_name)
         self._refresh()
         entry = self._ensure_kb(kb_name)
         entry.update(config)
@@ -162,12 +172,14 @@ class KnowledgeBaseConfigService:
     def set_search_mode(self, kb_name: str, mode: str) -> None:
         self.set_kb_config(kb_name, {"search_mode": mode})
 
+    @serialize_catalog
     def get_provider_mode(self, provider: str) -> str:
         """Global default retrieval mode for an engine ("" when unset)."""
         self._refresh()
         modes = self._config.get("defaults", {}).get("provider_modes", {})
         return str(modes.get(provider, "")) if isinstance(modes, dict) else ""
 
+    @serialize_catalog
     def set_provider_mode(self, provider: str, mode: str) -> None:
         self._refresh()
         defaults = self._config.setdefault("defaults", _default_payload()["defaults"])
@@ -175,28 +187,35 @@ class KnowledgeBaseConfigService:
         modes[provider] = mode
         self._save()
 
+    @serialize_catalog
     def delete_kb_config(self, kb_name: str) -> None:
+        if self._catalog.is_deleting(kb_name):
+            raise KnowledgeBaseDeletionInProgress(kb_name)
         self._refresh()
         knowledge_bases = self._config.get("knowledge_bases", {})
         if kb_name in knowledge_bases:
             del knowledge_bases[kb_name]
             self._save()
 
+    @serialize_catalog
     def get_all_configs(self) -> dict[str, Any]:
         self._refresh()
         return self._config
 
+    @serialize_catalog
     def set_global_defaults(self, defaults: dict[str, Any]) -> None:
         self._refresh()
         current = self._config.setdefault("defaults", _default_payload()["defaults"])
         current.update(defaults)
         self._save()
 
+    @serialize_catalog
     def set_default_kb(self, kb_name: str | None) -> None:
         self._refresh()
         self._config.setdefault("defaults", _default_payload()["defaults"])["default_kb"] = kb_name
         self._save()
 
+    @serialize_catalog
     def get_default_kb(self) -> str | None:
         self._refresh()
         return self._config.get("defaults", {}).get("default_kb")
