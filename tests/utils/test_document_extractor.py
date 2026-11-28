@@ -77,6 +77,23 @@ def _make_pptx(slides_text: list[list[str]]) -> bytes:
     return buf.getvalue()
 
 
+def _make_pdf_with_reordered_number_spans() -> bytes:
+    """A PDF whose numbers are drawn right-to-left in the content stream."""
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    pdf = canvas.Canvas(buf, pagesize=(300, 200))
+    pdf.setFont("Helvetica", 12)
+    # Visually "7,0": the glyphs sit at x=134, 140, 143 but are written 0, ",", 7.
+    for x, text in ((143, "0"), (140, ","), (134, "7")):
+        pdf.drawString(x, 150, text)
+    # Visually "12,9": written 1, 9, ",", 2.
+    for x, text in ((160, "1"), (175, "9"), (172, ","), (166, "2")):
+        pdf.drawString(x, 120, text)
+    pdf.save()
+    return buf.getvalue()
+
+
 _CONTAINER_XML = (
     '<?xml version="1.0"?>'
     '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
@@ -556,6 +573,18 @@ class TestExtractPdf:
         text = extract_text_from_bytes("sample.pdf", data)
         assert "Hello PDF world" in text
         assert "--- Page 1 ---" in text
+
+    def test_reordered_number_spans_use_layout_aware_fallback(self) -> None:
+        pytest.importorskip("fitz")
+        pytest.importorskip("pdfplumber")
+        pytest.importorskip("reportlab")
+
+        text = extract_text_from_bytes("reordered.pdf", _make_pdf_with_reordered_number_spans())
+
+        assert "7,0" in text
+        assert "12,9" in text
+        assert "0,7" not in text
+        assert "19,2" not in text
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from types import SimpleNamespace
 from typing import Any
@@ -129,6 +130,26 @@ def _list_item_pieces(value: Any) -> list[str]:
     return []
 
 
+_PAGE_MARKER_RE = re.compile(r"^--- Page (\d+) ---\s*$", re.MULTILINE)
+
+
+def _markdown_page_texts(markdown: str | None) -> dict[int, str]:
+    """Split page-marked parser output (``--- Page N ---``) into page texts."""
+    if not markdown:
+        return {}
+    matches = list(_PAGE_MARKER_RE.finditer(markdown))
+    if not matches:
+        return {}
+    pages: dict[int, str] = {}
+    for position, match in enumerate(matches):
+        end = matches[position + 1].start() if position + 1 < len(matches) else len(markdown)
+        text = markdown[match.end() : end].strip()
+        page_number = int(match.group(1))
+        if text and page_number >= 1:
+            pages[page_number - 1] = text
+    return pages
+
+
 def _block_text(block: dict[str, Any]) -> str:
     """Readable text of one content_list block, including list entries."""
     pieces = [str(block.get(k) or "") for k in ("text", "content", "table_body")]
@@ -178,6 +199,7 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
         elif text:
             unlocated.append(text)
     documents = []
+    markdown_pages = _markdown_page_texts(parsed.markdown)
     with pymupdf.open(path) as pdf:
         if pdf.needs_pass:
             raise SourcePageError("Password protected PDFs cannot supply teaching evidence.")
@@ -188,10 +210,16 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
             # Pages with other blocks keep the previous native-text fallback.
             if located.strip():
                 text = located.strip()
+                from_parsed = True
+            elif index in markdown_pages:
+                text = markdown_pages[index]
+                from_parsed = True
             elif index in furniture_pages and index not in content_pages:
                 text = ""
+                from_parsed = False
             else:
                 text = page.get_text(sort=True).strip()
+                from_parsed = False
             metadata = {
                 "file_name": path.name,
                 "file_path": str(path),
@@ -203,7 +231,7 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
                 "page_label": page.get_label() or "",
                 "page_count": pdf.page_count,
                 "parser_signature": parsed.parser_signature,
-                "parse_engine": parsed.engine if located.strip() else "native_pdf",
+                "parse_engine": parsed.engine if from_parsed else "native_pdf",
                 "page_status": "searchable" if text else "needs_ocr",
                 "visual_status": "present"
                 if page.get_images() or page.get_drawings()

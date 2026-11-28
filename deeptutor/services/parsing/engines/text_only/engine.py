@@ -31,7 +31,7 @@ class TextOnlyParser:
         return SUPPORTED_DOC_EXTENSIONS
 
     def signature(self, _config: dict[str, Any]) -> ParserSignature:
-        return ParserSignature.build("text_only", "builtin-v1", {})
+        return ParserSignature.build("text_only", "builtin-v2", {})
 
     def is_ready(self, _config: dict[str, Any]) -> ReadinessReport:
         return ReadinessReport(ready=True)
