@@ -27,6 +27,7 @@ from pathlib import Path
 import zipfile
 
 from deeptutor.utils.document_validator import DocumentValidator
+from deeptutor.utils.zip_names import zip_member_name
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ def safe_extract_zip(
             )
 
         for info in members:
-            member = info.filename
+            member = zip_member_name(info)
             basename = member.replace("\\", "/").rsplit("/", 1)[-1]
 
             if member.startswith("__MACOSX/") or basename.startswith("."):
