@@ -60,6 +60,9 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "question_bank": "has_question_bank",
     "read_skill": "has_skills",
     "load_tools": "has_deferred_tools",
+    # Reaches tools loaded through ``load_tools`` without adding them to
+    # ``tools[]`` (see ``DeferredToolLoader.proxy``).
+    "call_tool": "has_deferred_tools",
     # The single execution surface for source code and shell scripts.
     "exec": "has_exec",
     "mastery_topics": "has_mastery_topics",

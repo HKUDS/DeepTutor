@@ -294,18 +294,17 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
             session_id=context.session_id,
             loaded=loaded,
             allowed={tool.name for tool in pool},
-            capability_names=self._deferred_outline_names,
+            # This loader replaces the base one, so it must keep honouring the
+            # base pipeline's own deferred names (research, setup).
+            capability_names=self._deferred_outline_names
+            | getattr(self, "_local_deferred_names", set()),
+            guides=view.loader.guides if view.loader else None,
         )
         self._tool_view = ProviderToolView(
             registry=view.registry,
             loader=loader,
             pool=pool,
-            manifest="\n\n".join(
-                filter(
-                    None,
-                    [view.manifest, render_deferred_tools_manifest(local, language=self.language)],
-                )
-            ),
+            manifest=render_deferred_tools_manifest(list(pool), language=self.language),
         )
         self._deferred_loader = loader
         self._deferred_pool = list(pool)
@@ -314,7 +313,9 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         # the same set the next (outline) turn mounts eagerly. Loading them
         # one by one through ``load_tools`` left the next turn's tools[] with
         # a schema more than the request that preceded it: a full cache miss.
-        context.extension("mastery")[OUTLINE_TOOL_LOADER] = lambda: loader.load(outline_names)
+        context.extension("mastery")[OUTLINE_TOOL_LOADER] = lambda: loader.load(
+            outline_names, native=True
+        )
 
     def _remember_outline_tools(self, context) -> None:
         """Keep outline schemas mounted after this conversation leaves outline.

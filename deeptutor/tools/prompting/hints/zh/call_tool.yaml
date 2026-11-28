@@ -1,0 +1,4 @@
+short_description: "调用 `load_tools` 返回了定义的扩展工具。"
+when_to_use: "`load_tools` 说明某工具要通过 `call_tool` 调用之后使用。"
+input_format: "`name` — 工具的准确名称；`arguments` — 按该工具参数填写的对象。"
+phase: "exploration"

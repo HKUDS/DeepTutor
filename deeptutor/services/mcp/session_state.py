@@ -3,7 +3,12 @@ Per-session deferred-tool state.
 
 Records which deferred tools the model has loaded (via ``load_tools``) in a
 chat session, so subsequent turns include those schemas from the start
-instead of forcing a re-load. File-backed JSON inside the session workspace
+instead of forcing a re-load.
+
+Tools loaded while ``call_tool`` was mounted are also recorded as *proxied*:
+their schemas went into the ``load_tools`` result instead of ``tools[]``, and
+they keep being called through ``call_tool`` on later turns, so ``tools[]``
+does not change when a tool is loaded. File-backed JSON inside the session workspace
 — multi-user-safe because the path service resolves per-user roots via the
 runtime's ContextVars.
 """
@@ -25,7 +30,7 @@ def _state_file(session_id: str):
     return workspace / _STATE_FILENAME
 
 
-def load_loaded_tools(session_id: str) -> set[str]:
+def _read_names(session_id: str, key: str) -> set[str]:
     if not session_id:
         return set()
     try:
@@ -36,24 +41,39 @@ def load_loaded_tools(session_id: str) -> set[str]:
     except Exception:
         logger.debug("loaded-tools state unreadable for %s", session_id, exc_info=True)
         return set()
-    names = data.get("loaded_tools") if isinstance(data, dict) else None
+    names = data.get(key) if isinstance(data, dict) else None
     if not isinstance(names, list):
         return set()
     return {str(n) for n in names if str(n).strip()}
 
 
-def record_loaded_tools(session_id: str, names: set[str]) -> None:
+def load_loaded_tools(session_id: str) -> set[str]:
+    return _read_names(session_id, "loaded_tools")
+
+
+def load_proxied_tools(session_id: str) -> set[str]:
+    """Loaded tools this session calls through ``call_tool``."""
+    return _read_names(session_id, "proxied_tools")
+
+
+def record_loaded_tools(
+    session_id: str, names: set[str], *, proxied: set[str] | None = None
+) -> None:
+    """Persist the loaded set; ``proxied=None`` keeps the recorded proxied subset."""
     if not session_id:
         return
+    if proxied is None:
+        proxied = load_proxied_tools(session_id)
+    proxied = set(proxied) & set(names)
+    payload: dict[str, list[str]] = {"loaded_tools": sorted(names)}
+    if proxied:
+        payload["proxied_tools"] = sorted(proxied)
     try:
         path = _state_file(session_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"loaded_tools": sorted(names)}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         logger.warning("failed to persist loaded-tools state for %s", session_id, exc_info=True)
 
 
-__all__ = ["load_loaded_tools", "record_loaded_tools"]
+__all__ = ["load_loaded_tools", "load_proxied_tools", "record_loaded_tools"]
