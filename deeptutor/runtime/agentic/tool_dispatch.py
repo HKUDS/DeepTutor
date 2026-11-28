@@ -535,6 +535,7 @@ RESERVED_ARGUMENT_NAMES = frozenset(
         "_mastery_source_context",
         "_note_document_id",
         "_note_read_state",
+        "_on_focused_assessment_refusal",
         "_partner_authoring_context",
         "_partner_group_context",
         "_present_mastery_sources",

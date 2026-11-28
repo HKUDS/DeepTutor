@@ -176,4 +176,5 @@ status_guide: |-
   - `teaching_focus` notes for the current objective: {teaching_focus}
 
 notices:
+  focused_assessment_stopped: "I couldn’t grade this explanation with the evidence available for the full objective. Your mastery for this objective hasn’t changed."
   profile_not_saved: "Storage status: the requested learner-profile update was not saved for future sessions. It can still guide this conversation."

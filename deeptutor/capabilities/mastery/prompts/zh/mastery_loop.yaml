@@ -170,4 +170,5 @@ status_guide: |-
   - 当前目标的 `teaching_focus` 记录：{teaching_focus}
 
 notices:
+  focused_assessment_stopped: "现有证据不足以评估整个目标，因此这次讲解未评分。你的掌握度没有变化。"
   profile_not_saved: "保存状态：本次学习档案更新未能保存到后续会话，但仍可用于当前对话。"
