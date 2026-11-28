@@ -2203,15 +2203,15 @@ def test_display_read_requires_auth_and_returns_only_display_fields(monkeypatch,
     assert response.json() == {"content_font_scale": 125, "content_line_spacing": "normal"}
 
 
-def test_llm_provider_choices_include_cloudgpu() -> None:
-    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
-
-    assert llm["cloudgpu"]["label"] == "CloudGPU"
-    assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"
-
-
 def test_llm_provider_choices_include_martllm() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
     assert llm["martllm"]["label"] == "MartLLM"
     assert llm["martllm"]["base_url"] == "https://api.martllm.com/v1"
+
+
+def test_llm_provider_choices_include_cloudgpu() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cloudgpu"]["label"] == "CloudGPU"
+    assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"

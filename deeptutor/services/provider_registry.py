@@ -401,16 +401,6 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://llmtr.com/v1",
     ),
     ProviderSpec(
-        name="cloudgpu",
-        keywords=("cloudgpu",),
-        env_key="CLOUDGPU_API_KEY",
-        display_name="CloudGPU",
-        backend="openai_compat",
-        is_gateway=True,
-        detect_by_base_keyword="cloudgpu",
-        default_api_base="https://cloudgpu.app/v1",
-    ),
-    ProviderSpec(
         name="martllm",
         keywords=("martllm",),
         env_key="MARTLLM_API_KEY",
@@ -419,6 +409,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="martllm",
         default_api_base="https://api.martllm.com/v1",
+    ),
+    ProviderSpec(
+        name="cloudgpu",
+        keywords=("cloudgpu",),
+        env_key="CLOUDGPU_API_KEY",
+        display_name="CloudGPU",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="cloudgpu",
+        default_api_base="https://cloudgpu.app/v1",
     ),
     ProviderSpec(
         name="volcengine",

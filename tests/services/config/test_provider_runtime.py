@@ -1289,63 +1289,6 @@ def test_llm_opper_base_url_detection_preserves_openai_binding_compatibility() -
     assert resolved.effective_url == "https://api.opper.ai/v3/compat"
 
 
-def test_llm_cloudgpu_binding_uses_default_openai_compatible_endpoint() -> None:
-    catalog = _build_catalog(
-        llm_profile={
-            "id": "llm-p",
-            "name": "CloudGPU",
-            "binding": "cloudgpu",
-            "base_url": "",
-            "api_key": "cloudgpu-key",
-            "api_version": "",
-            "extra_headers": {},
-            "models": [
-                {
-                    "id": "llm-m",
-                    "name": "DeepSeek V4.1 Flash",
-                    "model": "deepseek-v4.1-flash",
-                }
-            ],
-        }
-    )
-
-    resolved = resolve_llm_runtime_config(catalog=catalog)
-
-    assert resolved.provider_name == "cloudgpu"
-    assert resolved.provider_mode == "gateway"
-    assert resolved.binding == "cloudgpu"
-    assert resolved.model == "deepseek-v4.1-flash"
-    assert resolved.api_key == "cloudgpu-key"
-    assert resolved.effective_url == "https://cloudgpu.app/v1"
-
-
-def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility() -> None:
-    catalog = _build_catalog(
-        llm_profile={
-            "id": "llm-p",
-            "name": "OpenAI Compatible",
-            "binding": "openai",
-            "base_url": "https://cloudgpu.app/v1",
-            "api_key": "cloudgpu-key",
-            "api_version": "",
-            "extra_headers": {},
-            "models": [
-                {
-                    "id": "llm-m",
-                    "name": "DeepSeek V4.1 Flash",
-                    "model": "deepseek-v4.1-flash",
-                }
-            ],
-        }
-    )
-
-    resolved = resolve_llm_runtime_config(catalog=catalog)
-
-    assert resolved.provider_name == "cloudgpu"
-    assert resolved.provider_mode == "gateway"
-    assert resolved.effective_url == "https://cloudgpu.app/v1"
-
-
 def test_llm_martllm_binding_uses_default_openai_compatible_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
@@ -1401,3 +1344,60 @@ def test_llm_martllm_base_url_detection_preserves_openai_binding_compatibility()
     assert resolved.provider_name == "martllm"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://api.martllm.com/v1"
+
+
+def test_llm_cloudgpu_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "CloudGPU",
+            "binding": "cloudgpu",
+            "base_url": "",
+            "api_key": "cloudgpu-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4.1 Flash",
+                    "model": "deepseek-v4.1-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cloudgpu"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "cloudgpu"
+    assert resolved.model == "deepseek-v4.1-flash"
+    assert resolved.api_key == "cloudgpu-key"
+    assert resolved.effective_url == "https://cloudgpu.app/v1"
+
+
+def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://cloudgpu.app/v1",
+            "api_key": "cloudgpu-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4.1 Flash",
+                    "model": "deepseek-v4.1-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cloudgpu"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://cloudgpu.app/v1"
