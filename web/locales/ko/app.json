@@ -675,5 +675,10 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "이 지식 항목을 일단 건너뛰기",
+  "Deferred for now": "일단 보류됨",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "숙달을 확인하면 학습 진도에 반영되며 원래 평가 결과는 유지됩니다.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "건너뛰어도 숙달로 인정되지 않습니다. 나중에 이 지식 항목으로 돌아올 수 있습니다.",
+  "Optional note": "메모 (선택 사항)"
 }

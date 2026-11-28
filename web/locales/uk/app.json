@@ -6686,5 +6686,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "Поки пропустити цей пункт знань",
+  "Deferred for now": "Поки відкладено",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Підтвердження опанування зараховується до прогресу та зберігає початкову оцінку.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "Пропуск не зараховується як опанування. До цього пункту знань можна повернутися пізніше.",
+  "Optional note": "Примітка (необов’язково)"
 }

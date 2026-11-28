@@ -113,6 +113,50 @@ def deterministic_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(storage_module, "time", types.SimpleNamespace(time=_fake_time))
 
 
+def test_manual_deferral_requires_auth_and_owns_only_the_callers_path(records_client):
+    from deeptutor.api.routers.auth import _install_current_user
+    from deeptutor.learning.models import KnowledgePoint, LearningModule, LearningProgress
+    from deeptutor.learning.storage import LearningStore
+    from deeptutor.multi_user.context import reset_current_user
+
+    token = _install_current_user(_acting_user("u_alice"))
+    try:
+        store = LearningStore()
+        store.save(
+            LearningProgress(
+                book_id="private-path",
+                modules=[
+                    LearningModule(
+                        id="m1",
+                        name="Logic",
+                        order=0,
+                        knowledge_points=[
+                            KnowledgePoint(
+                                id="kp1", name="Equivalence", type="concept", module_id="m1"
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+    finally:
+        reset_current_user(token)
+
+    url = "/api/mastery-paths/topics/private-path/objectives/kp1/defer"
+    assert records_client.post(url, json={}).status_code == 401
+    assert (
+        records_client.post(url, json={}, headers={"Authorization": "Bearer token-bob"}).status_code
+        == 404
+    )
+    assert store.load("private-path").deferred_objectives == {}
+    response = records_client.post(
+        url, json={"note": "Question missing"}, headers={"Authorization": "Bearer token-alice"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["map"]["counts"]["mastered"] == 0
+    assert store.load("private-path").deferred_objectives["kp1"].note == "Question missing"
+
+
 def test_records_stay_within_each_account(records_client: TestClient) -> None:
     """Cross-account invisibility: alice and bob each only ever see their own
     progress rows and activity tail, physically stored in separate databases."""

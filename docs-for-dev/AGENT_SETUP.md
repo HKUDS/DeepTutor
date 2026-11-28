@@ -339,6 +339,21 @@ chat and attach the material there. An empty side tab has no saved server thread
 until its first message and is not restored. Move a side chat by moving its
 parent conversation.
 
+### Recovering a stuck Mastery Path
+
+Open the topic's outline and select the affected knowledge point. **I already
+know this — advance** lets the learner confirm mastery with an optional note.
+It counts toward path progress as **Confirmed by you**, keeps the original
+assessment evidence, and releases any outstanding question for that objective.
+**Return to assessment** removes that personal confirmation.
+
+For a missing or unusable question, choose **Skip this knowledge point for now**.
+This releases its outstanding question without awarding mastery, even if no
+question card was produced. Other eligible objectives take priority; deferred
+objectives remain unfinished and return when no other eligible work remains.
+Skipping every remaining objective does not complete the path. These actions
+stop an active tutor turn before changing the path, and require no model call.
+
 
 ### Provider progress and book editing
 
