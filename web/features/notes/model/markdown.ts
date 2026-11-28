@@ -65,23 +65,43 @@ export function parseNoteMarkdown(
     prose.push(line)
   }
   flush()
+  const splitInlineMath = (items: unknown[]): unknown[] =>
+    items.flatMap(raw => {
+      const item = raw as { type: string; text?: string; styles?: Record<string, unknown> }
+      if (item.type !== 'text' || item.styles?.code || !item.text) return [raw]
+      const out: unknown[] = []
+      let cursor = 0
+      for (const match of item.text.matchAll(/(?<![\\$])\$([^$\n]+)\$(?!\$)/g)) {
+        if (match.index! > cursor)
+          out.push({ ...item, text: item.text.slice(cursor, match.index) })
+        out.push({ type: 'inlineMath', props: { formula: match[1] } })
+        cursor = match.index! + match[0].length
+      }
+      if (cursor < item.text.length) out.push({ ...item, text: item.text.slice(cursor) })
+      return out
+    })
+
   const inlineMath = (blocks: NoteBlock[]) =>
     blocks.forEach(block => {
-      if (block.type !== 'codeBlock' && Array.isArray(block.content)) {
-        block.content = block.content.flatMap(raw => {
-          const item = raw as { type: string; text?: string; styles?: Record<string, unknown> }
-          if (item.type !== 'text' || item.styles?.code || !item.text) return [raw]
-          const out: unknown[] = []
-          let cursor = 0
-          for (const match of item.text.matchAll(/(?<![\\$])\$([^$\n]+)\$(?!\$)/g)) {
-            if (match.index! > cursor)
-              out.push({ ...item, text: item.text.slice(cursor, match.index) })
-            out.push({ type: 'inlineMath', props: { formula: match[1] } })
-            cursor = match.index! + match[0].length
+      if (block.type !== 'codeBlock') {
+        if (Array.isArray(block.content)) {
+          block.content = splitInlineMath(block.content)
+        } else if (block.content && typeof block.content === 'object') {
+          // BlockNote table cells carry their own inline-content arrays. The
+          // top-level walk never reached them, so formulas inside a table
+          // stayed literal `$...$` text and rendered as raw LaTeX.
+          const table = block.content as {
+            type?: string
+            rows?: Array<{ cells?: Array<{ content?: unknown }> }>
           }
-          if (cursor < item.text.length) out.push({ ...item, text: item.text.slice(cursor) })
-          return out
-        })
+          if (table.type === 'tableContent' && Array.isArray(table.rows)) {
+            for (const row of table.rows) {
+              for (const cell of row.cells ?? []) {
+                if (Array.isArray(cell.content)) cell.content = splitInlineMath(cell.content)
+              }
+            }
+          }
+        }
       }
       if (block.children) inlineMath(block.children)
     })

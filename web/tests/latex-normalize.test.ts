@@ -223,6 +223,9 @@ test("real formulas survive the same pass", () => {
     "设 $x$ 为变量，$y$ 为常量。",
     "$\\text{速度} = \\frac{s}{t}$",
     "已知 $速度 = 路程/时间$ 求解。",
+    "求 $N$ 的方差 $Var(N)$。",
+    "> 方差 $Var(N)$ 已知。",
+    "统计量 $Cov(X,Y)$ 与 $Corr(X,Y)$。",
     "$$\n\\overline{A+B}=\\bar{A}\\bar{B}\n$$",
   ]) {
     assert.equal(normalizeMathMarkup(input), input);
@@ -261,6 +264,9 @@ test("routing agrees with what normalisation produces", () => {
     assert.equal(hasMarkdownMath(input), true, input);
     assert.notEqual(normalizeMathMarkup(input), input, input);
   }
+  // Already-delimited statistics notation must route to KaTeX and survive
+  // normalisation byte-for-byte.
+  assert.equal(hasMarkdownMath("求 $N$ 的方差 $Var(N)$。"), true);
 
   const shouldNot = [
     "价格是 $5 和 $10。",
