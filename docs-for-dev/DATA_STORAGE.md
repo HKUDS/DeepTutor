@@ -86,6 +86,65 @@ the app runs can lose recent transactions. Back up the complete runtime-home
 copy as sensitive because it can contain credentials, private conversation
 text, and uploaded learning material.
 
+## Moving Data Between Deployments
+
+The runtime-home tree is self-contained, so moving between deployment shapes
+(for example from the published container to the desktop app, or between
+machines) is a copy of `data/` into the target's runtime home. Upgrading
+between releases needs no migration; this section covers moving the same tree
+to a different deployment.
+
+Default runtime home of the desktop app on macOS:
+`~/Library/Application Support/Open DeepTutor/workspace/data`.
+
+1. **Stop the source and the target.** SQLite write-ahead log files make a copy
+   of a running instance unreliable (see the previous section).
+
+2. **Copy the whole `data/` tree**, including hidden directories such as
+   `data/user/.runtime/`, and every top-level directory (`knowledge_bases/`,
+   `memory/`, `partners/`, `system/`, and so on), not only `user/`. From a Docker
+   named volume:
+
+   ```bash
+   mkdir export
+   docker run --rm -v <volume>:/data -v "$PWD/export":/out alpine \
+     sh -c "cp -a /data/. /out/"
+   ```
+
+   A container can mount a different volume than the one you expect (for
+   example one created by Compose). Check `docker ps -a` and compare the volume
+   sizes before exporting.
+
+3. **Back up the target's existing `data/`**, and set aside the target's own
+   copies of the environment-specific files listed in step 4. Remove stale
+   `chat_history.db-wal`, `chat_history.db-shm`, `usage.sqlite3-wal` and
+   `usage.sqlite3-shm` files from the target, then copy the exported tree over
+   it, preserving hidden files (for example `rsync -a export/ "<target>/data/"`).
+
+4. **Keep the target's environment-specific files.** Put the target's own
+   copies back after the copy (or exclude them from it):
+   - `data/user/settings/system.json` holds ports, CORS and SSL options that
+     may not suit the new environment.
+   - `data/user/.runtime/workspaces.sqlite3` registers each workspace with an
+     absolute `path`. A registry copied from a container lists `/app/data/...`
+     paths, which do not exist on the host; the desktop app then fails to start
+     new conversations with "The selected workspace folder does not exist."
+     Workspace IDs for the default workspaces are the same in both
+     deployments, so the target's registry keeps pointing at the copied
+     `data/user/workspaces/ws_*` directories.
+
+5. **Start the target** and confirm that sessions, knowledge bases and a model
+   response work, and that you can start a new conversation.
+
+Treat every copy as sensitive: it contains provider credentials and private
+conversation text, so delete exports once the migration is confirmed.
+
+Verified: published container (named volume, image 1.7.4) → Open DeepTutor
+1.7.4 desktop app on macOS (Apple Silicon), with the two default workspaces.
+Not verified: other platforms, migrating between releases, or workspaces
+registered beyond the defaults (their registry entries are not carried over
+when the target's registry is kept).
+
 ## Implementation and verification
 
 - [deeptutor/runtime/home.py](../deeptutor/runtime/home.py)
