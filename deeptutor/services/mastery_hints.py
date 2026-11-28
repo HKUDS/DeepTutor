@@ -286,10 +286,17 @@ def _sanitize(raw: str, language: str) -> str:
     signal that the model wrote a question rather than the answer it was told
     not to write.
     """
-    text = " ".join(str(raw or "").split())
-    # Models reach for a fence or a leading bullet even when told not to.
-    for fence in ("```", "「", "」", '"', "'", "“", "”", "‘", "’"):
-        text = text.replace(fence, "")
+    text = " ".join(str(raw or "").replace("```", " ").split())
+    # Models reach for a fence, wrapping quotes or a leading bullet even when
+    # told not to. Only unwrap the quotes: inner ones and apostrophes are text.
+    if len(text) >= 2 and (text[0], text[-1]) in {
+        ('"', '"'),
+        ("'", "'"),
+        ("“", "”"),
+        ("‘", "’"),
+        ("「", "」"),
+    }:
+        text = text[1:-1]
     text = text.lstrip("-•*# ").strip()
     if not text:
         return ""
