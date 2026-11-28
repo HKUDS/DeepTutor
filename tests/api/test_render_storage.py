@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from fastapi.testclient import TestClient
 import pytest
@@ -55,6 +55,37 @@ def test_preview_cleanup_and_playback_preserve_final_files(render_api):
     assert (turn / "artifacts/movie.mp4").read_bytes() == b"final video"
     assert client.get(item.url).content == b"final video"
     assert client.get(item.url + "/render-storage").json()["cache_files"] == 0
+
+
+def test_desktop_file_metadata_uses_the_original_and_keeps_the_snapshot(render_api, monkeypatch):
+    from deeptutor.api import desktop_files
+
+    client, service, _, _, _ = render_api
+    binding = service.current_binding(ensure_output=True)
+    original = binding.root / "outputs" / "学习 笔记.md"
+    original.write_text("# Notes", encoding="utf-8")
+    item = service.publish(binding, [{"path": service.relative_path(binding, original)}])[0]
+    url = urlsplit(item.url).path
+    header = "x-deeptutor-local-file"
+    key_header = "x-deeptutor-desktop-file-key"
+    key = {key_header: "desktop-test-key"}
+    monkeypatch.setattr(desktop_files, "_DESKTOP_FILE_KEY", "desktop-test-key")
+
+    assert header not in client.head(url).headers
+    assert header not in client.head(url, headers={key_header: "wrong"}).headers
+    assert header not in client.get(url, headers=key).headers
+    response = client.head(url, headers=key)
+    assert unquote(response.headers[header]) == str(original)
+    assert response.headers["cache-control"] == "private, no-store"
+    browser_view = client.get(url, params={"view": "browser"})
+    assert browser_view.headers["content-type"].startswith("text/plain")
+    assert browser_view.text == "# Notes"
+
+    original.unlink()
+    response = client.head(url, headers=key)
+    assert response.status_code == 200
+    assert header not in response.headers
+    assert client.get(url).text == "# Notes"
 
 
 def test_cleanup_refuses_changed_preview(render_api):

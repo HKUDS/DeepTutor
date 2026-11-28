@@ -103,6 +103,7 @@ export class SourceRuntime extends EventEmitter {
       delete env.DEEPTUTOR_LAUNCHER_PID;
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.PYTHONHOME;
+      delete env.DEEPTUTOR_DESKTOP_FILE_KEY;
       await this.group.run(config.pythonPath, ['-m', 'deeptutor_cli.main', 'init', '--non-interactive', '--home', config.runtimeHome],
         { cwd: config.runtimeHome, env });
       let auth = {};
@@ -124,7 +125,10 @@ export class SourceRuntime extends EventEmitter {
       this.update({ step: 'startingCore' });
       this.backend = this.group.spawn(config.pythonPath,
         ['-m', 'deeptutor_cli.main', 'serve', '--host', '127.0.0.1', '--port', String(backendPort)],
-        { cwd: config.runtimeHome, env });
+        {
+          cwd: config.runtimeHome,
+          env: { ...env, DEEPTUTOR_DESKTOP_FILE_KEY: process.env.DEEPTUTOR_DESKTOP_FILE_KEY },
+        });
       await waitReady(`${backendURL}/health/ready`, {
         signal: this.controller.signal, alive: () => this.group.alive(this.backend),
       });

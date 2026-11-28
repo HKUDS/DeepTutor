@@ -1842,6 +1842,8 @@
   "Close tab": "Sekmeyi kapat",
   "Close viewer": "Görüntüleyiciyi kapat",
   "Back to conversation": "Sohbete dön",
+  "This file is unavailable.": "Bu dosya kullanılamıyor.",
+  "Conversation snapshot": "Konuşma anlık görüntüsü",
   "Loading {{host}}…": "{{host}} yükleniyor…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Birçok site güvenlik nedeniyle gömülmeyi reddeder. Aşağıdaki sayfa boş kalırsa “Tarayıcıda aç” seçeneğini kullanın.",
   "Open URL": "URL'yi aç",
