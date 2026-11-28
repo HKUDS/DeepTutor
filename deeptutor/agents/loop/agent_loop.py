@@ -64,6 +64,7 @@ from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.runtime.agentic.usage import message_content_chars, record_streamed_usage
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import (
+    LLMError,
     LLMProviderTransportError,
     LLMReasoningBudgetExhausted,
     clean_thinking_tags,
@@ -455,15 +456,18 @@ class AgentLoop:
                 max_tokens=output_budget,
                 tool_schemas=None,  # tools disabled so the model must finish
             )
-        except LLMProviderTransportError:
-            # Preserve the structured retryable error. Treating an unavailable
-            # provider as a successful empty answer hides the real failure and
-            # prevents callers from offering an accurate retry action.
+        except LLMError:
+            # Preserve structured provider/config errors (400/401/429, transport,
+            # budget, etc.). Turning a rejected salvage request into a completed
+            # empty-answer notice hides the provider's error detail, suppresses
+            # retry UI, and persists the fallback string into conversation history.
             raise
         except Exception as exc:
+            from openai import APIError
+
             from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
 
-            if isinstance(exc, CapabilityPrerequisiteError):
+            if isinstance(exc, (CapabilityPrerequisiteError, APIError)):
                 raise
             # The salvage call itself failed (e.g. the provider is still
             # returning unusable data). Don't bubble up and lose the turn —
