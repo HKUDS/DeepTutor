@@ -25,7 +25,6 @@ import { browserStorage } from '@/shared/storage'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
 import { researchOutline } from '../model/research'
 import type { NoteAsk, NoteEditorHandle } from './NoteEditor'
-import NotePageTree from './NotePageTree'
 import './note-workspace.css'
 import NotePageHead from './NotePageHead'
 import NoteTopBar, { type NoteSaveStatus } from './NoteTopBar'
@@ -34,36 +33,52 @@ import { blockLineCenter } from './NoteThreadMarkers'
 import { foldIntoOrb } from '../model/fold-motion'
 import { useNoteThreads } from './useNoteThreads'
 import { pageDescendants } from '../model/page-tree'
+import { noteDocumentTypes, useNoteImport } from './useNoteImport'
+import { noteDraftKey, restoreNoteDraft, useNoteDestination, type NoteTreeView } from './useNoteNavigation'
+import type { PageAction } from './note-page-mutations'
+import { activeWorkspaceId } from '@/lib/workspace-scope'
 import { inlineText } from '../model/threads'
 import { learningKind } from '../model/learning-kinds'
-const Editor = dynamic(() => import('./NoteEditor'), {
+const LazyEditor = dynamic(() => import('./NoteEditor'), {
   ssr: false,
   loading: () => <div className="dt-note-editor-loading" aria-hidden />,
 })
+const NotePageTree = dynamic(() => import('./NotePageTree'), { ssr: false })
 const SourcePicker = dynamic(() => import('./NoteSourcePicker'), { ssr: false })
 const FavoritesPicker = dynamic(() => import('./NoteFavoritesPicker'), { ssr: false })
 
 export default function NoteWorkspace({
   docId,
   embedded = false,
+  onPageRemoved,
   companion: Companion,
 }: {
   docId: string
   embedded?: boolean
+  onPageRemoved?: (id: string) => void
   companion?: ComponentType<NoteCompanionProps>
 }) {
   const { t } = useTranslation()
   const router = useRouter()
+  const initial = useNoteDestination(docId)
   const auth = useAuthStatus()
   const owner =
-    auth.statusAvailable && !auth.loading ? (auth.enabled ? auth.userId : 'local') : null
+    auth.loading ? (initial?.owner ?? null) : auth.statusAvailable ? (auth.enabled ? auth.userId : 'local') : null
   const [mutating, setMutating] = useState(false)
-  const [page, setPage] = useState<NotePage | null>(null)
-  const [pages, setPages] = useState<NoteSummary[]>([])
+  const [editorGeneration, setEditorGeneration] = useState(0)
+  // null when idle; only actions affecting the open page hold the editor.
+  const [holdDocument, setHoldDocument] = useState<boolean | null>(null)
+  const pageActionBusy = holdDocument !== null
+  const Editor = initial?.Editor ?? LazyEditor
+  const [page, setPage] = useState<NotePage | null>(initial?.doc ?? null)
+  const [pages, setPages] = useState<NoteSummary[]>(initial?.pages ?? [])
+  const importInput = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<NoteSaveStatus>('Saved')
-  const [tree, setTreeOpen] = useState(false)
+  const [tree, setTreeOpen] = useState(initial?.treeOpen ?? false)
+  const treeView = useRef<NoteTreeView>(initial?.treeView ?? { collapsed: new Set<string>(), scrollTop: 0 })
+  const noteImport = useNoteImport(pages, setError, tree)
   const [outlineOpen, setOutlineOpenState] = useState(true)
   const setOutlineOpen = (open: boolean) => {
     setOutlineOpenState(open)
@@ -82,15 +97,15 @@ export default function NoteWorkspace({
   const [favorites, setFavorites] = useState(false)
   const [suggestions, setSuggestions] = useState<NoteSuggestion[]>([])
   const [backlinks, setBacklinks] = useState<NoteSummary[]>([])
-  const [recovery, setRecovery] = useState<{ title: string; blocks: NoteBlock[] } | null>(null)
+  const [recovery, setRecovery] = useState<{ title: string; blocks: NoteBlock[] } | null>(initial?.conflict ?? null)
   const editor = useRef<NoteEditorHandle | null>(null)
-  const latest = useRef<NotePage | null>(null)
-  const version = useRef(0)
+  const latest = useRef<NotePage | null>(initial?.doc ?? null)
+  const version = useRef(initial?.restored ? 1 : 0)
   const savedVersion = useRef(0)
   const inflight = useRef<Promise<void> | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const root = useRef<HTMLDivElement>(null)
-  const draftKey = owner ? `deeptutor.notes.draft:${owner}:${docId}` : null
+  const draftKey = owner ? noteDraftKey(owner, docId) : null
   const refreshSuggestions = useCallback(() => {
     void getSuggestions(docId)
       .then(r => {
@@ -183,25 +198,17 @@ export default function NoteWorkspace({
   useEffect(() => {
     if (!draftKey) return
     let cancelled = false
-    void getNote(docId)
+    const load = initial ? Promise.resolve(latest.current!) : getNote(docId)
+    void load
       .then(doc => {
         if (cancelled) return
-        const raw = browserStorage.readRaw('local', draftKey)
-        if (raw) {
-          try {
-            const draft = JSON.parse(raw)
-            if (Array.isArray(draft.blocks)) {
-              if (draft.revision === doc.revision) {
-                doc = { ...doc, title: draft.title, blocks: draft.blocks }
-                version.current++
-              } else setRecovery(draft)
-            }
-          } catch {
-            /* Ignore invalid recovery data, never overwrite the server page. */
-          }
+        if (!initial?.owner || initial.owner !== owner) {
+          const recovered = restoreNoteDraft(doc, draftKey)
+          if (recovered.restored) version.current++
+          if (recovered.conflict) setRecovery(recovered.conflict)
+          latest.current = recovered.doc
+          setPage(recovered.doc)
         }
-        latest.current = doc
-        setPage(doc)
         setTreeOpen(browserStorage.readRaw('local', `deeptutor.notes.tree:${owner}`) === 'true')
         setOutlineOpenState(
           browserStorage.readRaw('local', `deeptutor.notes.outline:${owner}`) !== 'false'
@@ -212,12 +219,16 @@ export default function NoteWorkspace({
           if (!cancelled) setBacklinks(r.pages)
         })
       })
-      .catch(err => setError(String(err)))
+      .catch(err => {
+        if (cancelled) return
+        if (err.status === 404 && onPageRemoved) onPageRemoved(docId)
+        else setError(String(err))
+      })
     return () => {
       cancelled = true
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [docId, draftKey, owner, refreshPages, refreshSuggestions])
+  }, [docId, draftKey, owner, refreshPages, refreshSuggestions, initial, onPageRemoved])
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
       if (version.current !== savedVersion.current) {
@@ -504,47 +515,60 @@ export default function NoteWorkspace({
     }
   }
   const invalidParents = pageDescendants(pages, docId)
-  const createPage = async (parentId: string | null = null) => {
-    setMutating(true)
+  const pendingAction = useRef<PageAction | null>(null)
+  const changePage = async (action: PageAction) => {
+    if (pendingAction.current && !('open' in pendingAction.current)) return
+    pendingAction.current = action
+    const workspace = activeWorkspaceId()
+    const hold = 'pin' in action ? action.pin.id === docId :
+      !('remove' in action) || action.remove.id === docId || action.remove.id === latest.current?.parent_id
+    setHoldDocument(hold)
+    let navigating = false
     try {
       await flush()
-      const doc = await createNote('', parentId)
-      refreshPages()
-      router.push(`/co-writer/${doc.id}`)
+      const { applyPageAction } = await import('./note-page-mutations')
+      navigating = await applyPageAction(action, {
+        current: latest.current!, pages, treeOpen: tree, treeView: treeView.current, workspace, owner, router,
+        isMounted: () => !!root.current?.isConnected && pendingAction.current === action,
+        onPageRemoved, refreshPages,
+        updatePinned: updated => setPages(list => list.map(page => page.id === updated.id
+          ? { ...page, pinned: updated.pinned, revision: updated.revision, updated_at: updated.updated_at }
+          : page)),
+        updateChild: (updated, bodyChanged) => {
+          if (bodyChanged) setEditorGeneration(n => n + 1)
+          latest.current = updated
+          setPage(updated)
+        },
+      })
     } catch (err) {
-      setError(String(err))
+      if (pendingAction.current === action) setError(String(err))
     } finally {
-      setMutating(false)
-    }
-  }
-  const openPage = async (id: string) => {
-    if (id === docId) return
-    try {
-      await flush()
-      router.push(`/co-writer/${id}`)
-    } catch {
-      /* Keep the unsaved page visible. */
-    }
-  }
-  const navigate = async (event: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
-    if (id === docId || version.current !== savedVersion.current) {
-      event.preventDefault()
-      if (id === docId) return
-      try {
-        await flush()
-        router.push(`/co-writer/${id}`)
-      } catch {
-        /* Keep the unsaved page visible. */
+      if (!navigating && pendingAction.current === action) {
+        pendingAction.current = null
+        setHoldDocument(null)
       }
     }
+  }
+  const deletePage = (remove: NotePage | NoteSummary) => changePage({ remove })
+  const createPage = (create: string | null = null) => changePage({ create })
+  const openPage = (id: string) => {
+    if (id !== docId) return changePage({ open: id })
+    if (pendingAction.current && 'open' in pendingAction.current) {
+      pendingAction.current = null
+      setHoldDocument(null)
+    }
+  }
+  const navigate = (event: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+    event.preventDefault()
+    void openPage(id)
   }
   return (
     <div
       ref={root}
       className="dt-note-workspace"
       onClickCapture={event => {
-        const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[data-note-source]')
+        const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[data-note-source], a.dt-note-link')
         if (
           !link ||
           event.button !== 0 ||
@@ -559,6 +583,10 @@ export default function NoteWorkspace({
         event.preventDefault()
         event.stopPropagation()
         const url = new URL(link.href, window.location.href)
+        if (link.matches('.dt-note-link')) {
+          void openPage(url.pathname.split('/').pop()!)
+          return
+        }
         void flush()
           .then(() => {
             if (url.origin === window.location.origin)
@@ -570,12 +598,20 @@ export default function NoteWorkspace({
           })
       }}
     >
+      {noteImport.dialog}
+      <input ref={importInput} type="file" hidden accept={noteDocumentTypes} onChange={event => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (file) void noteImport.openFile(file, flush)
+      }} />
       <NoteTopBar
         page={page}
         pages={pages}
+        onDelete={deletePage}
+        onImport={() => importInput.current?.click()}
         invalidParents={invalidParents}
         status={status}
-        busy={mutating}
+        busy={mutating || pageActionBusy || noteImport.importing}
         embedded={embedded}
         treeOpen={tree}
         companionOpen={Boolean(threads.open)}
@@ -634,14 +670,18 @@ export default function NoteWorkspace({
         {tree && (
           <NotePageTree
             pages={pages}
+            getView={() => treeView.current}
+            onViewChange={patch => { treeView.current = { ...treeView.current, ...patch } }}
+            onPin={pin => void changePage({ pin })}
+            onDelete={deletePage}
             currentId={docId}
-            busy={mutating}
+            busy={mutating || pageActionBusy || noteImport.importing}
             embedded={embedded}
             onNavigate={navigate}
             onCreate={createPage}
           />
         )}
-        <main className="dt-note-main" ref={setMainEl}>
+        <main className="dt-note-main" ref={setMainEl} inert={!!holdDocument || noteImport.importing}>
           {page && margin !== 'none' && (
             <NoteOutline
               blocks={page.blocks}
@@ -664,7 +704,7 @@ export default function NoteWorkspace({
                 onMetadata={patch => void metadata(patch)}
               />
               <Editor
-                key={docId}
+                key={`${docId}:${editorGeneration}`}
                 page={page}
                 suggestions={suggestions}
                 reviewBusy={mutating}

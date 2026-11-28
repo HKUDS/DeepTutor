@@ -1,4 +1,9 @@
 {
+  "Delete current page": "Delete current page",
+  "Import document": "Import document",
+  "The Markdown file is empty.": "The Markdown file is empty.",
+  "Choose a Word, Markdown or PDF document.": "Choose a Word, Markdown or PDF document.",
+  "No text was found in this PDF. For a scan, run OCR first.": "No text was found in this PDF. For a scan, run OCR first.",
   "Speech synthesis and transcription models with saved providers.": "Speech synthesis and transcription models with saved providers.",
   "Image and video generation models with saved providers.": "Image and video generation models with saved providers.",
   "Manage provider names, addresses, credentials, and connectivity.": "Manage provider names, addresses, credentials, and connectivity.",

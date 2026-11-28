@@ -1,22 +1,10 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import type { NotePage } from "@/lib/notes-api";
+
+import type { CoWriterDocument, CoWriterDocumentSummary } from "./co-writer-types";
+export type { CoWriterDocument, CoWriterDocumentSummary } from "./co-writer-types";
 
 const BASE = "/api";
-
-export interface CoWriterDocumentSummary {
-  id: string;
-  title: string;
-  created_at: number;
-  updated_at: number;
-  preview: string;
-}
-
-export interface CoWriterDocument {
-  id: string;
-  title: string;
-  content: string;
-  created_at: number;
-  updated_at: number;
-}
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -96,14 +84,14 @@ export async function deleteCoWriterDocument(docId: string): Promise<boolean> {
 
 export async function importCoWriterDocx(
   file: File,
-): Promise<CoWriterDocument> {
+): Promise<NotePage> {
   const body = new FormData();
   body.append("file", file);
   const res = await apiFetch(apiUrl(`${BASE}/documents/import/docx`), {
     method: "POST",
     body,
   });
-  return jsonOrThrow<CoWriterDocument>(res);
+  return jsonOrThrow<NotePage>(res);
 }
 
 export async function exportCoWriterDocx(payload: {

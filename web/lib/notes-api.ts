@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl } from '@/lib/api'
-import type { CoWriterDocument, CoWriterDocumentSummary } from '@/lib/co-writer-api'
+import type { CoWriterDocument, CoWriterDocumentSummary } from './co-writer-types'
 
 export interface NoteBlock {
   id: string
@@ -48,7 +48,9 @@ export async function noteRequest<T>(path: string, body?: unknown, method = 'POS
   )
   if (!response.ok) {
     const detail = await response.json().catch(() => null)
-    throw new Error(detail?.detail || `Request failed (${response.status})`)
+    throw Object.assign(new Error(detail?.detail || `Request failed (${response.status})`), {
+      status: response.status,
+    })
   }
   return response.json()
 }

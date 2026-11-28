@@ -1,4 +1,9 @@
 {
+  "Delete current page": "Geçerli sayfayı sil",
+  "Import document": "Belge içe aktar",
+  "The Markdown file is empty.": "Markdown dosyası boş.",
+  "Choose a Word, Markdown or PDF document.": "Bir Word, Markdown veya PDF belgesi seçin.",
+  "No text was found in this PDF. For a scan, run OCR first.": "Bu PDF içinde metin bulunamadı. Taranmış bir belgeyse önce OCR uygulayın.",
   "Partially correct": "Kısmen doğru",
   "These answers could not be submitted. Please review or retry.": "Bu cevaplar gönderilemedi. Lütfen gözden geçirin ya da yeniden deneyin.",
   "The edit could not be sent. Your draft is still here; please retry.": "Düzenleme gönderilemedi. Taslağınız hâlâ burada; lütfen yeniden deneyin.",

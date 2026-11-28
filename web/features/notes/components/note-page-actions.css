@@ -1,0 +1,16 @@
+.dt-menu-item.is-danger {
+  color: #dc2626;
+}
+.dt-notes-confirm {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+.dt-notes-confirm strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

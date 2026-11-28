@@ -1,4 +1,9 @@
 {
+  "Delete current page": "Jelenlegi oldal törlése",
+  "Import document": "Dokumentum importálása",
+  "The Markdown file is empty.": "A Markdown-fájl üres.",
+  "Choose a Word, Markdown or PDF document.": "Válassz Word-, Markdown- vagy PDF-dokumentumot.",
+  "No text was found in this PDF. For a scan, run OCR first.": "A PDF nem tartalmaz kinyerhető szöveget. Szkennelt dokumentum esetén előbb futtass szövegfelismerést (OCR).",
   "Speech synthesis and transcription models with saved providers.": "Beszédszintézis- és átírási modellek mentett szolgáltatókkal.",
   "Image and video generation models with saved providers.": "Kép- és videógenerálási modellek mentett szolgáltatókkal.",
   "Manage provider names, addresses, credentials, and connectivity.": "Szolgáltatónevek, címek, hitelesítő adatok és a kapcsolódás kezelése.",

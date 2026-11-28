@@ -166,6 +166,8 @@ a.dt-note-crumb:hover {
   left: auto;
   right: 0;
   width: 256px;
+  max-height: 75dvh;
+  overflow-y: auto;
   transform-origin: top right;
 }
 .dt-note-page-menu .dt-menu-item:disabled {
@@ -429,6 +431,19 @@ a.dt-note-crumb:hover {
   background: color-mix(in srgb, var(--foreground) 7%, transparent);
   font-weight: 500;
 }
+.dt-note-tree-row.is-pinned {
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  font-weight: 600;
+}
+.dt-note-tree-row.is-pinned:hover {
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+.dt-note-tree-row.is-pinned.is-current {
+  background: color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+.dt-note-tree-row.is-pinned .dt-note-tree-icon {
+  color: inherit;
+}
 .dt-note-tree-row a {
   display: flex;
   flex: 1;
@@ -476,9 +491,23 @@ button.dt-note-tree-toggle:hover {
   color: var(--muted-foreground);
   opacity: 0;
 }
-.dt-note-tree-row:hover .dt-note-tree-add,
-.dt-note-tree-add:focus-visible {
+.dt-note-tree-add.dt-note-tree-unpin {
   opacity: 1;
+  color: inherit;
+}
+.dt-note-tree-row:hover .dt-note-tree-add,
+.dt-note-tree-row:focus-within .dt-note-tree-add,
+.dt-note-tree-add[aria-expanded="true"] {
+  opacity: 1;
+}
+.dt-popover.dt-note-tree-menu {
+  position: fixed;
+  z-index: 100;
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+}
+@media (hover: none) {
+  .dt-note-tree-add { opacity: 1; }
 }
 .dt-note-tree-add:hover {
   background: color-mix(in srgb, var(--foreground) 8%, transparent);

@@ -14,7 +14,6 @@ import {
   PinOff,
   Plus,
   Search,
-  Trash2,
   Upload,
 } from "lucide-react";
 import {
@@ -22,12 +21,16 @@ import {
   PageHeader,
   pageActionClass,
 } from "@/components/layout/FeaturePage";
-import { deleteCoWriterDocument, importCoWriterDocx } from "@/lib/co-writer-api";
+import { deleteCoWriterDocument } from "@/lib/co-writer-api";
+import { noteDocumentTypes, useNoteImport } from "@/features/notes/components/useNoteImport";
+import { useNoteDestination } from "@/features/notes/components/useNoteNavigation";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
 import { createNote, listNotes, saveNote, type NoteSummary } from "@/lib/notes-api";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { useMenuPopover } from "@/shared/ui/useMenuPopover";
 import "@/features/notes/components/note-library.css";
+
+const NotePageActions = dynamic(() => import("@/features/notes/components/NotePageActions"), { ssr: false })
 
 const NoteReview = dynamic(() => import("@/features/notes/components/NoteReview"), {
   ssr: false,
@@ -51,13 +54,7 @@ function PageCard({
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpenState] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const setOpen = (value: boolean | ((current: boolean) => boolean)) => {
-    const next = typeof value === "function" ? value(open) : value;
-    setOpenState(next);
-    if (!next) setConfirming(false);
-  };
+  const [open, setOpen] = useState(false);
   const menu = useMenuPopover<HTMLDivElement>(open, setOpen);
   const title = page.title || t("Untitled");
   return (
@@ -109,31 +106,10 @@ function PageCard({
               {t(page.pinned ? "Unpin" : "Pin to top")}
             </button>
             <div className="dt-menu-divider" />
-            {confirming ? (
-              <>
-                <p className="dt-notes-confirm">
-                  {childCount > 0
-                    ? t("Delete this page? Its subpages move up one level.")
-                    : t("Delete this page? This cannot be undone.")}
-                </p>
-                <button
-                  role="menuitem"
-                  className="dt-menu-item is-danger"
-                  onClick={() => {
-                    setOpen(false);
-                    onDelete();
-                  }}
-                >
-                  <Trash2 size={14} />
-                  {t("Delete page")}
-                </button>
-              </>
-            ) : (
-              <button role="menuitem" className="dt-menu-item is-danger" onClick={() => setConfirming(true)}>
-                <Trash2 size={14} />
-                {t("Delete")}
-              </button>
-            )}
+            <NotePageActions compact page={page} hasChildren={childCount > 0} onDelete={() => {
+              setOpen(false);
+              onDelete();
+            }} />
           </div>
         )}
       </div>
@@ -144,13 +120,14 @@ function PageCard({
 export default function CoWriterHomePage() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const [pages, setPages] = useState<NoteSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initial = useNoteDestination();
+  const [pages, setPages] = useState<NoteSummary[]>(initial?.pages ?? []);
+  const [loading, setLoading] = useState(!initial);
   const [creating, setCreating] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const { openFile, importing, dialog } = useNoteImport(pages, setError);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -181,23 +158,6 @@ export default function CoWriterHomePage() {
       setCreating(false);
     }
   }, [creating, router]);
-
-  const handleImportDocx = useCallback(
-    async (file: File | undefined) => {
-      if (!file || creating || importing) return;
-      setImporting(true);
-      setError("");
-      try {
-        const document = await importCoWriterDocx(file);
-        notifyCoWriterChanged();
-        router.push(`/co-writer/${document.id}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setImporting(false);
-      }
-    },
-    [creating, importing, router],
-  );
 
   const handlePin = async (page: NoteSummary) => {
     setBusyId(page.id);
@@ -257,15 +217,16 @@ export default function CoWriterHomePage() {
 
   return (
     <FeaturePage>
+      {dialog}
       <input
         ref={importInputRef}
         type="file"
-        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept={noteDocumentTypes}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          void handleImportDocx(file);
+          if (file && !creating && !importing) void openFile(file);
         }}
       />
       <PageHeader
@@ -282,7 +243,7 @@ export default function CoWriterHomePage() {
               className={pageActionClass("secondary")}
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t("Import Word")}
+              {t("Import document")}
             </button>
             <button
               type="button"
@@ -327,7 +288,7 @@ export default function CoWriterHomePage() {
               className={pageActionClass("secondary")}
             >
               <Upload size={14} />
-              {t("Import Word")}
+              {t("Import document")}
             </button>
           </div>
         </div>

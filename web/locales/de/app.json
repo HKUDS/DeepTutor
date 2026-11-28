@@ -1,4 +1,9 @@
 {
+  "Delete current page": "Aktuelle Seite löschen",
+  "Import document": "Dokument importieren",
+  "The Markdown file is empty.": "Die Markdown-Datei ist leer.",
+  "Choose a Word, Markdown or PDF document.": "Wähle ein Word-, Markdown- oder PDF-Dokument.",
+  "No text was found in this PDF. For a scan, run OCR first.": "In dieser PDF wurde kein Text gefunden. Führe bei einem Scan zuerst eine Texterkennung (OCR) durch.",
   "Your account changed. Reload settings before applying learning text.": "Your account changed. Reload settings before applying learning text.",
   "Customize the visual theme, learning text, and code blocks. Apply changes using the bar below.": "Customize the visual theme, learning text, and code blocks. Apply changes using the bar below.",
   "Learning text": "Learning text",

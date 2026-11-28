@@ -1,4 +1,9 @@
 {
+  "Delete current page": "현재 페이지 삭제",
+  "Import document": "문서 가져오기",
+  "The Markdown file is empty.": "Markdown 파일이 비어 있습니다.",
+  "Choose a Word, Markdown or PDF document.": "Word, Markdown 또는 PDF 문서를 선택하세요.",
+  "No text was found in this PDF. For a scan, run OCR first.": "이 PDF에서 텍스트를 찾을 수 없습니다. 스캔한 문서라면 먼저 OCR을 실행하세요.",
   "Technology partner": "기술 파트너",
   "Thanks to SiliconFlow for supporting DeepTutor with model inference services.": "DeepTutor에 모델 추론 서비스를 제공하는 SiliconFlow에 감사드립니다.",
   "Powered by SiliconFlow": "SiliconFlow 기술 지원",

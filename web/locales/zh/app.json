@@ -1,4 +1,9 @@
 {
+  "Delete current page": "删除当前页",
+  "Import document": "导入文档",
+  "The Markdown file is empty.": "Markdown 文件为空。",
+  "Choose a Word, Markdown or PDF document.": "请选择 Word、Markdown 或 PDF 文档。",
+  "No text was found in this PDF. For a scan, run OCR first.": "未能从这份 PDF 中提取文字。如果是扫描件，请先进行 OCR 文字识别。",
   "Speech synthesis and transcription models with saved providers.": "使用已配置的提供方管理语音合成与语音识别模型。",
   "Image and video generation models with saved providers.": "使用已配置的提供方管理图片与视频生成模型。",
   "Manage provider names, addresses, credentials, and connectivity.": "管理提供方的名称、地址、密钥并测试连接。",

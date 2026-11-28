@@ -1,4 +1,9 @@
 {
+  "Delete current page": "Elimina la pagina corrente",
+  "Import document": "Importa documento",
+  "The Markdown file is empty.": "Il file Markdown è vuoto.",
+  "Choose a Word, Markdown or PDF document.": "Scegli un documento Word, Markdown o PDF.",
+  "No text was found in this PDF. For a scan, run OCR first.": "Nessun testo trovato in questo PDF. Per una scansione, esegui prima il riconoscimento ottico dei caratteri (OCR).",
   "language.english": "English",
   "Guided Learning": "Apprendimento guidato",
   "Save": "Salva",

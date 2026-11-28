@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
@@ -16,6 +17,7 @@ import {
   Pin,
   PinOff,
   Sparkles,
+  Upload,
 } from 'lucide-react'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useMenuPopover } from '@/shared/ui/useMenuPopover'
@@ -23,6 +25,8 @@ import { FeatureCrumb, InstanceCrumb } from '@/components/layout/LocationCrumbs'
 import { useShelfFeature } from '@/components/sidebar/PageBar'
 import type { NotePage, NoteSummary } from '@/lib/notes-api'
 import { pageHasFlashcards } from '../model/flashcards'
+
+const NotePageActions = dynamic(() => import('./NotePageActions'), { ssr: false })
 
 export type NoteSaveStatus = 'Saved' | 'Saving…' | 'Unsaved changes' | 'Save failed'
 
@@ -63,6 +67,8 @@ export default function NoteTopBar({
   onMetadata,
   onInsertFavorite,
   onExport,
+  onImport,
+  onDelete,
 }: {
   page: NotePage | null
   pages: NoteSummary[]
@@ -81,6 +87,8 @@ export default function NoteTopBar({
   onMetadata: (patch: Partial<NotePage>) => void
   onInsertFavorite: () => void
   onExport: (format: 'md' | 'docx' | 'anki') => void
+  onImport?: () => void
+  onDelete?: (page: NotePage) => void
 }) {
   const { t } = useTranslation()
   const feature = useShelfFeature('/co-writer')
@@ -198,7 +206,7 @@ export default function NoteTopBar({
             aria-label={t('More page actions')}
             aria-haspopup="menu"
             aria-expanded={open}
-            disabled={!page}
+            disabled={!page || busy}
             onClick={() => setOpen(!open)}
           >
             <MoreHorizontal size={16} strokeWidth={1.7} />
@@ -289,6 +297,15 @@ export default function NoteTopBar({
                   {t('Insert favorite')}
                 </button>
                 <div className="dt-menu-divider" />
+                {onImport && (
+                  <button role="menuitem" className="dt-menu-item" onClick={() => {
+                    setOpen(false)
+                    onImport()
+                  }}>
+                    <Upload size={14} />
+                    {t('Import document')}
+                  </button>
+                )}
                 <button
                   role="menuitem"
                   className="dt-menu-item"
@@ -327,6 +344,20 @@ export default function NoteTopBar({
                 <p className="dt-note-menu-note">
                   {t('Word export keeps text and source links; interactive blocks become static.')}
                 </p>
+                {onDelete && (
+                  <>
+                    <div className="dt-menu-divider" />
+                    <NotePageActions
+                      current
+                      page={page}
+                      hasChildren={pages.some(p => p.parent_id === page.id)}
+                      onDelete={() => {
+                        setOpen(false)
+                        onDelete(page)
+                      }}
+                    />
+                  </>
+                )}
               </>
             )}
           </div>
