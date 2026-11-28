@@ -421,6 +421,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.stdcmpt.com/v1",
     ),
     ProviderSpec(
+        name="worldrouter",
+        keywords=("worldrouter",),
+        env_key="WORLDROUTER_API_KEY",
+        display_name="WorldRouter",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="sk-worldrouter-",
+        detect_by_base_keyword="worldrouter",
+        default_api_base="https://inference-api.worldrouter.ai/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",

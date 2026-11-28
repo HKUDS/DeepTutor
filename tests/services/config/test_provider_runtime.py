@@ -1458,3 +1458,60 @@ def test_llm_standardcompute_base_url_detection_preserves_openai_binding_compati
     assert resolved.provider_name == "standardcompute"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://api.stdcmpt.com/v1"
+
+
+def test_llm_worldrouter_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "WorldRouter",
+            "binding": "worldrouter",
+            "base_url": "",
+            "api_key": "sk-worldrouter-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4 Flash",
+                    "model": "deepseek-v4-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "worldrouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "worldrouter"
+    assert resolved.model == "deepseek-v4-flash"
+    assert resolved.api_key == "sk-worldrouter-key"
+    assert resolved.effective_url == "https://inference-api.worldrouter.ai/v1"
+
+
+def test_llm_worldrouter_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://inference-api.worldrouter.ai/v1",
+            "api_key": "sk-worldrouter-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4 Flash",
+                    "model": "deepseek-v4-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "worldrouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://inference-api.worldrouter.ai/v1"
