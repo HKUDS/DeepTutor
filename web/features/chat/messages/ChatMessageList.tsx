@@ -24,6 +24,7 @@ import {
   Copy,
   AlertCircle,
   Database,
+  Link2,
   Loader2,
   MessageSquare,
   Pencil,
@@ -57,6 +58,16 @@ import { notify } from "@/lib/notifications";
 import { docIconFor } from "@/lib/doc-attachments";
 import { imageSrcForAttachment } from "./attachment-media";
 import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
+import {
+  answerSnippet,
+  isAnswerAttachment,
+  readAnswerAttachment,
+} from "@/features/chat/inline-answers/answer-attachment";
+import {
+  answerAnchorId,
+  questionAnchorId,
+  scrollToAnchor,
+} from "@/features/chat/inline-answers/context";
 import { QUOTE_RULE_CLASS } from "@/components/chat/home/QuotedPassage";
 
 import { PlayAudioButton } from "@/components/voice/SpeechButton";
@@ -1042,6 +1053,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantResponse
               content={msg.content}
               language={turnLanguage}
+              messageId={msg.id}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1060,6 +1072,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantResponse
               content={msg.content}
               language={turnLanguage}
+              messageId={msg.id}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1082,6 +1095,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantResponse
               content={msg.content}
               language={turnLanguage}
+              messageId={msg.id}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1130,6 +1144,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               key={block.key}
               content={block.segment.text}
               language={turnLanguage}
+              messageId={msg.id}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1141,6 +1156,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <AssistantResponse
           content={body}
           language={turnLanguage}
+          messageId={msg.id}
           isStreaming={isStreaming}
           readingMaterialId={readingMaterialId}
           readingMaterialRevision={readingMaterialRevision}
@@ -1477,6 +1493,10 @@ export const UserMessage = memo(function UserMessage({
   // the bubble (the sent-message mirror of the composer's tree).
   const snap = msg.requestSnapshot;
   const handedTo = parseAnswerBy(snap?.config?.answer_by);
+  const answerChips = (msg.attachments ?? []).flatMap((attachment) => {
+    const payload = readAnswerAttachment(attachment);
+    return payload ? [payload] : [];
+  });
   const refTreeItems: ContextTreeItem[] = [
     ...(consultation ? [{
       key: `${consultation.kind}-${consultation.id}`,
@@ -1485,7 +1505,7 @@ export const UserMessage = memo(function UserMessage({
       label: consultation.name,
       onClick: onOpenConsultation,
     }] : []),
-    ...(msg.attachments ?? []).filter((a) => !isQuoteAttachment(a)).map((a, ai): ContextTreeItem => {
+    ...(msg.attachments ?? []).filter((a) => !isQuoteAttachment(a) && !isAnswerAttachment(a)).map((a, ai): ContextTreeItem => {
       const filename = a.filename || t("Attachment");
       const spec = docIconFor(filename);
       const src = a.type === "image" ? imageSrcForAttachment(a) : null;
@@ -1684,6 +1704,38 @@ export const UserMessage = memo(function UserMessage({
                 {quoteText(a)}
               </div>
             ))}
+            {answerChips.length > 0 ? (
+              <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+                {answerChips.map((payload) => (
+                  <button
+                    key={`answer-${payload.question_id}`}
+                    id={answerAnchorId(msg.id, payload.question_id)}
+                    type="button"
+                    onClick={() =>
+                      scrollToAnchor(
+                        questionAnchorId(
+                          payload.source_message_id,
+                          payload.question_id,
+                        ),
+                      )
+                    }
+                    className="inline-flex max-w-full items-center gap-1 rounded-lg border border-[var(--border)]/60 bg-[var(--card)]/70 px-2 py-1 text-[11.5px] text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--foreground)]/25"
+                  >
+                    <Link2
+                      size={12}
+                      strokeWidth={1.8}
+                      className="shrink-0 text-[var(--muted-foreground)]"
+                    />
+                    <span className="min-w-0 truncate">
+                      <span className="text-[var(--muted-foreground)]">
+                        {payload.question_id} ·{" "}
+                      </span>
+                      {answerSnippet(payload.answer)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div dir="auto" className="whitespace-pre-wrap"><LearningText size={14}>{msg.content}</LearningText></div>
           </div>
         )}

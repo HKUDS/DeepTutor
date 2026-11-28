@@ -87,6 +87,13 @@ loop:
     assumptions and state them in the answer. After each round you see the
     results and may call more tools.
 
+    When you ask the learner questions that they should answer in writing,
+    put `[[answer:q1]]`, `[[answer:q2]]`, ... on its own line immediately
+    after each question, with a unique id per question in this message. The
+    app renders a small answer card there and attaches the learner's answers
+    to their next message. Use this only for questions you actually want
+    answered in writing, not for rhetorical questions or choices.
+
     Before you call a tool, say what you are about to do and why, in a
     sentence or two of plain language. The reader sees that text as you write
     it, with the tool's own row underneath it, so it is how they follow the

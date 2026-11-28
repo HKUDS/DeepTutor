@@ -99,6 +99,16 @@ import type { CapabilityDef } from "@/features/capabilities/presentation";
 import AttachmentProcessingStatus from "./AttachmentProcessingStatus";
 import { QuotedPassage } from "./QuotedPassage";
 import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
+import {
+  answerSnippet,
+  isAnswerAttachment,
+  readAnswerAttachment,
+} from "@/features/chat/inline-answers/answer-attachment";
+import {
+  answerAnchorId,
+  questionAnchorId,
+  scrollToAnchor,
+} from "@/features/chat/inline-answers/context";
 import type { AttachmentProcessingItem } from "@/features/chat/selectors/attachment-processing";
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCapabilityLabel } from "@/features/ui-layout/tokens";
@@ -1035,7 +1045,7 @@ export default memo(function ChatComposer({
   // One selection summary for files, references, and conversation resources.
   const contextTreeItems: ContextTreeItem[] = [
     // Quotes are drawn as passages above the input, not listed as files.
-    ...attachments.flatMap((file, index): ContextTreeItem[] => isQuoteAttachment(file) ? [] : [{key:`file-${index}`, icon:Paperclip, kind:t("Attach files"),label:file.filename,thumbnailUrl:file.type === "image" ? file.previewUrl : undefined,onClick:()=>onPreviewAttachment?.(index),onRemove:()=>onRemoveAttachment(index)}]),
+    ...attachments.flatMap((file, index): ContextTreeItem[] => isQuoteAttachment(file) || isAnswerAttachment(file) ? [] : [{key:`file-${index}`, icon:Paperclip, kind:t("Attach files"),label:file.filename,thumbnailUrl:file.type === "image" ? file.previewUrl : undefined,onClick:()=>onPreviewAttachment?.(index),onRemove:()=>onRemoveAttachment(index)}]),
     ...selectedKnowledgeBases.map((id): ContextTreeItem => ({key:`kb-${id}`,icon:Database,kind:t("Knowledge"),label:knowledgeBases.find(kb=>knowledgeBaseRef(kb)===id)?.name || id,onRemove:()=>onToggleKB(id)})),
     ...selectedBookReferences.map((book): ContextTreeItem => ({
       key: `book-${book.bookId}`,
@@ -1319,6 +1329,11 @@ export default memo(function ChatComposer({
     });
   }
 
+  const composerAnswers = attachments.flatMap((file, index) => {
+    const payload = readAnswerAttachment(file);
+    return payload ? [{ payload, index }] : [];
+  });
+
   return (
     <div
       ref={composerRef}
@@ -1374,6 +1389,43 @@ export default memo(function ChatComposer({
           />
 
           {inputHeader}
+          {composerAnswers.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+              {composerAnswers.map(({ payload, index }) => (
+                <span
+                  key={`answer-${index}`}
+                  id={answerAnchorId(undefined, payload.question_id)}
+                  className="inline-flex max-w-full items-center gap-1 rounded-lg border border-[var(--border)]/70 bg-[var(--secondary)] px-2 py-1 text-[12px] text-[var(--foreground)]"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      scrollToAnchor(
+                        questionAnchorId(
+                          payload.source_message_id,
+                          payload.question_id,
+                        ),
+                      )
+                    }
+                    className="min-w-0 truncate text-left hover:underline"
+                  >
+                    <span className="text-[var(--muted-foreground)]">
+                      {payload.question_id} ·{" "}
+                    </span>
+                    {answerSnippet(payload.answer)}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("Remove")}
+                    onClick={() => onRemoveAttachment(index)}
+                    className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  >
+                    <X size={12} strokeWidth={2} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
           {attachments.map((file, index) =>
             isQuoteAttachment(file) ? (
               <QuotedPassage

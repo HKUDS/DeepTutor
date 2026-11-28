@@ -1,0 +1,23 @@
+/* Brief highlight when a question/answer anchor is followed. */
+.inline-answer-flash {
+  animation: inline-answer-flash 1400ms ease;
+}
+
+@keyframes inline-answer-flash {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  15%,
+  60% {
+    background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inline-answer-flash {
+    animation: none;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}

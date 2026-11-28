@@ -24,8 +24,8 @@ async function openConversation(page: Page, layout: 'classic' | 'modern' = 'mode
         updated_at: 2,
         preferences: { capability: 'chat', language: 'en' },
         active_turns: [],
-        leaf_message_id: 1,
-        selected_leaf_message_id: 1,
+        leaf_message_id: 2,
+        selected_leaf_message_id: 2,
         messages: [
           {
             id: 1,
@@ -38,6 +38,19 @@ async function openConversation(page: Page, layout: 'classic' | 'modern' = 'mode
             metadata: {},
             created_at: 1,
             parent_message_id: null,
+          },
+          {
+            id: 2,
+            session_id: SESSION,
+            role: 'assistant',
+            content:
+              'What is the pH of the solution?\n\n[[answer:q1]]\n\nExplain why it is buffered.\n\n[[answer:q2]]',
+            capability: 'chat',
+            events: [],
+            attachments: [],
+            metadata: {},
+            created_at: 2,
+            parent_message_id: 1,
           },
         ],
       })
@@ -121,6 +134,25 @@ for (const layout of ['classic', 'modern'] as const) {
     }
   })
 }
+
+test('an inline answer card attaches to the next message', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await openConversation(page)
+
+  const card = page.locator('[data-answer-question="q1"]')
+  await expect(card).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('inline-answer-before.png') })
+  await card.getByRole('textbox', { name: 'Your answer' }).fill('12.26')
+  await card.getByRole('button', { name: 'Attach', exact: true }).click()
+
+  // The card folds to a link to the answer, and the answer joins the draft.
+  await expect(
+    page.locator('[data-answer-question="q1"]').getByRole('button', { name: /12\.26/ }),
+  ).toBeVisible()
+  await expect(page.locator('.dt-composer-surface').getByText('12.26')).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('inline-answer-after.png') })
+})
 
 test('upward tray menus keep their final option reachable above the composer', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
