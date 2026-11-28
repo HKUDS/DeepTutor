@@ -21,6 +21,7 @@ async def build_native_history(
     builder: Any,
     *,
     session_id: str,
+    session: dict,
     llm_config: Any,
     language: str,
     messages: list[dict],
@@ -88,7 +89,12 @@ async def build_native_history(
         raise ValueError("Invalid native history watermark")
     if summarized:
         watermark = int(groups[summarized - 1][-1].get("id", 0) or 0)
-        await builder.store.update_summary(session_id, result["summary"], watermark)
+        await builder._finish_compaction(
+            session_id, session, messages, result["summary"], watermark
+        )
+    elif events:
+        # A failed summary also returns a plan built before the provider await.
+        await builder._finish_compaction(session_id, session, messages, None, None)
     retained = [row for group in groups[retained_start:] for row in group]
     history = builder._build_history(result["summary"], retained)
     return ContextBuildResult(

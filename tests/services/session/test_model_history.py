@@ -11,6 +11,7 @@ from deeptutor.services.session.model_history import (
     complete_tool_results,
     normalize_model_turn,
     replay_history,
+    summary_snapshot,
 )
 from deeptutor.services.session.provider_response_state import redact_private_message_metadata
 
@@ -344,6 +345,83 @@ async def test_branch_replay_and_public_export_are_isolated(tmp_path):
     )
     tool_results = [m["content"] for m in built.model_history if m["role"] == "tool"]
     assert tool_results == ["A only"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recorded", [False, True], ids=["display-history", "model-turn"])
+@pytest.mark.parametrize("delete_watermark", [False, True], ids=["ancestor", "watermark"])
+async def test_deleting_summarized_turn_rebuilds_context_from_surviving_rows(
+    sqlite_store, recorded, delete_watermark
+):
+    store = sqlite_store
+    sid = (await store.create_session())["id"]
+    deleted = await store.add_message(sid, "user", "Study optics first")
+    first_answer = await store.add_message(sid, "assistant", "Start with lenses")
+    await store.add_message(sid, "user", "What is a vector?")
+    second_answer = await store.add_message(sid, "assistant", "It has magnitude and direction.")
+    summary = "Study optics first."
+    await store.update_summary(sid, summary, first_answer if delete_watermark else second_answer)
+
+    await store.add_message(sid, "user", "Next question")
+    record = turn_record()
+    record["messages"].insert(
+        0, {"role": "user", "_context_snapshot": "memory", "content": "SI units"}
+    )
+    expected_replay = deepcopy(record["messages"])
+    record["messages"].insert(0, summary_snapshot(summary))
+    leaf = await store.add_message(
+        sid, "assistant", "Next answer", metadata={"model_turn": record} if recorded else {}
+    )
+    assert (await store.delete_turn_by_message(sid, deleted))["deleted"]
+
+    context = await ContextBuilder(store).build(
+        session_id=sid,
+        leaf_message_id=leaf,
+        llm_config=SimpleNamespace(model="gpt-test", context_window=128000),
+    )
+    assert context.conversation_summary == ""
+    assert [m["content"] for m in context.conversation_history] == [
+        "What is a vector?",
+        "It has magnitude and direction.",
+        "Next question",
+        "Next answer",
+    ]
+    if recorded:
+        assert context.model_history == context.conversation_history[:2] + expected_replay
+    session = await store.get_session(sid)
+    assert (session["compressed_summary"], session["summary_up_to_msg_id"]) == ("", 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delete_sibling", [False, True], ids=["newer-turn", "sibling-answer"])
+async def test_deleting_outside_summarized_branch_prefix_preserves_summary(
+    sqlite_store, delete_sibling
+):
+    store = sqlite_store
+    sid = (await store.create_session())["id"]
+    question = await store.add_message(sid, "user", "Study goal?")
+    sibling = await store.add_message(
+        sid, "assistant", "Study chemistry", parent_message_id=question
+    )
+    watermark = await store.add_message(
+        sid, "assistant", "Study optics", parent_message_id=question
+    )
+    summary = "Study optics."
+    await store.update_summary(sid, summary, watermark)
+    recent = await store.add_message(sid, "user", "Unrelated question", parent_message_id=watermark)
+    await store.add_message(sid, "assistant", "Unrelated answer")
+    await store.add_message(sid, "user", "Next question")
+    record = turn_record()
+    record["messages"].insert(0, summary_snapshot(summary))
+    leaf = await store.add_message(sid, "assistant", "Next answer", metadata={"model_turn": record})
+
+    assert (await store.delete_turn_by_message(sid, sibling if delete_sibling else recent))[
+        "deleted"
+    ]
+    session = await store.get_session(sid)
+    assert (session["compressed_summary"], session["summary_up_to_msg_id"]) == (summary, watermark)
+    chain = await store.get_messages_for_context(sid, leaf_message_id=leaf)
+    assert chain[-1]["metadata"]["model_turn"] == record
 
 
 @pytest.mark.parametrize(

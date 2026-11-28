@@ -231,7 +231,7 @@ class MasteryContextBuilder(ContextBuilder):
         folded = sum(len(group) for group in groups[:start])
         return older[:folded], older[folded:] + recent
 
-    async def build(self, *, session_id, leaf_message_id=None, **kwargs):
+    async def _build_from_history(self, *, session_id, session, messages, **kwargs):
         # Retained memory and generation are different budgets: reasoning
         # providers count hidden tokens in max_tokens too (#1926).
         configured_limit = getattr(kwargs.get("llm_config"), "max_tokens", None)
@@ -244,28 +244,22 @@ class MasteryContextBuilder(ContextBuilder):
         self._fold_budget = self._history_budget(kwargs.get("llm_config"))
         self._snapshot_headroom = self._headroom(kwargs.get("llm_config"))
         self._fold_skipped = False
-        # The store enforces the active user/session and the selected ancestor
-        # chain. No filesystem path, arbitrary session selector, or global search.
-        rows = await self.store.get_messages_for_context(
-            session_id, leaf_message_id=leaf_message_id
-        )
         # The memory request also carries the prior memory and the instructions.
         # Same branch guard as ContextBuilder.build(): a watermark that is not on
         # this branch means there is no prior memory to send.
-        session = await self.store.get_session(session_id) or {}
         mark = session.get("summary_up_to_msg_id", 0) or 0
-        on_branch = not mark or any(str(row.get("id")) == str(mark) for row in rows)
+        on_branch = not mark or any(str(row.get("id")) == str(mark) for row in messages)
         prior = str(session.get("compressed_summary", "") or "").strip()
         self._fold_prior = prior if on_branch else ""
         self._fold_overhead = (
             count_tokens(self._summary_instruction(kwargs.get("language", "en"))) + _REQUEST_RESERVE
         )
         sources = {
-            archive_id(g): archive_text(g) for g in history_groups(rows) if g and "id" in g[-1]
+            archive_id(g): archive_text(g) for g in history_groups(messages) if g and "id" in g[-1]
         }
         self._archive_ids = set(sources)
-        result = await super().build(
-            session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
+        result = await super()._build_from_history(
+            session_id=session_id, session=session, messages=messages, **kwargs
         )
         replayed = result.model_history or []
         result.model_history = project_mastery_replay(replayed, keep_snapshots=True)
