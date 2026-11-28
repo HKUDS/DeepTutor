@@ -192,7 +192,10 @@ needs no runtime dependencies. `tests/api/test_docs_surface_export.py` fails
 when the committed artifact drifts from the live CLI and API, and
 `python scripts/export_docs_surface.py --check` reproduces that locally. After
 changing a command group or a route, regenerate the artifact and commit it with
-the code change.
+the code change. On PRs targeting `feat/public-docs`, **Check docs surface**
+compares the snapshot with the live app when the Python code, dependencies,
+exporter, snapshot, or its workflow changes. A prose-only PR skips the runtime
+dependency installation and still runs the page checks in the Docs workflow.
 
 ## Deployment
 

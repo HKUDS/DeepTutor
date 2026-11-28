@@ -1,0 +1,52 @@
+name: Docs surface
+
+on:
+  pull_request:
+    branches: [feat/public-docs]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-surface-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check docs surface
+    runs-on: ubuntu-latest
+    steps:
+      # Compare the PR merge commit with its base parent, including changes from forks.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: changes
+        with:
+          token: ''
+          filters: |
+            surface:
+              - 'deeptutor_cli/**'
+              - 'deeptutor/**'
+              - 'requirements/**'
+              - 'requirements.txt'
+              - 'pyproject.toml'
+              - 'scripts/export_docs_surface.py'
+              - 'docs/tests/docs_surface.json'
+              - '.github/workflows/docs-surface.yml'
+
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.surface == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/**/*.txt
+
+      - name: Compare the committed snapshot with the live CLI and API
+        if: steps.changes.outputs.surface == 'true'
+        run: |
+          python -m pip install -r requirements/full.txt -r requirements/partners.txt
+          python scripts/export_docs_surface.py --check
