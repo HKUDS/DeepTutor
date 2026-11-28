@@ -6104,6 +6104,7 @@
   "Accept": "Akceptuj",
   "Host voice": "Głos prowadzącego",
   "Expert voice": "Głos eksperta",
+  "Second speaker for audio overviews when your provider lists no voices.": "Drugi lektor w podsumowaniach audio, gdy dostawca nie udostępnia listy głosów.",
   "Duration (minutes)": "Czas (minuty)",
   "Voice ID from your speech provider": "Identyfikator głosu dostawcy",
   "Configure distinct host and expert voices for the active TTS model.": "Ustaw różne głosy prowadzącego i eksperta dla aktywnego modelu.",

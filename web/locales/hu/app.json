@@ -6194,6 +6194,7 @@
   "Accept": "Elfogadás",
   "Host voice": "Házigazda hang",
   "Expert voice": "Szakértő hang",
+  "Second speaker for audio overviews when your provider lists no voices.": "Második hangszereplő audio-áttekintésekben, ha a szolgáltatója nem jelenít meg hangokat.",
   "Duration (minutes)": "Időtartam (perc)",
   "Voice ID from your speech provider": "Hang ID a beszédszolgáltatójától",
   "Configure distinct host and expert voices for the active TTS model.": "Állítson be külön műsorvezető- és szakértőhangot az aktív TTS-modellhez.",

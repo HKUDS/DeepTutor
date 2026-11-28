@@ -6069,6 +6069,7 @@
   "Accept": "Chấp nhận",
   "Host voice": "Giọng người dẫn",
   "Expert voice": "Giọng chuyên gia",
+  "Second speaker for audio overviews when your provider lists no voices.": "Người nói thứ hai trong bản tổng quan âm thanh khi nhà cung cấp không liệt kê giọng nói.",
   "Duration (minutes)": "Thời lượng (phút)",
   "Voice ID from your speech provider": "ID giọng nói từ nhà cung cấp giọng nói của bạn",
   "Configure distinct host and expert voices for the active TTS model.": "Cấu hình giọng người dẫn và giọng chuyên gia riêng biệt cho mô hình TTS đang dùng.",

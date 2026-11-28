@@ -6070,6 +6070,7 @@
   "Accept": "承認",
   "Host voice": "ホストの声",
   "Expert voice": "専門家の声",
+  "Second speaker for audio overviews when your provider lists no voices.": "プロバイダーがボイスを一覧表示しない場合の、音声概要の二人目の話者。",
   "Duration (minutes)": "長さ（分）",
   "Voice ID from your speech provider": "音声プロバイダーのボイスID",
   "Configure distinct host and expert voices for the active TTS model.": "使用中のTTSモデルに対して、ホストと専門家の声を別々に設定します。",

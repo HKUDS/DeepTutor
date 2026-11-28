@@ -6069,6 +6069,7 @@
   "Accept": "Aceitar",
   "Host voice": "Voz do apresentador",
   "Expert voice": "Voz do especialista",
+  "Second speaker for audio overviews when your provider lists no voices.": "Segunda voz nas resumos em áudio quando o provedor não lista vozes.",
   "Duration (minutes)": "Duração (minutos)",
   "Voice ID from your speech provider": "ID da voz do seu provedor de fala",
   "Configure distinct host and expert voices for the active TTS model.": "Configure vozes distintas para apresentador e especialista no modelo TTS ativo.",

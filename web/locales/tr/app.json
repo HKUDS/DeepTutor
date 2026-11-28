@@ -6071,6 +6071,7 @@
   "Accept": "Kabul et",
   "Host voice": "Sunucu sesi",
   "Expert voice": "Uzman sesi",
+  "Second speaker for audio overviews when your provider lists no voices.": "Sağlayıcınız ses listesi göstermiyorsa sesli özetlerde ikinci konuşan.",
   "Duration (minutes)": "Süre (dakika)",
   "Voice ID from your speech provider": "Ses sağlayıcınızdan alınan ses kimliği",
   "Configure distinct host and expert voices for the active TTS model.": "Etkin TTS modeli için birbirinden farklı sunucu ve uzman sesleri yapılandırın.",

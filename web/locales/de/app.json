@@ -6088,6 +6088,7 @@
   "Accept": "Annehmen",
   "Host voice": "Moderationsstimme",
   "Expert voice": "Expertenstimme",
+  "Second speaker for audio overviews when your provider lists no voices.": "Zweiter Sprecher für Hörübersichten, wenn Ihr Anbieter keine Stimmen anzeigt.",
   "Duration (minutes)": "Dauer (Minuten)",
   "Voice ID from your speech provider": "Stimmen-ID Ihres Sprachanbieters",
   "Configure distinct host and expert voices for the active TTS model.": "Wähle unterschiedliche Stimmen für Moderator und Experte.",
