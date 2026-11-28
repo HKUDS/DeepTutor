@@ -135,6 +135,10 @@ def preview_edit(storage, book_id, edit: BookEdit, *, source_session_id="", sour
         chapter.page_ids = [page.id]
     elif edit.action == "rename_chapter":
         chapter.title = edit.title.strip()
+        for page_id in chapter.page_ids:
+            chapter_page = pages.get(page_id)
+            if chapter_page is not None and not getattr(chapter_page, "section", False):
+                chapter_page.title = chapter.title
     elif edit.action == "move_chapter":
         spine.chapters.remove(chapter)
         spine.chapters.insert(min(edit.position, len(spine.chapters)), chapter)
