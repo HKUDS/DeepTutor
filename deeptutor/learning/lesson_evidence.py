@@ -216,7 +216,25 @@ def objective_fingerprint(progress: Any, kp_id: str) -> str:
     )
 
 
-def selected_scope(topic: Any, progress: Any, kp_id: str) -> dict[str, list[str] | None]:
+def selected_scope(
+    topic: Any,
+    progress: Any,
+    kp_id: str,
+    *,
+    skipped: list[str] | None = None,
+) -> dict[str, list[str] | None]:
+    """The PDF-grounded scope for this objective.
+
+    ``skipped`` is an output list, not an input: when given, it receives a label
+    for every selected source this scope left out because it carries no PDF
+    pages. This function is the only place that rule is decided, so callers get
+    the real reason rather than re-deriving it (#2859).
+
+    Skipping is not a defect: the evidence chain verifies questions against
+    rendered original pages, and a Markdown source cannot take part in that.
+    What was broken was a topic mixing a PDF KB with a Markdown KB reporting a
+    "complete" PDF scope and then blaming the question for the mismatch.
+    """
     kp, _, _ = find_knowledge_point(progress, kp_id)
     if kp is None:
         raise LessonUnavailable("Unknown learning objective.")
@@ -251,13 +269,17 @@ def selected_scope(topic: Any, progress: Any, kp_id: str) -> dict[str, list[str]
                 raise LessonUnavailable("Access to a selected knowledge base is unavailable.")
             raw = Path(resource.base_dir) / resource.name / "raw"
             if not any(p.suffix.lower() == ".pdf" for p in raw.rglob("*") if p.is_file()):
-                continue  # Text-only KBs retain their existing tutoring route.
+                # Text-only KBs retain their existing tutoring route.
+                _note_skipped(skipped, source)
+                continue
             scope[source.source_id] = None
         else:
             kb = str(source.metadata.get("kb_name") or source.metadata.get("knowledge_base") or "")
             key = str(source.metadata.get("path") or source.source_id or "").replace("\\", "/")
             if Path(key).suffix.lower() != ".pdf":
-                continue  # Keep the existing text/Office route; no visual-PDF claim.
+                # Keep the existing text/Office route; no visual-PDF claim.
+                _note_skipped(skipped, source)
+                continue
             if not kb or not key:
                 raise LessonUnavailable("A selected file has no knowledge-base locator.")
             if kb not in scope:
@@ -265,6 +287,34 @@ def selected_scope(topic: Any, progress: Any, kp_id: str) -> dict[str, list[str]
             if scope[kb] is not None:
                 scope[kb].append(key)
     return scope
+
+
+def describe_skipped(skipped: list[str]) -> str:
+    """Name the selected materials that carry no PDF pages, for an error message.
+
+    Returns "" when nothing was skipped, so callers can append it unconditionally.
+    """
+    if not skipped:
+        return ""
+    listed = ", ".join(f"“{label}”" for label in skipped[:3])
+    if len(skipped) > 3:
+        listed += ", and others"
+    verb = "has" if len(skipped) == 1 else "have"
+    return (
+        f" These selected materials {verb} no PDF pages and cannot be verified against "
+        f"original pages, so they are outside the evidence chain: {listed}."
+    )
+
+
+def _note_skipped(skipped: list[str] | None, source: Any) -> None:
+    """Record one out-of-scope source by the label the reader picked it by."""
+    if skipped is None:
+        return
+    label = str(getattr(source, "label", "") or "").strip()
+    if not label:
+        label = str(getattr(source, "source_id", "") or "").strip()
+    if label and label not in skipped:
+        skipped.append(label)
 
 
 def scope_snapshot(
@@ -357,18 +407,29 @@ def validate_evidence(
     *,
     allow_partial: bool = False,
     pinned_pages: bool = False,
+    skipped: list[str] | None = None,
 ) -> None:
     """Fail closed unless ``evidence`` still authorizes this objective.
+
+    ``skipped`` is an output list; see :func:`selected_scope`. It lets a caller
+    that is about to report a failure name the selected materials which carry no
+    PDF pages, without evaluating the scope rule a second time.
 
     ``pinned_pages`` is for an already issued question: it is bound to the
     exact pages it cites, so a re-index that leaves those pages unchanged
     (e.g. another document added to the same KB) does not strand it (#2650).
     """
     topic = store.get_topic(progress.book_id, progress=progress)
-    scope = selected_scope(topic, progress, kp_id)
+    # The caller's list (when given) must be filled, so it is passed straight
+    # through rather than replaced by a local one.
+    skipped_labels = skipped if skipped is not None else []
+    scope = selected_scope(topic, progress, kp_id, skipped=skipped_labels)
     if not scope:
         if evidence:
-            raise LessonUnavailable("This question's selected PDF materials have changed.")
+            raise LessonUnavailable(
+                "This question's selected PDF materials have changed."
+                + describe_skipped(skipped_labels)
+            )
         return
     if (
         not evidence
@@ -720,11 +781,13 @@ async def prepare_lesson(
     if progress is None:
         raise LessonUnavailable("The learning path is unavailable.")
     topic = await asyncio.to_thread(store.get_topic, path_id, progress=progress)
-    scope = selected_scope(topic, progress, kp_id)
+    skipped: list[str] = []
+    scope = selected_scope(topic, progress, kp_id, skipped=skipped)
     if not scope:
         if progress.lesson_evidence.get(kp_id):
             raise LessonUnavailable(
                 "This source-grounded path no longer has selected PDF materials."
+                + describe_skipped(skipped)
             )
         return {}
     obj_key = objective_fingerprint(progress, kp_id)
