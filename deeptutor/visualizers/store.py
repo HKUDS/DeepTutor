@@ -8,6 +8,8 @@ import shutil
 import tempfile
 import zipfile
 
+from deeptutor.utils.zip_names import zip_member_name
+
 from .protocol import VisualizerManifest
 
 _MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
@@ -228,7 +230,7 @@ class VisualizerStore:
                 raise VisualizerStoreError("package contains too many files")
             root = destination.resolve()
             for info in members:
-                raw = info.filename.replace("\\", "/")
+                raw = zip_member_name(info).replace("\\", "/")
                 rel = Path(raw)
                 if rel.is_absolute() or ".." in rel.parts:
                     raise VisualizerStoreError(f"illegal package path: {raw}")
