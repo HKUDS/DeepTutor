@@ -118,6 +118,11 @@
       "sha256": "8051137fee486b2a36a7f6744cf86fb48ac17520d5ee8dd712c659feb8adb912",
       "source": "Official website asset"
     },
+    "teamorouter.ico": {
+      "url": "https://teamorouter.com/brand/teamo/favicon.ico",
+      "sha256": "eaa18bbca68799cd323d20778412e71bdfa9076f8135e14832d42ff15e7a7642",
+      "source": "Official website asset"
+    },
     "standardcompute.svg": {
       "url": "https://standardcompute.com/logo.svg",
       "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
