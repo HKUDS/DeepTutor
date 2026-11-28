@@ -675,5 +675,19 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Fallback chain ({{count}} configured)": "대체 체인 ({{count}}개 구성됨)",
+  "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends.": "활성 모델이 출력 전에 실패하면 DeepTutor가 이들을 순서대로 시도하고, 쿨다운이 끝나면 기본 모델로 돌아갑니다.",
+  "Applies to chat and to background task models. Image, video, speech, search and embedding models are not affected.": "채팅 및 백그라운드 작업 모델에 적용됩니다. 이미지, 동영상, 음성, 검색, 임베딩 모델은 영향을 받지 않습니다.",
+  "Add fallback": "대체 모델 추가",
+  "No fallback configured. The turn fails when the active model fails.": "구성된 대체 모델이 없습니다. 활성 모델이 실패하면 턴이 실패합니다.",
+  "Fallback {{index}}": "대체 {{index}}",
+  "Choose a configured model": "구성된 모델 선택",
+  "Move up": "위로 이동",
+  "Move down": "아래로 이동",
+  "Remove fallback": "대체 모델 제거",
+  "Save fallback chain": "대체 체인 저장",
+  "Order matters · up to {{max}}": "순서가 중요합니다 · 최대 {{max}}",
+  "Could not save the fallback chain.": "대체 체인을 저장할 수 없습니다.",
+  "Fallback chain saved.": "대체 체인이 저장되었습니다."
 }

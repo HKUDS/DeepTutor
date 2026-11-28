@@ -66,7 +66,6 @@ from deeptutor.runtime.agentic import (
     LLMClientConfig,
     UsageTracker,
     build_completion_kwargs,
-    build_openai_client,
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )
@@ -1913,7 +1912,11 @@ class AgenticLoopPipeline:
     # ---- LLM client ------------------------------------------------------
 
     def _build_openai_client(self):
-        return build_openai_client(self._client_config)
+        # One client per healthy candidate when the catalog declares fallbacks;
+        # the loop advances on a pre-output failure (issue #2693 P1).
+        from deeptutor.runtime.agentic.chain_client import build_chain_client
+
+        return build_chain_client(self._client_config, owner_id=self._current_user_id())
 
     def _completion_kwargs(self, max_tokens: int) -> dict[str, Any]:
         return build_completion_kwargs(

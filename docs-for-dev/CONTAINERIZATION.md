@@ -440,6 +440,27 @@ The two settings most relevant to a fresh install:
   ports the supervisor binds inside the container. If you change these,
   update the right side of every `-p host:container` mapping (or the
   `HOST_PORT_*` env var that `compose.yaml` reads) to match.
+- **`model_catalog.json` → `services.llm.fallbacks`**. An optional ordered list
+  of `{"profile_id": "...", "model_id": "..."}` entries, drawn from profiles that
+  already exist in the same catalog. It applies to **every LLM text call**:
+  chat, and the background task model (book compilation, reading quizzes,
+  translations, memory maintenance, topic naming). It does **not** apply to
+  image/video generation, speech synthesis or transcription, search providers, or
+  embeddings — those services have their own clients, and silently swapping an
+  embedding model would invalidate existing vector indexes.
+
+  When the active model fails **before any output** (rate limit, quota, auth,
+  5xx, transport error), the turn moves to the next declared candidate and
+  continues; the failed candidate is cooled down (60s → 5m → 15m for repeated
+  failures, rate limits honour `Retry-After`, auth failures disable it until the
+  profile is edited) and the next request starts on the primary again once the
+  cooldown expires. Once a chain is declared, each candidate gets a single
+  attempt instead of the full multi-minute retry schedule. Up to four fallbacks
+  are allowed; duplicates and entries pointing at the active model are dropped.
+
+  The chain is edited on **Settings → Language models** (the editor lists the
+  profiles already configured). Applying a provider on that page preserves the
+  chain; a chain is never created implicitly.
 
 Project-root `.env` files are intentionally ignored as application
 config. The Web **Settings** page is the recommended editor for the

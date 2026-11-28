@@ -186,8 +186,13 @@ _CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = (
     "app_id",
 )
 
-# Services whose profiles are LLM-shaped and therefore carry an API format.
+#: Services whose profiles are LLM-shaped and therefore carry an API format.
 LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
+
+#: Upper bound on the ordered fallback chain (#2693). Mirrors
+#: ``services/llm/failover.MAX_CANDIDATES`` without importing it: the catalog
+#: layer must not depend on the runtime layer.
+_MAX_FALLBACK_CANDIDATES = 4
 
 # Per-model capability overrides a user may set. Absent means "let the
 # built-in tables decide"; only explicit booleans are kept.
@@ -212,6 +217,33 @@ def _normalize_model_capabilities(model: dict[str, Any]) -> bool:
         model.pop("capabilities")
         return True
     return False
+
+
+def _normalized_fallbacks(value: Any) -> list[dict[str, str]]:
+    """Keep well-formed, de-duplicated ``{profile_id, model_id}`` entries.
+
+    Bounded to the chain cap: every extra candidate multiplies the worst-case
+    time a failing turn spends retrying (#2693).
+    """
+    if not isinstance(value, list):
+        return []
+    entries: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        profile_id = str(item.get("profile_id") or "").strip()
+        model_id = str(item.get("model_id") or "").strip()
+        if not profile_id or not model_id:
+            continue
+        key = (profile_id, model_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append({"profile_id": profile_id, "model_id": model_id})
+        if len(entries) >= _MAX_FALLBACK_CANDIDATES:
+            break
+    return entries
 
 
 def _normalize_profile_api_format(profile: dict[str, Any]) -> bool:
@@ -478,6 +510,11 @@ class ModelCatalogService:
         for service_name in SERVICE_NAMES:
             service = services[service_name]
             profiles = service.setdefault("profiles", [])
+            if service_name == "llm":
+                # The ordered fallback chain (#2693). Malformed entries are
+                # dropped here so the runtime never has to defend against them;
+                # the bound keeps a failure from multiplying the retry budget.
+                service["fallbacks"] = _normalized_fallbacks(service.get("fallbacks"))
             for profile in profiles:
                 profile.setdefault("id", f"{service_name}-profile-{uuid4().hex[:8]}")
                 if service_name in CONNECTABLE_SERVICES and self._apply_connection(

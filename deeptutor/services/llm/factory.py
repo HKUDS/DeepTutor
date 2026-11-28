@@ -22,6 +22,12 @@ from deeptutor.services.provider_registry import (
 from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
+from .failover import (
+    call_with_failover,
+    chain_configured,
+    chain_from_config,
+    current_owner,
+)
 from .multimodal import prepare_multimodal_messages
 from .provider_core.base import LLMProvider
 from .provider_factory import (
@@ -377,6 +383,11 @@ async def _complete_with_resolved_config(
         image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
+    if chain_configured():
+        # Waiting out the full 8x5s->120s schedule on a dead primary is exactly
+        # the ten-minute silence in #2693: with a fallback available, one
+        # attempt per candidate and then move on.
+        retry_delays = retry_delays[:1]
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
@@ -386,22 +397,35 @@ async def _complete_with_resolved_config(
         else allow_image_fallback
     )
 
-    try:
+    async def _attempt(active_config: LLMConfig) -> Any:
         # Explicit-config callers own their isolated provider's lifecycle.
         lease = (
             contextlib.nullcontext(provider)
             if provider is not None
-            else acquire_runtime_provider(config)
+            else acquire_runtime_provider(active_config)
         )
         with lease as active_provider:
-            response = await active_provider.chat_with_retry(
+            return await active_provider.chat_with_retry(
                 messages=request_messages,
-                model=config.model,
-                reasoning_effort=config.reasoning_effort,
+                model=active_config.model,
+                reasoning_effort=active_config.reasoning_effort,
                 retry_delays=retry_delays,
                 allow_image_fallback=image_fallback_enabled,
                 **extra_kwargs,
             )
+
+    try:
+        if provider is None and chain_configured():
+            # A declared chain turns this one-shot call into an ordered attempt
+            # list starting from the config the caller resolved (which may be a
+            # task model, not the catalog's active LLM) (#2693 P2).
+            response = await call_with_failover(
+                lambda candidate: _attempt(candidate.config),
+                owner_id=current_owner(),
+                candidates=chain_from_config(config),
+            )
+        else:
+            response = await _attempt(config)
     except Exception as exc:
         raise map_error(exc, provider=config.provider_name) from exc
 
@@ -580,6 +604,11 @@ async def stream(
         image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
+    if chain_configured():
+        # Waiting out the full 8x5s->120s schedule on a dead primary is exactly
+        # the ten-minute silence in #2693: with a fallback available, one
+        # attempt per candidate and then move on.
+        retry_delays = retry_delays[:1]
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
@@ -617,19 +646,33 @@ async def stream(
 
     async def _runner() -> None:
         nonlocal saw_output, in_think_block
-        try:
+
+        async def _attempt(active_config: LLMConfig) -> Any:
             # The worker owns the lease, including cancellation by the reader.
-            with acquire_runtime_provider(config) as provider:
-                response = await provider.chat_stream_with_retry(
+            with acquire_runtime_provider(active_config) as provider:
+                return await provider.chat_stream_with_retry(
                     messages=request_messages,
-                    model=config.model,
-                    reasoning_effort=config.reasoning_effort,
+                    model=active_config.model,
+                    reasoning_effort=active_config.reasoning_effort,
                     on_content_delta=_on_content_delta,
                     on_reasoning_delta=_on_reasoning_delta,
                     retry_delays=retry_delays,
                     allow_image_fallback=image_fallback_enabled,
                     **extra_kwargs,
                 )
+
+        try:
+            if chain_configured():
+                # Switching is only safe before any delta escaped; the attempt
+                # raises `partial_response=True` after output, which is not
+                # switchable, so this cannot splice two answers (#2693 P2).
+                response = await call_with_failover(
+                    lambda candidate: _attempt(candidate.config),
+                    owner_id=current_owner(),
+                    candidates=chain_from_config(config),
+                )
+            else:
+                response = await _attempt(config)
             if outcome is not None:
                 outcome.finish_reason = str(response.finish_reason or "")
                 outcome.usage = dict(response.usage or {})

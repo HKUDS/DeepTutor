@@ -145,6 +145,11 @@ export type CatalogService = {
   active_model_id?: string | null;
   /** `task` only: the tasks that run on something other than the global choice. */
   overrides?: Record<string, CatalogTaskOverride>;
+  /**
+   * `llm` only: the ordered fallback chain (#2693). Edited outside this page;
+   * the settings UI only displays it, and an Apply without the key preserves it.
+   */
+  fallbacks?: { profile_id: string; model_id: string }[];
   profiles: CatalogProfile[];
 };
 

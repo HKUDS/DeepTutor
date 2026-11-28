@@ -1932,6 +1932,25 @@ async def apply_provider_edit(payload: ProviderEditPayload):
     return {"catalog": redact_catalog_secrets(catalog), "draft": public_draft}
 
 
+def _preserve_llm_fallbacks(
+    service: str, incoming: dict[str, Any], current: dict[str, Any]
+) -> dict[str, Any]:
+    """Keep the fallback chain when an ``llm`` payload does not carry one.
+
+    The settings UI edits providers, not the chain (#2693 P3). Replacing the
+    service wholesale would delete a hand-configured chain on the next Apply,
+    so an absent key means "leave it as it is" rather than "clear it".
+    """
+    payload = dict(incoming)
+    if service == "llm" and "fallbacks" not in payload:
+        existing = (current.get("services") or {}).get("llm", {}).get("fallbacks")
+        # Only carry a chain that exists: inserting an empty key would make an
+        # otherwise unchanged service look edited and reset the runtime clients.
+        if existing:
+            payload["fallbacks"] = deepcopy(existing)
+    return payload
+
+
 @router.post("/apply/service")
 async def apply_catalog_service(payload: CatalogServicePayload):
     """Apply one model service while leaving every other draft untouched.
@@ -1947,7 +1966,9 @@ async def apply_catalog_service(payload: CatalogServicePayload):
     draft_service = get_settings_draft_service()
     stored_draft = draft_service.load()
     proposed = deepcopy(current)
-    proposed.setdefault("services", {})[payload.service] = deepcopy(payload.config)
+    proposed.setdefault("services", {})[payload.service] = _preserve_llm_fallbacks(
+        payload.service, payload.config, current
+    )
     restored = restore_catalog_secrets(proposed, stored_draft.get("catalog") or current)
     restored = restore_catalog_secrets(restored, current)
     if payload.service == "task" and payload.config.get("mode") == "reference":

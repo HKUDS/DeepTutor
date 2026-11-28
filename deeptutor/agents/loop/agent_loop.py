@@ -52,6 +52,12 @@ from deeptutor.agents.loop.loop_state import (
     _provider_response_state,
     _reasoning_budget_exhausted,
 )
+from deeptutor.agents.loop.provider_visibility import (
+    annotate_provider_failure,
+    provider_label,
+    retry_notice,
+    unavailable_message,
+)
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.runtime.agentic.messages import (
@@ -87,6 +93,7 @@ from deeptutor.services.llm.request_compat import (
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.llm.utils import unreachable_endpoint_hint
+from deeptutor.services.model_selection.fallbacks import fallback_count
 
 if TYPE_CHECKING:  # pragma: no cover
     from deeptutor.agents.loop.pipeline import AgenticLoopPipeline
@@ -637,6 +644,87 @@ class AgentLoop:
             return False
         return spec.backend == "openai_compat"
 
+    def _attach_retry_observer(self, *, stage: str, trace_meta: dict[str, Any]) -> None:
+        """Make the provider's own retry sleeps visible on the stream.
+
+        The provider retries transient status codes on the configured schedule
+        (5s → 120s per attempt by default). Those waits are invisible to the
+        user, which is how a 502 turns into ten minutes of silence (#2693).
+        """
+        provider = getattr(self.client, "_provider", None)
+        if provider is None or not hasattr(provider, "retry_observer"):
+            return
+        alternatives = fallback_count()
+
+        async def observe(*, attempt: int, total: int, delay: float, detail: str) -> None:
+            provider_name, model = provider_label(self.pipeline)
+            await self.stream.progress(
+                retry_notice(
+                    self.pipeline._t,
+                    provider=provider_name,
+                    model=model,
+                    attempt=attempt,
+                    total=total,
+                ),
+                source=self.source,
+                stage=stage,
+                metadata=merge_trace_metadata(
+                    trace_meta,
+                    {
+                        "trace_kind": "warning",
+                        "error_code": "provider_retry",
+                        "provider": provider_name,
+                        "retry_attempt": attempt,
+                        "retry_total": total,
+                        "retry_delay_s": delay,
+                        "fallbacks_configured": alternatives,
+                    },
+                ),
+            )
+
+        provider.retry_observer = observe
+
+    async def _advance_fallback_chain(
+        self, exc: Exception, *, stage: str, trace_meta: dict[str, Any]
+    ) -> Any:
+        """Move the client to the next healthy candidate, announcing the switch.
+
+        Returns the new candidate, or ``None`` when this client has no chain or
+        no candidate is left; the caller then retries the same provider.
+        """
+        record = getattr(self.client, "record_failure", None)
+        advance = getattr(self.client, "advance", None)
+        if not (callable(record) and callable(advance)):
+            return None
+        reason = record(exc)
+        candidate = advance()
+        if candidate is None:
+            return None
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.provider_switched",
+                default=(
+                    "The primary model provider failed ({reason}); continuing this "
+                    "turn on {provider}."
+                ),
+                provider=candidate.label,
+                reason=reason,
+            ),
+            source=self.source,
+            stage=stage,
+            metadata=merge_trace_metadata(
+                trace_meta,
+                {
+                    "trace_kind": "warning",
+                    "error_code": "provider_failover",
+                    "provider": candidate.label,
+                    "failover_reason": reason,
+                    "fallbacks_configured": fallback_count(),
+                },
+            ),
+        )
+        return candidate
+
     async def _call_llm(
         self,
         *,
@@ -695,6 +783,9 @@ class AgentLoop:
                 {"trace_kind": "call_status", "call_state": "running"},
             ),
         )
+        # Provider-level retries sleep for seconds to minutes and emit nothing on
+        # their own; without this the turn looks frozen (#2693 P0).
+        self._attach_retry_observer(stage=stage, trace_meta=trace_meta)
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,
@@ -1055,7 +1146,27 @@ class AgentLoop:
                                 )
                             )
                         )
-                    raise
+                    # A 401/429/5xx is not retried on the same provider, but with
+                    # a chain it can still run elsewhere. Still gated on "nothing
+                    # emitted": a partial answer is never replayed (#2693 P1).
+                    if not output_emitted:
+                        switched = await self._advance_fallback_chain(
+                            exc, stage=stage, trace_meta=trace_meta
+                        )
+                        if switched is not None:
+                            attempt += 1
+                            continue
+                    # Otherwise it must not reach the user as the SDK's bare
+                    # "Error code: 502" (#2693 P0).
+                    failed_provider, failed_model = provider_label(self.pipeline)
+                    annotated = annotate_provider_failure(
+                        exc,
+                        self.pipeline._t,
+                        provider=failed_provider,
+                        model=failed_model,
+                        fallbacks=fallback_count(),
+                    )
+                    raise annotated from exc
                 can_retry = not output_emitted and attempt < len(_PROVIDER_RETRY_DELAYS)
                 if can_retry:
                     logger.warning(
@@ -1064,26 +1175,42 @@ class AgentLoop:
                         len(_PROVIDER_RETRY_DELAYS) + 1,
                         exc,
                     )
-                    await self.stream.progress(
-                        self.pipeline._t(
-                            "notices.provider_retry",
-                            default="The model provider connection was interrupted; retrying.",
-                        ),
-                        source=self.source,
-                        stage=stage,
-                        metadata=merge_trace_metadata(
-                            trace_meta,
-                            {
-                                "trace_kind": "warning",
-                                "error_code": "provider_transport",
-                                "retry_attempt": attempt + 1,
-                            },
-                        ),
+                    # With a configured chain, spend this retry on the next
+                    # candidate instead of the provider that just failed. Only
+                    # here: nothing was emitted, so a replay is safe (#2693 P1).
+                    switched = await self._advance_fallback_chain(
+                        exc, stage=stage, trace_meta=trace_meta
                     )
+                    provider, model = provider_label(self.pipeline)
+                    if switched is None:
+                        await self.stream.progress(
+                            retry_notice(
+                                self.pipeline._t,
+                                provider=provider,
+                                model=model,
+                                attempt=attempt + 1,
+                                total=len(_PROVIDER_RETRY_DELAYS) + 1,
+                            ),
+                            source=self.source,
+                            stage=stage,
+                            metadata=merge_trace_metadata(
+                                trace_meta,
+                                {
+                                    "trace_kind": "warning",
+                                    "error_code": "provider_transport",
+                                    "provider": provider,
+                                    "retry_attempt": attempt + 1,
+                                },
+                            ),
+                        )
                     await asyncio.sleep(_PROVIDER_RETRY_DELAYS[attempt])
                     continue
 
                 partial_response = output_emitted
+                provider, model = provider_label(self.pipeline)
+                # Read-only: P0 reports how many alternatives exist, it does not
+                # use them. Cheap and only on the failure path.
+                alternatives = fallback_count()
                 if text_parts or reasoning_parts:
                     messages.append(
                         _assistant_round_message(
@@ -1104,23 +1231,29 @@ class AgentLoop:
                             "trace_kind": "call_status",
                             "call_state": "failed",
                             "error_code": "provider_transport",
+                            "provider": provider,
+                            "attempts": attempt + 1,
+                            "fallbacks_configured": alternatives,
                             "retryable": True,
                             "partial_response": partial_response,
                         },
                     ),
                 )
-                message = self.pipeline._t(
-                    (
-                        "notices.provider_stream_interrupted"
-                        if partial_response
-                        else "notices.provider_unavailable"
-                    ),
-                    default=(
-                        "The model provider interrupted this response. Please retry."
-                        if partial_response
-                        else "Unable to reach the model provider. Please retry."
-                    ),
-                )
+                if partial_response:
+                    message = self.pipeline._t(
+                        "notices.provider_stream_interrupted",
+                        default="The model provider interrupted this response. Please retry.",
+                        provider=provider,
+                        model=model,
+                    )
+                else:
+                    message = unavailable_message(
+                        self.pipeline._t,
+                        provider=provider,
+                        model=model,
+                        attempts=attempt + 1,
+                        fallbacks=alternatives,
+                    )
                 if not partial_response:
                     # "Please retry" is the whole story for a cloud endpoint and
                     # none of it for a self-hosted one, where the connection was
