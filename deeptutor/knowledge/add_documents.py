@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, List, Optional
 from deeptutor.knowledge.staging import content_hash, stage_source
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.parsing.cache import cache_root_for, reclaim_sources
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     LIGHTRAG_PROVIDER,
@@ -131,6 +132,12 @@ def hashes_for_indexed_files(file_paths: list[str], raw_dir: Path) -> dict[str, 
 def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
     """Delete one staged raw file and drop its indexed-hash record.
 
+    Also reclaims the document's derived parse-cache entries, hashing the bytes
+    while they still exist. That is best-effort and never fails the delete; the
+    cache is shared across KBs, so a byte-identical copy in another KB loses its
+    entry too and re-parses on next use (see
+    :func:`deeptutor.services.parsing.cache.reclaim_sources`).
+
     Deliberately decoupled from :class:`DocumentAdder` (whose constructor
     requires a ready provider index): a KB stuck in an *error* state often has
     no index at all, yet its raw/ files must still be removable so the user can
@@ -146,6 +153,16 @@ def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
 
     target = file_path.resolve()
     if target.exists():
+        # Reclaim the derived parse cache while the bytes are still readable:
+        # the cache key is the source content hash. The cache root is derived
+        # from this KB's directory (a sibling of knowledge_bases/), not from the
+        # request scope, which is the account scope in library view. Reclaiming
+        # is best-effort (see ``reclaim_sources``); a cache failure must not
+        # block the delete.
+        try:
+            reclaim_sources([target], cache_root=cache_root_for(Path(kb_dir).parent))
+        except Exception as exc:  # noqa: BLE001 - cache cleanup is never fatal
+            logger.warning("Could not reclaim the parse cache for %s: %s", target, exc)
         target.unlink()
 
     metadata_file = kb_dir / "metadata.json"
