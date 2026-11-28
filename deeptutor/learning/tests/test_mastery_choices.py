@@ -242,6 +242,28 @@ def test_resolve_answer_blank_when_empty():
     assert resolve_answer("", {"A": "x", "B": "y"}) == ""
 
 
+def test_resolve_answer_tolerates_spacing_and_formatting_wrappers():
+    assert resolve_answer("x + 1", {"A": "x+1", "B": "x-1"}) == "A"
+    assert resolve_answer("梯度 下降", {"A": "梯度下降法的核心步骤", "B": "牛顿法"}) == "A"
+    assert resolve_answer("$x^2 + 1$", {"A": "x^2 + 1", "B": "x^2 - 1"}) == "A"
+    assert resolve_answer("f(x)=2x", {"A": "$f(x) = 2x$", "B": "$f(x) = 3x$"}) == "A"
+    assert (
+        resolve_answer(
+            "**alpha** and `beta`",
+            {"A": "alpha and beta", "B": "gamma and delta"},
+        )
+        == "A"
+    )
+    assert resolve_answer("__alpha__", {"A": "alpha", "B": "beta"}) == "A"
+
+
+def test_resolve_answer_prefers_exact_normalized_over_substring_and_keeps_ambiguity():
+    assert resolve_answer("$x$", {"A": "$x$", "B": "$x + 1$"}) == "A"
+    assert resolve_answer("$x$", {"A": "$x + 1$", "B": "$x + 2$"}) == ""
+    for wrapper_only in ("$", "**", "` `", "__"):
+        assert resolve_answer(wrapper_only, {"A": "$x$", "B": "$y$"}) == ""
+
+
 def test_resolve_choice_submission_accepts_label_or_exact_body_only():
     options = {"A": "Step 2", "B": "Step 6"}
     assert resolve_choice_submission("B", options) == "B"
