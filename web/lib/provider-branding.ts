@@ -8,6 +8,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   anthropic: { file: "anthropic.svg", mono: true },
   api_route: { file: "api-route.png" },
   atlascloud: { file: "atlascloud.svg", mono: true },
+  atmorouter: { file: "atmorouter.svg" },
   azure_openai: { file: "azure-color.svg" },
   baidu: { file: "baidu-color.svg" },
   bocha: { file: "bocha-color.svg" },

@@ -421,6 +421,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.stdcmpt.com/v1",
     ),
     ProviderSpec(
+        name="atmorouter",
+        keywords=("atmorouter",),
+        env_key="ATMOROUTER_API_KEY",
+        display_name="AtmoRouter",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="atmorouter",
+        default_api_base="https://atmorouter.dev/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
