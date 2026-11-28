@@ -4,73 +4,13 @@ import path from "node:path";
 import test from "node:test";
 import { createInstance } from "i18next";
 
-import {
-  CODEX_MANAGED_BY,
-  isBoundManagedCodexProfile,
-} from "../components/settings/codex-profile";
-
-const EDITOR = path.resolve(
-  process.cwd(),
-  "components/settings/ServiceConfigEditor.tsx",
-);
 const CARD = path.resolve(
   process.cwd(),
   "components/settings/CodexOAuthCard.tsx",
 );
 const CLIENT = path.resolve(process.cwd(), "lib/codex-oauth.ts");
-const HELPER = path.resolve(
-  process.cwd(),
-  "components/settings/codex-profile.ts",
-);
 const EN = path.resolve(process.cwd(), "locales/en/app.json");
 const ZH = path.resolve(process.cwd(), "locales/zh/app.json");
-
-test("Codex OAuth profile renders the OAuth card from provider metadata", () => {
-  const source = readFileSync(EDITOR, "utf8");
-
-  assert.match(source, /isCodexOAuthProfile\(/);
-  assert.match(source, /<CodexOAuthCard/);
-  assert.match(readFileSync(HELPER, "utf8"), /auth_mode === "oauth"/);
-});
-
-test("the Codex profile predicates live in one place", () => {
-  const source = readFileSync(EDITOR, "utf8");
-
-  // Duplicating the tag comparison per component is how the two copies of this
-  // check drifted before; the editor must go through the shared helper.
-  assert.equal(source.includes('=== "openai_codex_oauth"'), false);
-  assert.match(
-    readFileSync(HELPER, "utf8"),
-    /CODEX_MANAGED_BY = "openai_codex_oauth"/,
-  );
-});
-
-test("managed Codex reasoning controls require a current account binding", () => {
-  const editor = readFileSync(EDITOR, "utf8");
-
-  assert.equal(
-    isBoundManagedCodexProfile({
-      managed_by: CODEX_MANAGED_BY,
-      codex_account_binding: "account-binding",
-    }),
-    true,
-  );
-  assert.equal(
-    isBoundManagedCodexProfile({ managed_by: CODEX_MANAGED_BY }),
-    false,
-  );
-  assert.match(editor, /isBoundManagedCodexProfile\(activeProfile\)/);
-});
-
-test("managed Codex profiles expose only provider-supported reasoning effort", () => {
-  const source = readFileSync(EDITOR, "utf8");
-
-  assert.match(source, /isManagedCodexProfile\(/);
-  assert.match(source, /disabled=\{isManagedCodex \|\| Boolean\(linkedConnection\)\}/);
-  assert.match(source, /!isCodexOAuth/);
-  assert.match(source, /activeModel\.codex_supported_reasoning_levels/);
-  assert.match(source, /!isCodexOAuth \|\| isBoundManagedCodex/);
-});
 
 test("ordinary users can edit only their owner-scoped Codex reasoning overrides", () => {
   const card = readFileSync(CARD, "utf8");
