@@ -210,7 +210,9 @@ Same-repo pull requests that touch docs build a subpath preview and publish it t
 
 Fork repositories publish branch previews to their own `gh-pages` branch under `branch-<slug>/` on `push` (any branch except `gh-pages`) and `workflow_dispatch`. For pull requests opened from forks, `.github/workflows/docs-fork-preview-comment.yml` posts or updates a PR comment with the inferred fork preview URL and setup instructions without checking out PR code.
 
-One-time repository setup (in upstream or in your fork): in **Settings → Pages**, set **Source** to **Deploy from a branch**, branch `gh-pages`, folder `/ (root)`. If `gh-pages` uses a custom domain without a committed `CNAME` file, set the repository variable `DOCS_PREVIEW_SITE` (for example `https://docs.deeptutor.info`).
+For the first preview in a fork, enable Actions and push a change under `docs/` to the branch containing `docs.yml`. This works even when the workflow is only on the PR branch. The first successful preview publish creates `gh-pages`.
+
+In **Settings → Pages**, set **Source** to **Deploy from a branch**, branch `gh-pages`, folder `/ (root)`. If `gh-pages` uses a custom domain without a committed `CNAME` file, set the repository variable `DOCS_PREVIEW_SITE` (for example `https://docs.deeptutor.info`).
 
 To test a subpath preview build locally:
 
