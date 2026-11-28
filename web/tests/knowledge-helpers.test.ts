@@ -12,6 +12,7 @@ import {
   taskFailureMessage,
   uploadPolicyForProvider,
   validateFiles,
+  withArchiveUploads,
   providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
@@ -43,6 +44,37 @@ test("PageIndex OSS upload policy accepts PDF only", () => {
     allow_any_extension: false,
   });
   assert.equal(uploadPolicyForProvider(base, "llamaindex"), base);
+});
+
+test("Add documents accepts a course .zip the server expands", () => {
+  const base = {
+    extensions: [".md", ".pdf"],
+    accept: ".md,.pdf",
+    max_file_size_bytes: 100,
+    allow_any_extension: false,
+    archive_extensions: [".zip"],
+  };
+  const course = new File(["PK"], "Course.ZIP");
+  const t = ((key: string) => key) as never;
+
+  // KB create gets the plain policy: no archive is selectable there.
+  assert.equal(validateFiles([course], base, t).validFiles.length, 0);
+
+  const withZip = withArchiveUploads(base);
+  assert.deepEqual(withZip.extensions, [".md", ".pdf", ".zip"]);
+  assert.equal(withZip.accept, ".md,.pdf,.zip");
+  assert.deepEqual(validateFiles([course], withZip, t).validFiles, [course]);
+
+  // PageIndex keeps its own list; an unbounded policy is left alone.
+  assert.equal(
+    uploadPolicyForProvider(withZip, "pageindex-oss").extensions.includes(".zip"),
+    false,
+  );
+  const unbounded = { ...base, extensions: [], accept: "", allow_any_extension: true };
+  assert.equal(withArchiveUploads(unbounded), unbounded);
+  // An older backend that lists no archive types changes nothing.
+  const legacy = { extensions: [".pdf"], accept: ".pdf", max_file_size_bytes: 1 };
+  assert.equal(withArchiveUploads(legacy), legacy);
 });
 
 test("unbounded parser policy delegates unknown extensions", () => {

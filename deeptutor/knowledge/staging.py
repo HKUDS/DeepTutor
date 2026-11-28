@@ -43,6 +43,23 @@ def non_colliding(dest_path: Path) -> Path:
     raise AssertionError("unreachable")  # pragma: no cover
 
 
+def _copy_new(source_path: Path, dest_path: Path) -> None:
+    """Copy into a name that must not exist yet; leave nothing behind on failure.
+
+    ``"xb"`` makes taking the name atomic, so a file another writer created
+    after the caller's check is never overwritten (``FileExistsError``).
+    """
+    with open(source_path, "rb") as source:
+        sink = open(dest_path, "xb")
+        try:
+            with sink:
+                shutil.copyfileobj(source, sink, 1 << 20)
+        except BaseException:
+            dest_path.unlink(missing_ok=True)
+            raise
+    shutil.copystat(source_path, dest_path)
+
+
 def stage_source(
     source_path: Path,
     dest_path: Path,
@@ -54,20 +71,33 @@ def stage_source(
     Returns the path the document actually landed on, and whether a copy was
     made. A name already holding the *same* content is reused rather than
     written twice; a name holding a different document is left alone and the
-    newcomer takes a free sibling name, so both get indexed.
+    newcomer takes a free sibling name, so both get indexed. A failed copy
+    leaves no partial file behind.
     """
-    staged = dest_path
-    if staged.exists():
-        current = source_hash or content_hash(source_path)
-        for index in itertools.count(2):
+    current = source_hash
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    index = 1
+    while True:
+        staged = (
+            dest_path
+            if index == 1
+            else dest_path.with_name(f"{dest_path.stem} ({index}){dest_path.suffix}")
+        )
+        if staged.exists():
+            current = current or content_hash(source_path)
             if current == content_hash(staged):
                 return staged, False
-            staged = dest_path.with_name(f"{dest_path.stem} ({index}){dest_path.suffix}")
+            index += 1
+            continue
+        try:
+            _copy_new(source_path, staged)
+        except FileExistsError:
+            # Taken since the check: compare against it on the next pass. A
+            # name that still does not "exist" (a dangling symlink) is skipped.
             if not staged.exists():
-                break
-    staged.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_path, staged)
-    return staged, True
+                index += 1
+            continue
+        return staged, True
 
 
 __all__ = ["content_hash", "non_colliding", "stage_source"]

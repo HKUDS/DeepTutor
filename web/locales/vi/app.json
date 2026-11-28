@@ -6666,5 +6666,15 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "New files: {{count}}": "Tệp mới: {{count}}",
+  "Identical files already in this knowledge base, skipped: {{count}}": "Tệp giống hệt đã có trong cơ sở tri thức này, đã bỏ qua: {{count}}",
+  "Changed files stored next to the existing version: {{count}}": "Tệp đã thay đổi được lưu cạnh phiên bản hiện có: {{count}}",
+  "Not imported (unsupported or unsafe): {{count}}": "Không nhập (không được hỗ trợ hoặc không an toàn): {{count}}",
+  "Unsafe path": "Đường dẫn không an toàn",
+  "Path too long": "Đường dẫn quá dài",
+  "A file and a folder have the same name": "Một tệp và một thư mục trùng tên",
+  "Duplicate path in the archive": "Đường dẫn trùng lặp trong tệp nén",
+  "Archive inside the archive": "Tệp nén nằm trong tệp nén",
+  "Could not be stored": "Không thể lưu"
 }

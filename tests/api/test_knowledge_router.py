@@ -671,6 +671,10 @@ def test_supported_file_types_returns_upload_policy(monkeypatch) -> None:
     assert ".pdf" in payload["accept"]
     assert ".doc" not in payload["extensions"]
     assert payload["allow_any_extension"] is False
+    # "Add documents" also takes a .zip and expands it; KB create does not,
+    # so the archive types are listed apart from the parser extensions.
+    assert payload["archive_extensions"] == [".zip"]
+    assert ".zip" not in payload["extensions"]
 
 
 def test_supported_file_types_can_delegate_all_extensions(monkeypatch) -> None:

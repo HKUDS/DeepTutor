@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { FolderInput, Loader2, RefreshCw, Upload } from "lucide-react";
 import {
   listKnowledgeBaseFiles,
+  type KnowledgeTaskResponse,
   type KnowledgeUploadPolicy,
 } from "@/features/knowledge/api/files";
 import {
@@ -15,11 +16,13 @@ import {
   resolveKbStatus,
   uploadPolicyForProvider,
   validateFiles,
+  withArchiveUploads,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
 import FileDropZone from "./FileDropZone";
+import KbImportSummary from "./KbImportSummary";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import KbUpdateHistory from "./KbUpdateHistory";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
@@ -31,7 +34,10 @@ interface KbDocumentsSectionProps {
   history: HistoryEntry[];
   onClearHistory: () => void;
   onRetry?: () => Promise<void>;
-  onUpload: (files: File[], destSubdir?: string) => Promise<void>;
+  onUpload: (
+    files: File[],
+    destSubdir?: string,
+  ) => Promise<KnowledgeTaskResponse | void>;
 }
 
 /**
@@ -56,6 +62,10 @@ export default function KbDocumentsSection({
   // Existing folders in this KB, offered as a destination for the batch.
   const [folders, setFolders] = useState<string[]>([]);
   const [destSubdir, setDestSubdir] = useState("");
+  // Outcome of the last upload, so a re-imported archive shows what it skipped.
+  const [lastUpload, setLastUpload] = useState<KnowledgeTaskResponse | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +95,10 @@ export default function KbDocumentsSection({
   const isError = status === "error";
   const provider =
     kb.statistics?.rag_provider || kb.metadata?.rag_provider || "llamaindex";
-  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
+  const policyForProvider = uploadPolicyForProvider(
+    withArchiveUploads(uploadPolicy),
+    provider,
+  );
   const publishedLightRagVersion =
     provider === "lightrag"
       ? kb.statistics?.index_versions?.find(
@@ -149,8 +162,13 @@ export default function KbDocumentsSection({
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
+    setLastUpload(null);
     try {
-      await onUpload(selection.validFiles, destSubdir || undefined);
+      const result = await onUpload(
+        selection.validFiles,
+        destSubdir || undefined,
+      );
+      setLastUpload(result || null);
       setFiles([]);
     } finally {
       setSubmitting(false);
@@ -272,6 +290,13 @@ export default function KbDocumentsSection({
           {t("Upload")}
         </button>
       </div>
+
+      {lastUpload && (
+        <KbImportSummary
+          files={lastUpload.files ?? []}
+          report={lastUpload.import_report}
+        />
+      )}
 
       <KbUpdateHistory entries={history} onClear={onClearHistory} />
     </div>

@@ -214,6 +214,8 @@ export interface KnowledgeUploadPolicy {
   accept: string;
   max_file_size_bytes: number;
   allow_any_extension?: boolean;
+  /** Containers "Add documents" also takes; the server expands them. */
+  archive_extensions?: string[];
 }
 
 export interface KnowledgeBaseFile {
@@ -280,6 +282,9 @@ function normalizeUploadPolicy(data: unknown): KnowledgeUploadPolicy {
       typeof payload?.max_file_size_bytes === "number"
         ? payload.max_file_size_bytes
         : 200 * 1024 * 1024,
+    archive_extensions: Array.isArray(payload?.archive_extensions)
+      ? payload.archive_extensions.map((ext) => String(ext).toLowerCase())
+      : [],
   };
 }
 
@@ -737,11 +742,21 @@ export function knowledgeBaseFilePreviewTextPath(
     .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
+// What happened to each archive member of an upload that was not stored as
+// a new file (see `UploadImportReport` in the knowledge router).
+export interface KnowledgeImportReport {
+  duplicates: string[];
+  renamed: { path: string; conflicts_with: string }[];
+  rejected: { file: string; reason: string }[];
+}
+
 export interface KnowledgeTaskResponse {
   id?: string;
   task_id?: string;
   message?: string;
   noop?: boolean;
+  files?: string[];
+  import_report?: KnowledgeImportReport;
 }
 
 export async function readErrorDetail(

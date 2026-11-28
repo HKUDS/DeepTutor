@@ -5,6 +5,8 @@ export interface KnowledgeUploadPolicy {
   accept: string;
   max_file_size_bytes: number;
   allow_any_extension?: boolean;
+  /** Containers "Add documents" also takes; the server expands them. */
+  archive_extensions?: string[];
 }
 
 export const DEFAULT_UPLOAD_POLICY: KnowledgeUploadPolicy = {
@@ -30,6 +32,25 @@ const PAGEINDEX_UPLOAD_EXTENSIONS: Record<string, string[]> = {
   ],
   "pageindex-oss": [".pdf"],
 };
+
+/**
+ * The policy for adding documents to an existing KB: the parser types plus
+ * the archives the upload route expands (a downloaded course `.zip`). KB
+ * create does not take archives, so it keeps the plain policy.
+ */
+export function withArchiveUploads(
+  policy: KnowledgeUploadPolicy,
+): KnowledgeUploadPolicy {
+  const archives = (policy.archive_extensions ?? []).filter(
+    (ext) => !policy.extensions.includes(ext),
+  );
+  if (policy.allow_any_extension || archives.length === 0) return policy;
+  return {
+    ...policy,
+    extensions: [...policy.extensions, ...archives],
+    accept: [policy.accept, ...archives].filter(Boolean).join(","),
+  };
+}
 
 export function uploadPolicyForProvider(
   policy: KnowledgeUploadPolicy,

@@ -7,13 +7,13 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 
 import asyncio
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import logging
 import mimetypes
 import os
 from pathlib import Path
-import re
 import shutil
 import traceback
 from typing import TYPE_CHECKING, Annotated, Any
@@ -52,6 +52,7 @@ from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_fil
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.knowledge.staging import stage_source
 from deeptutor.logging import PROCESS_LOG_PRIVATE_ATTR
 from deeptutor.multi_user.context import (
     get_current_user,
@@ -266,6 +267,9 @@ class SupportedFileTypesInfo(BaseModel):
     accept: str
     max_file_size_bytes: int
     allow_any_extension: bool = False
+    # Containers "Add documents" also accepts and expands into the KB (their
+    # members must match ``extensions``). Creating a KB does not take them.
+    archive_extensions: list[str] = Field(default_factory=list)
 
 
 from deeptutor.services.config.lightrag_roles import (
@@ -345,26 +349,107 @@ def _mark_kb_queued_for_processing(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@dataclass
+class UploadImportReport:
+    """Per-file outcome of the archives in one upload, for the response.
+
+    Stored files are the response's ``files``; this lists the rest so a
+    re-imported course download is visibly a no-op instead of a silent one.
+    """
+
+    # KB paths that already held the member's exact content.
+    duplicates: list[str] = field(default_factory=list)
+    # Members whose path held a *different* document: stored beside it.
+    renamed: list[dict[str, str]] = field(default_factory=list)
+    # Members that were not stored, with one of ``_REJECT_REASONS`` (OS junk
+    # is not listed).
+    rejected: list[dict[str, str]] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, list]:
+        return {"duplicates": self.duplicates, "renamed": self.renamed, "rejected": self.rejected}
+
+
+# Extractor skip reasons → the short English sentence the response carries.
+# The web client translates it (the sentence is its i18n key), so keep this
+# vocabulary small and fixed; anything unlisted becomes "Could not be stored".
+_REJECT_REASONS = {
+    "unsafe path": "Unsafe path",
+    "path escapes target directory": "Unsafe path",
+    "path too long": "Path too long",
+    "path conflict": "A file and a folder have the same name",
+    "duplicate path in archive": "Duplicate path in the archive",
+    "nested archive": "Archive inside the archive",
+}
+_UNSTORED_REASON = "Could not be stored"
+
+
+def _reject_reason(reason: str) -> str:
+    if reason.startswith("Unsupported file type"):
+        return "Unsupported file type"
+    return _REJECT_REASONS.get(reason, _UNSTORED_REASON)
+
+
+def _remove_written(files: list[Path], dirs: list[Path]) -> None:
+    """Best-effort rollback: delete ``files``, then the now-empty ``dirs``."""
+    for path in files:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    for folder in reversed(dirs):
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+
+
 def _save_zip_archive(
     file: UploadFile,
     sanitized_filename: str,
     target_dir: Path,
     allowed_extensions: set[str] | None,
-) -> list[Path]:
+    kb_root: Path,
+    report: UploadImportReport,
+    batch_written: list[Path],
+) -> tuple[list[Path], list[Path], list[Path]]:
     """Safely expand an uploaded ``.zip`` into ``target_dir``.
 
     The archive itself is never persisted; each member is validated and
     extracted via :func:`safe_extract_zip` (Zip Slip / zip-bomb / extension
-    guards). Returns the list of written file paths.
+    guards) with its folders kept, exactly like a folder upload. Members are
+    then placed with :func:`stage_source`, the rule every KB staging path
+    shares: a path already holding the same content is reused, one holding a
+    different document is left alone and the member takes a free sibling
+    name. Re-importing an updated course download therefore stores only what
+    changed and never fails the whole archive on one existing file.
+
+    A member that cannot be placed (a file is where its folder should be,
+    the path is too long, or it would resolve outside ``kb_root`` through a
+    symlink) is rejected on its own. ``batch_written`` holds the files this
+    upload already stored, so a member repeated across its archives is not
+    reported as "already present".
+
+    Returns ``(stored, reused, created_dirs)``: files this call wrote,
+    existing files that already held a member's content, and the folders it
+    created (for the caller's rollback). Outcomes are recorded in ``report``
+    relative to ``kb_root``.
     """
     import tempfile
     import zipfile
 
-    from deeptutor.utils.archive_extractor import ArchiveTooLargeError, safe_extract_zip
+    from deeptutor.utils.archive_extractor import (
+        ArchiveTooLargeError,
+        make_dirs_recorded,
+        safe_extract_zip,
+    )
 
     file.file.seek(0)
     max_size = DocumentValidator.MAX_FILE_SIZE
     tmp_path: Path | None = None
+    stored: list[Path] = []
+    created_dirs: list[Path] = []
+    kb_root_resolved = kb_root.resolve()
+    already_written = set(batch_written)
     try:
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -376,80 +461,118 @@ def _save_zip_archive(
                         status_code=400,
                         detail=(
                             f"Archive '{sanitized_filename}' exceeds maximum size limit of "
-                            f"{format_bytes_human_readable(max_size)}"
+                            f"{format_bytes_human_readable(max_size)}. {_archive_size_hint()}"
                         ),
                     )
                 tmp.write(chunk)
 
-        try:
-            result = safe_extract_zip(
-                tmp_path, target_dir, allowed_extensions=allowed_extensions or set()
+        with tempfile.TemporaryDirectory(prefix="kb-zip-") as staging_dir:
+            staging_root = Path(staging_dir).resolve()
+            try:
+                result = safe_extract_zip(
+                    tmp_path,
+                    staging_root,
+                    allowed_extensions=allowed_extensions or set(),
+                    keep_subdirs=True,
+                )
+            except ArchiveTooLargeError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Rejected archive '{sanitized_filename}': {exc}",
+                ) from exc
+            except zipfile.BadZipFile as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"'{sanitized_filename}' is not a valid zip archive.",
+                ) from exc
+            except OSError as exc:
+                # Never echo the OS error: it carries the server's temp path.
+                logger.warning("Extracting '%s' failed: %s", sanitized_filename, exc)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Archive '{sanitized_filename}' could not be unpacked on the server.",
+                ) from exc
+
+            def reject(member: str, reason: str) -> None:
+                report.rejected.append({"file": f"{sanitized_filename}/{member}", "reason": reason})
+
+            archive_rejected_from = len(report.rejected)
+
+            for member, reason in result.skipped:
+                if reason != "system file or dotfile":
+                    reject(member, _reject_reason(reason))
+            reused: list[Path] = []
+            placed_any = False
+            for extracted in result.extracted:
+                member = extracted.relative_to(staging_root).as_posix()
+                requested = target_dir / member
+                if not requested.resolve().is_relative_to(kb_root_resolved):
+                    reject(member, "Unsafe path")  # a symlinked folder under raw/
+                    continue
+                member_dirs: list[Path] = []
+                try:
+                    make_dirs_recorded(requested.parent, kb_root, member_dirs)
+                    placed, copied = stage_source(extracted, requested)
+                except OSError as exc:
+                    # A file or folder in the way, a too-long path. Never echo
+                    # the OS error: it carries the server's path.
+                    logger.debug("Could not store '%s': %s", member, exc)
+                    _remove_written([], member_dirs)
+                    reject(member, _UNSTORED_REASON)
+                    continue
+                created_dirs.extend(member_dirs)
+                placed_any = True
+                if placed in already_written:
+                    continue  # stored by an earlier archive of this upload
+                rel = placed.relative_to(kb_root).as_posix()
+                if not copied:
+                    reused.append(placed)
+                    report.duplicates.append(rel)
+                    continue
+                stored.append(placed)
+                already_written.add(placed)
+                if placed != requested:
+                    report.renamed.append(
+                        {"path": rel, "conflicts_with": requested.relative_to(kb_root).as_posix()}
+                    )
+
+        if not placed_any:
+            reasons = "; ".join(
+                f"{item['file'].removeprefix(sanitized_filename + '/')} ({item['reason']})"
+                for item in report.rejected[archive_rejected_from:][:5]
             )
-        except ArchiveTooLargeError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Rejected archive '{sanitized_filename}': {exc}",
-            ) from exc
-        except zipfile.BadZipFile as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"'{sanitized_filename}' is not a valid zip archive.",
-            ) from exc
-        except FileExistsError as exc:
-            # The extractor refuses to replace a document the KB already holds.
-            # Name the member only: the OS error carries the server's path.
-            existing = Path(exc.filename or "").name or "a file"
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Archive '{sanitized_filename}' contains '{existing}', which is "
-                    "already in this knowledge base. Rename it in the archive or "
-                    "remove the existing document, then upload again."
+                    f"Archive '{sanitized_filename}' contained no supported files"
+                    + (f": {reasons}" if reasons else "")
+                    + "."
                 ),
-            ) from exc
-
-        if not result.extracted:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Archive '{sanitized_filename}' contained no supported files.",
             )
-        return result.extracted
+        return stored, reused, created_dirs
+    except BaseException:
+        # A rejected archive leaves none of its members behind in the KB.
+        _remove_written(stored, created_dirs)
+        raise
     finally:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
 
 # Folder organization is purely a human-facing layout: folders are real
-# subdirectories under ``raw/`` (no manifest, no retrieval effect). These
-# helpers keep user-supplied relative paths safe before they touch the FS.
-_BAD_PATH_CHARS = re.compile(r'[\\:*?"<>|\x00-\x1f]')
-
-
-def _sanitize_path_segment(segment: str) -> str:
-    """Sanitize a single folder/file path segment for safe FS use."""
-    cleaned = _BAD_PATH_CHARS.sub("", segment).strip().strip(".")
-    return cleaned[:128]
-
-
+# subdirectories under ``raw/`` (no manifest, no retrieval effect). User-supplied
+# relative paths go through ``DocumentValidator.sanitize_relative_dir`` — the
+# same rule archive members use — before they touch the FS.
 def _sanitize_rel_subdir(rel_path: str | None) -> str:
     """Return a safe POSIX relative subdir (folders only, no traversal).
 
     A leading/trailing or interior ``..``/absolute marker raises 400 so a
     crafted directory upload can never escape ``raw/``.
     """
-    if not rel_path:
-        return ""
-    parts: list[str] = []
-    for raw_seg in str(rel_path).replace("\\", "/").split("/"):
-        seg = raw_seg.strip()
-        if seg in ("", "."):
-            continue
-        if seg == "..":
-            raise HTTPException(status_code=400, detail="Invalid folder path")
-        safe = _sanitize_path_segment(seg)
-        if safe:
-            parts.append(safe)
-    return "/".join(parts)
+    try:
+        return DocumentValidator.sanitize_relative_dir(rel_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid folder path") from exc
 
 
 def _safe_join_raw(raw_dir: Path, rel_path: str) -> Path:
@@ -469,9 +592,16 @@ def _save_uploaded_files(
     kb_name: str | None = None,
     rel_paths: list[str] | None = None,
     dest_subdir: str = "",
+    import_report: UploadImportReport | None = None,
 ) -> tuple[list[str], list[str]]:
     """
     Save uploaded files to the local raw/ directory.
+
+    ``.zip`` uploads are expanded in place (see :func:`_save_zip_archive`);
+    members that were skipped, reused or renamed are recorded in
+    ``import_report`` when one is given. Reused files are returned in the
+    path list (so indexing can retry one that never got indexed) but not in
+    the stored-name list, and are never removed when the batch fails.
 
     When PocketBase is enabled and ``kb_name`` is supplied, each file is also
     uploaded to the PocketBase knowledge_bases record as a file attachment
@@ -480,10 +610,12 @@ def _save_uploaded_files(
     uploaded_files: list[str] = []
     uploaded_file_paths: list[str] = []
     written_file_paths: list[Path] = []
+    created_dirs: list[Path] = []
 
     from deeptutor.services.pocketbase_client import is_pocketbase_enabled
 
     _pb_sync = is_pocketbase_enabled() and bool(kb_name)
+    report = import_report if import_report is not None else UploadImportReport()
 
     try:
         for idx, file in enumerate(files):
@@ -519,9 +651,18 @@ def _save_uploaded_files(
                 if Path(sanitized_filename).suffix.lower() == ".zip":
                     # Expand the archive in place; register each extracted
                     # member instead of the zip itself.
-                    for dest in _save_zip_archive(
-                        file, sanitized_filename, dest_dir, allowed_extensions
-                    ):
+                    stored, reused, zip_dirs = _save_zip_archive(
+                        file,
+                        sanitized_filename,
+                        dest_dir,
+                        allowed_extensions,
+                        kb_root=target_dir,
+                        report=report,
+                        batch_written=written_file_paths,
+                    )
+                    created_dirs.extend(zip_dirs)
+                    uploaded_file_paths.extend(str(path) for path in reused)
+                    for dest in stored:
                         written_file_paths.append(dest)
                         uploaded_files.append(dest.relative_to(target_dir).as_posix())
                         uploaded_file_paths.append(str(dest))
@@ -579,19 +720,16 @@ def _save_uploaded_files(
                     except OSError:
                         pass
 
-                error_message = f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
+                error_message = _validation_error(original_filename, e, _get_upload_file_size(file))
                 logger.error(error_message, exc_info=True)
                 raise HTTPException(status_code=400, detail=error_message) from e
     except Exception:
-        for written_path in written_file_paths:
-            if written_path.exists():
-                try:
-                    os.unlink(written_path)
-                except OSError:
-                    pass
+        _remove_written(written_file_paths, created_dirs)
         raise
 
-    return uploaded_files, uploaded_file_paths
+    # A direct file at a path an archive member of this batch also used
+    # replaced it (direct uploads overwrite); register that path once.
+    return list(dict.fromkeys(uploaded_files)), list(dict.fromkeys(uploaded_file_paths))
 
 
 async def _save_uploaded_files_off_loop(
@@ -601,6 +739,7 @@ async def _save_uploaded_files_off_loop(
     kb_name: str | None = None,
     rel_paths: list[str] | None = None,
     dest_subdir: str = "",
+    import_report: UploadImportReport | None = None,
 ) -> tuple[list[str], list[str]]:
     """:func:`_save_uploaded_files` on a worker thread.
 
@@ -621,6 +760,7 @@ async def _save_uploaded_files_off_loop(
         kb_name=kb_name,
         rel_paths=rel_paths,
         dest_subdir=dest_subdir,
+        import_report=import_report,
     )
 
 
@@ -634,6 +774,24 @@ def _get_upload_file_size(file: UploadFile) -> int | None:
         return size
     except Exception:
         return None
+
+
+def _archive_size_hint() -> str:
+    """Point an oversized ``.zip`` at folder upload, whose cap is per file."""
+    limit = format_bytes_human_readable(DocumentValidator.MAX_FILE_SIZE)
+    return f"Unzip it and upload the folder instead (each file may be up to {limit})."
+
+
+def _validation_error(filename: str, exc: Exception, size_bytes: int | None) -> str:
+    """The 400 detail for a file that failed validation before it was stored."""
+    message = f"Validation failed for file '{filename}': {format_exception_message(exc)}"
+    if (
+        filename.lower().endswith(".zip")
+        and size_bytes is not None
+        and size_bytes > DocumentValidator.MAX_FILE_SIZE
+    ):
+        message = f"{message}. {_archive_size_hint()}"
+    return message
 
 
 def _validate_upload_batch(
@@ -655,9 +813,7 @@ def _validate_upload_batch(
                 allowed_extensions=allowed_extensions,
             )
         except Exception as e:
-            error_message = (
-                f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
-            )
+            error_message = _validation_error(original_filename, e, size_bytes)
             raise HTTPException(status_code=400, detail=error_message) from e
 
         rel = (
@@ -2092,6 +2248,7 @@ async def get_supported_file_types():
         accept=",".join(dict.fromkeys(accept_items)),
         max_file_size_bytes=DocumentValidator.MAX_FILE_SIZE,
         allow_any_extension=allow_any_extension,
+        archive_extensions=[".zip"],
     )
 
 
@@ -3528,12 +3685,14 @@ async def upload_files(
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
         upload_extensions = allowed_extensions | {".zip"} if allowed_extensions else set()
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
+        import_report = UploadImportReport()
         uploaded_files, uploaded_file_paths = await _save_uploaded_files_off_loop(
             files,
             raw_dir,
             allowed_extensions=upload_extensions,
             rel_paths=rel_paths,
             dest_subdir=_sanitize_rel_subdir(dest_subdir),
+            import_report=import_report,
         )
         task_id = _build_unique_task_id("kb_upload", kb_name)
         get_task_stream_manager().ensure_task(task_id)
@@ -3562,6 +3721,7 @@ async def upload_files(
         return {
             "message": f"Uploaded {len(uploaded_files)} files. Processing in background.",
             "files": uploaded_files,
+            "import_report": import_report.as_dict(),
             "task_id": task_id,
         }
     except (HTTPException, AccessError):

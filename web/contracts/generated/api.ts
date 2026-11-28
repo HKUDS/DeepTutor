@@ -17489,6 +17489,8 @@ export interface components {
        * @default false
        */
       readonly allow_any_extension: boolean;
+      /** Archive Extensions */
+      readonly archive_extensions?: readonly string[];
       /** Extensions */
       readonly extensions: readonly string[];
       /** Max File Size Bytes */
