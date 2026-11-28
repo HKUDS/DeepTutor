@@ -1126,6 +1126,9 @@ class BookEngine:
         # not the wall time since the book was first confirmed.
         book.metadata["compile_started_at"] = time.time()
         book.updated_at = time.time()
+        # Resume queues every unfinished page, including in an on-demand book.
+        # Persist that choice so a new process can recover this background run.
+        book.metadata["lazy_compile"] = False
         self.storage.save_book(book)
         self.storage.append_log(
             book_id, f"resume requested ({len(pending)} unfinished pages)", op="resume"
