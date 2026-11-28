@@ -13,6 +13,7 @@ import {
 } from "@/lib/markdown-display";
 import {
   InlineFileCard,
+  ChatFileReference,
   InlineWorkspaceImage,
   makeFileLinkRemarkPlugin,
   parseAttachmentHref,
@@ -359,7 +360,7 @@ export default function SimpleMarkdownRenderer({
         );
       }
 
-      return (
+      const link = (
         <a
           href={href}
           {...(external
@@ -379,6 +380,7 @@ export default function SimpleMarkdownRenderer({
           {children}
         </a>
       );
+      return <ChatFileReference href={href} label={children} fallback={link} />;
     },
     img: ({ node, src, alt, ...props }: any) => {
       const attachmentName = parseAttachmentHref(src);

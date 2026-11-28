@@ -1,4 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { filenameFromDisposition } from "@/lib/content-disposition";
+
+export { filenameFromDisposition } from "@/lib/content-disposition";
 
 // ── Immersive reading (materials under data/user/workspace/reading) ──
 //
@@ -631,27 +634,4 @@ export async function fetchExport(
       response.headers.get("content-disposition"),
     ),
   };
-}
-
-/**
- * Parse a filename out of a Content-Disposition header.
- *
- * Prefers the RFC 5987 `filename*` form so non-ASCII titles (a Chinese paper,
- * say) keep their name instead of arriving as the stripped ASCII fallback.
- */
-export function filenameFromDisposition(
-  header: string | null,
-  fallback = "export",
-): string {
-  if (!header) return fallback;
-  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (encoded?.[1]) {
-    try {
-      return decodeURIComponent(encoded[1].trim());
-    } catch {
-      // Malformed percent-encoding — fall through to the plain form.
-    }
-  }
-  const plain = /filename="?([^";]+)"?/i.exec(header);
-  return plain?.[1]?.trim() || fallback;
 }

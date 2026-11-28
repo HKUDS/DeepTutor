@@ -5,6 +5,9 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { docIconFor } from "@/lib/doc-attachments";
+import { isChatFileLink } from "@/lib/chat-file-link";
+import { ChatFileLink } from "./ChatFileLink";
+import { langForFilename } from "@/lib/code-languages";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /**
@@ -19,8 +22,8 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
  * scheme; the renderers' ``a`` component intercepts it (``parseAttachmentHref``)
  * and renders a compact ``InlineFileCard``. The href survives the markdown URL
  * sanitizer only because ``attachment`` is allow-listed in
- * ``SAFE_MARKDOWN_PROTOCOL_REGEX`` (lib/markdown-display.ts), and these links
- * are never emitted as navigable anchors, so allowing the scheme is safe.
+ * ``SAFE_MARKDOWN_PROTOCOL_REGEX`` (lib/markdown-display.ts). The rendered
+ * anchor only uses a first-party file route.
  */
 const ATTACHMENT_HREF_PREFIX = "attachment:";
 
@@ -493,6 +496,43 @@ export function InlineFileCardProvider({
   );
 }
 
+export function ChatFileReference({
+  href,
+  label,
+  fallback,
+}: {
+  href?: string;
+  label: ReactNode;
+  fallback: ReactNode;
+}) {
+  const context = useInlineFileCardContext();
+  if (!context?.onOpen || !href) return fallback;
+  const serveFile = isChatFileLink(href);
+  const filename = decode(href.split(/[?#]/, 1)[0].split("/").pop() ?? "");
+  if (
+    !serveFile &&
+    (/^(?:[a-z][a-z\d+.-]*:|\/|[?#])/i.test(href) ||
+      (!/\.[a-z\d][a-z\d_-]*$/i.test(filename) && !langForFilename(filename)))
+  ) {
+    return fallback;
+  }
+  return (
+    <ChatFileLink
+      attachment={(serveFile && context.files.find((file) => file.url === href)) || {
+        filename: serveFile && href.startsWith("/files/workspace-items/") ? undefined : filename,
+        type: "file",
+        url: serveFile ? href : undefined,
+        id: serveFile ? undefined : `unavailable:${href}`,
+      }}
+      onOpen={context.onOpen}
+      unavailableReference={serveFile ? undefined : href}
+      className="text-[var(--primary)] underline decoration-[var(--primary)]/40 underline-offset-2"
+    >
+      {label}
+    </ChatFileLink>
+  );
+}
+
 /**
  * Renders an ``attachment:NAME`` link as a compact, clickable file chip
  * (icon + filename) that opens the file in the Viewer. Falls back to plain text
@@ -515,14 +555,14 @@ export function InlineFileCard({
   const spec = docIconFor(filename);
   const Icon = spec.Icon;
   return (
-    <button
-      type="button"
-      onClick={ctx?.onOpen ? () => ctx.onOpen?.(attachment) : undefined}
+    <ChatFileLink
+      attachment={attachment}
+      onOpen={ctx?.onOpen}
       className="inline-flex max-w-full items-center gap-1 align-baseline rounded-md px-1 py-0.5 font-medium text-[var(--primary)] underline decoration-[var(--primary)]/40 underline-offset-2 transition-colors hover:bg-[var(--primary)]/5 hover:decoration-[var(--primary)]"
     >
       <Icon className={`h-[14px] w-[14px] shrink-0 ${spec.tint}`} />
       <span className="truncate">{filename}</span>
-    </button>
+    </ChatFileLink>
   );
 }
 
@@ -560,13 +600,13 @@ export function InlineWorkspaceImage({
   );
   if (!ctx?.onOpen) return image;
   return (
-    <button
-      type="button"
-      onClick={() => ctx.onOpen?.(attachment)}
+    <ChatFileLink
+      attachment={attachment}
+      onOpen={ctx.onOpen}
       className="inline-block max-w-full cursor-zoom-in text-left"
-      aria-label={`Open ${attachment.filename || name}`}
+      ariaLabel={`Open ${attachment.filename || name}`}
     >
       {image}
-    </button>
+    </ChatFileLink>
   );
 }

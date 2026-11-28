@@ -80,7 +80,9 @@ import {
   useOptionalQuizFollowupController,
 } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { isChatFileLink, isChatVideoLessonLink } from "@/lib/chat-file-link";
+import { filenameFromDisposition } from "@/lib/content-disposition";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import Tooltip from "@/shared/ui/Tooltip";
@@ -107,6 +109,9 @@ const ImagePreview = dynamic(
 );
 const VideoPreview = dynamic(
   () => import("@/components/chat/preview/previewers/VideoPreview"),
+);
+const VideoLessonFrame = dynamic(
+  () => import("@/components/video-lesson/VideoLessonViewer").then((mod) => mod.VideoLessonFrame),
 );
 const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
@@ -294,7 +299,7 @@ export interface SessionViewerPanelProps {
 const NO_AGENTS: { name: string; kind?: string }[] = [];
 
 function fileTabIdFor(a: MessageAttachment, fallback: number): string {
-  return `file:${a.id ?? a.filename ?? `idx-${fallback}`}`;
+  return `file:${a.id ?? a.workspace_item_id ?? a.url ?? a.filename ?? `idx-${fallback}`}`;
 }
 
 function webTabIdFor(url: string): string {
@@ -655,7 +660,7 @@ function SessionViewerPanelInner(
           setActiveTabId(id);
           return prev;
         }
-        const label = a.filename || "Attachment";
+        const label = a.title || a.filename || "Attachment";
         const next: ViewerTab = {
           kind: "file",
           id,
@@ -1342,6 +1347,59 @@ function SessionViewerPanelInner(
   // paste a URL or pick a local file to open as the first tab.
   const visible = open && entered;
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const fileTab = activeTab?.kind === "file" ? activeTab : null;
+  const fileSource = fileTab?.source;
+  const sourceUrl = fileSource?.url;
+  const previewUrl = fileSource ? resolveSourceUrl(fileSource, apiUrl) : null;
+  const probeUrl = sourceUrl && isChatFileLink(sourceUrl) ? previewUrl : null;
+  const fileTabId = fileTab?.id;
+  const [fileCheck, setFileCheck] = useState<{
+    tabId: string | undefined;
+    url: string | null;
+    available: boolean | null;
+  }>({ tabId: fileTabId, url: probeUrl, available: null });
+  if (fileCheck.tabId !== fileTabId || fileCheck.url !== probeUrl) {
+    setFileCheck({ tabId: fileTabId, url: probeUrl, available: null });
+  }
+  useEffect(() => {
+    if (!fileTabId || !probeUrl) return;
+    const controller = new AbortController();
+    void apiFetch(probeUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+      skipAuthRedirect: true,
+    }).then(
+      (response) => {
+        if (controller.signal.aborted) return;
+        if (response.ok) {
+          const filename = filenameFromDisposition(response.headers.get("content-disposition"), "");
+          const mimeType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+          setTabs((current) => current.map((tab) => {
+            if (tab.kind !== "file" || tab.id !== fileTabId || tab.source.url !== sourceUrl) return tab;
+            const name = tab.source.filename || filename;
+            const mime = tab.source.mimeType || mimeType;
+            if (name === tab.source.filename && mime === tab.source.mimeType) return tab;
+            return {
+              ...tab,
+              label: tab.source.filename ? tab.label : name || tab.label,
+              source: { ...tab.source, filename: name, mimeType: mime },
+            };
+          }));
+        }
+        setFileCheck({ tabId: fileTabId, url: probeUrl, available: response.ok || response.status === 405 });
+      },
+      () => {
+        if (!controller.signal.aborted) {
+          setFileCheck({ tabId: fileTabId, url: probeUrl, available: false });
+        }
+      },
+    );
+    return () => controller.abort();
+  }, [fileTabId, probeUrl, sourceUrl]);
+
+  const checkingFile = Boolean(probeUrl && fileCheck.available === null);
+  const fileAvailable = probeUrl ? fileCheck.available === true : Boolean(previewUrl);
+  const fileUnavailable = !fileAvailable && (Boolean(probeUrl) || fileSource?.extractedText === undefined);
 
   const openLocalFile = useCallback(
     (file: File) => {
@@ -1399,14 +1457,24 @@ function SessionViewerPanelInner(
         onClosePanel={onClose}
         agents={agents}
         actions={
-          activeTab?.kind === "file" ? (
-            <FileTabActions source={activeTab.source} />
+          fileSource && previewUrl && fileAvailable ? (
+            <FileTabActions fileUrl={previewUrl} filename={fileSource.filename} />
           ) : null
         }
       />
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
         {activeTab?.kind === "file" ? (
-          <FileTabBody source={activeTab.source} />
+          <FileTabBody
+            key={activeTab.id}
+            source={activeTab.source}
+            previewUrl={previewUrl}
+            checking={checkingFile}
+            unavailable={fileUnavailable}
+            onBack={() => {
+              closeTab(activeTab.id, { remember: false });
+              onClose();
+            }}
+          />
         ) : activeTab?.kind === "web" ? (
           <WebTabBody key={activeTab.url} url={activeTab.url} />
         ) : activeTab?.kind === "markdown-note" ? (
@@ -1694,46 +1762,26 @@ function ActivityHome({
 /*  File tab body                                                      */
 /* ------------------------------------------------------------------ */
 
-/** Where a file tab's bytes can be fetched: the served URL, or a data URL
- *  for a pending (un-sent) base64 attachment so download / open-in-browser
- *  still work before it is uploaded. */
-function fileUrlFor(source: FilePreviewSource): string | null {
-  const previewUrl = resolveSourceUrl(source, apiUrl);
-  if (previewUrl) return previewUrl;
-  if (source.base64) {
-    const mime = source.mimeType || "application/octet-stream";
-    return `data:${mime};base64,${source.base64}`;
-  }
-  return null;
-}
-
 /** Download + open-in-browser for the focused file tab, shown in the tab
  *  bar. The tab already names the file, so these are bare icons. */
-function FileTabActions({ source }: { source: FilePreviewSource }) {
+function FileTabActions({ fileUrl, filename }: { fileUrl: string; filename: string }) {
   const { t } = useTranslation();
-  const fileUrl = useMemo(() => fileUrlFor(source), [source]);
-  const filename = source.filename || t("Attachment");
   return (
     <>
-      {fileUrl ? (
-        <Tooltip label={t("Download")} side="bottom">
-          <a
-            href={fileUrl}
-            download={filename}
-            className={HEADER_ICON}
-            aria-label={t("Download")}
-          >
-            <Download size={15} strokeWidth={1.8} />
-          </a>
-        </Tooltip>
-      ) : null}
+      <Tooltip label={t("Download")} side="bottom">
+        <a
+          href={fileUrl}
+          download={filename || t("Attachment")}
+          className={HEADER_ICON}
+          aria-label={t("Download")}
+        >
+          <Download size={15} strokeWidth={1.8} />
+        </a>
+      </Tooltip>
       <Tooltip label={t("Open in browser")} side="bottom">
         <button
           type="button"
-          onClick={() => {
-            if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
-          }}
-          disabled={!fileUrl}
+          onClick={() => window.open(fileUrl, "_blank", "noopener,noreferrer")}
           className={HEADER_ICON}
           aria-label={t("Open in browser")}
         >
@@ -1744,12 +1792,53 @@ function FileTabActions({ source }: { source: FilePreviewSource }) {
   );
 }
 
-function FileTabBody({ source }: { source: FilePreviewSource }) {
-  const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
+function FileTabBody({
+  source,
+  previewUrl,
+  checking,
+  unavailable,
+  onBack,
+}: {
+  source: FilePreviewSource;
+  previewUrl: string | null;
+  checking: boolean;
+  unavailable: boolean;
+  onBack: () => void;
+}) {
+  const { t } = useTranslation();
+  if (checking) {
+    return (
+      <div role="status" aria-label={t("Loading")} className="grid h-full place-items-center">
+        <Loader2 aria-hidden="true" className="size-5 animate-spin text-[var(--muted-foreground)]" />
+      </div>
+    );
+  }
+  if (unavailable) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <p role="status" className="text-sm text-[var(--muted-foreground)]">{t("This file is unavailable.")}</p>
+        <button
+          type="button"
+          onClick={onBack}
+          className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/30 ${TAB_FOCUS}`}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          {t("Back to conversation")}
+        </button>
+      </div>
+    );
+  }
   const kind = previewKindFor(source);
   return (
-    <div className="relative h-full overflow-hidden">
-      <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+    <div className="flex h-full flex-col">
+      {source.url?.startsWith("/files/workspace-items/") && isChatFileLink(source.url) ? (
+        <div className="shrink-0 border-b border-[var(--border)]/60 px-4 py-1.5 text-xs text-[var(--muted-foreground)]">
+          {t("Conversation snapshot")}
+        </div>
+      ) : null}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+      </div>
     </div>
   );
 }
@@ -1783,6 +1872,10 @@ const PreviewBody = memo(function PreviewBody({
 
   if (!previewUrl) {
     return <FallbackPreview filename={filename} url={null} reason="legacy" />;
+  }
+
+  if (source.url && isChatVideoLessonLink(source.url)) {
+    return <VideoLessonFrame src={previewUrl} title={filename} className="h-full w-full border-0" />;
   }
 
   switch (kind) {

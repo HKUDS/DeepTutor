@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
+from deeptutor.api.desktop_files import (
+    browser_file_media_type,
+    desktop_file_headers,
+    desktop_file_request,
+)
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.multi_user.context import get_current_user_or_none
 from deeptutor.multi_user.partner_access import visible_partners
@@ -83,6 +88,7 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
 @router.head("/{output_path:path}", operation_id="read_output_head")
 async def read_output(
     output_path: str,
+    request: Request,
     _auth: TokenPayload | None = Depends(require_auth),
 ) -> FileResponse:
     """Serve one allowlisted artifact from the authenticated user's reach."""
@@ -92,6 +98,9 @@ async def read_output(
         path = _resolve_partner_output(output_path)
         if path is None:
             raise
+    headers = desktop_file_headers(path) if desktop_file_request(request) else {}
     if path.suffix.lower() == ".html" and "video_lesson" in path.parts:
-        return FileResponse(path, headers={"Content-Security-Policy": _SANDBOXED_PAGE_CSP})
-    return FileResponse(path)
+        headers["Content-Security-Policy"] = _SANDBOXED_PAGE_CSP
+    return FileResponse(
+        path, media_type=browser_file_media_type(request, path.name), headers=headers
+    )
