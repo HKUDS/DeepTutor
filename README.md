@@ -534,6 +534,8 @@ Learning is the current workspace's study area. Create an activity from **Learni
 
 Book turns selected sources into an interactive **living book** — not a static PDF, but a reading environment built from typed blocks. A book can start from knowledge bases, Favorites, question banks, or chat history; the creation flow proposes a chapter outline before content is generated, so you review the shape instead of accepting a blind one-shot output.
 
+If you enter only a topic, Book uses the configured model’s general knowledge. To include current information from the web, first ask Chat to research the topic with Web Search, then select that conversation as a source when creating the book. Book does not automatically run Web Search or Web Fetch when you enter a topic.
+
 <p align="center">
 <img src="assets/figs/web-dev/book-quiz.png" alt="Book quiz block" width="31%">
 &nbsp;
