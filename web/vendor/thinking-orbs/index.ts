@@ -8,7 +8,8 @@
 //    toward the substrate rather than toward grey — capped part-way, so an
 //    inline-size orb keeps its hue instead of washing out.
 //  - `theme.ts`        — `useResolvedInk` / `parseTint`, which read that
-//    colour off computed style and re-read it on app theme flips.
+//    colour off computed style and re-read it on app theme flips; watch the
+//    host and its ancestors rather than unrelated document-subtree mutations.
 //  - `types.ts`, `ThinkingOrb.tsx` — a `superSample` prop, because the
 //    upstream `min(2, dpr)` bitmap cap leaves inline-size dots blurred by
 //    their own antialiasing.

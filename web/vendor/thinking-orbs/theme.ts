@@ -24,6 +24,18 @@ function systemDark(): boolean {
   return typeof matchMedia === 'undefined' || matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+// DeepTutor local change: ignore unrelated document-subtree mutations.
+function observeThemeAncestors(el: Element, resolve: () => void): MutationObserver | null {
+  if (typeof MutationObserver === 'undefined') return null;
+  const observer = new MutationObserver(resolve);
+  // Theme resolution follows this element and its ancestors. Watching the
+  // whole transcript also reread every orb's style on unrelated input changes.
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    observer.observe(node, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  }
+  return observer;
+}
+
 /** Resolve the effective dark/light substrate for a mounted element. */
 export function useResolvedDark(theme: OrbTheme, hostRef: RefObject<Element | null>): boolean {
   const [dark, setDark] = useState(true);
@@ -50,15 +62,7 @@ export function useResolvedDark(theme: OrbTheme, hostRef: RefObject<Element | nu
     mq?.addEventListener('change', onMq);
 
     // live app-level toggles: watch class/data-theme flips on ancestors
-    let mo: MutationObserver | null = null;
-    if (typeof MutationObserver !== 'undefined' && hostRef.current) {
-      mo = new MutationObserver(resolve);
-      mo.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class', 'data-theme'],
-        subtree: true
-      });
-    }
+    const mo = hostRef.current ? observeThemeAncestors(hostRef.current, resolve) : null;
 
     return () => {
       mq?.removeEventListener('change', onMq);
@@ -105,15 +109,7 @@ export function useResolvedInk(hostRef: RefObject<Element | null>): string | und
     const read = () => setInk(getComputedStyle(el).color || undefined);
     read();
 
-    let mo: MutationObserver | null = null;
-    if (typeof MutationObserver !== 'undefined') {
-      mo = new MutationObserver(read);
-      mo.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class', 'data-theme'],
-        subtree: true
-      });
-    }
+    const mo = observeThemeAncestors(el, read);
 
     return () => mo?.disconnect();
   }, [hostRef]);
