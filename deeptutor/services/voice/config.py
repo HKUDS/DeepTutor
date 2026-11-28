@@ -58,6 +58,10 @@ class TTSConfig:
     api_version: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     voice: str = ""
+    # Optional second configured voice. Providers without live voice discovery
+    # (anything OpenAI-compatible) still need two distinct voices for the two-
+    # speaker audio overview, so the catalog can state one explicitly.
+    expert_voice: str = ""
     response_format: str = "mp3"
     speed: float | None = None
     language: str | None = None

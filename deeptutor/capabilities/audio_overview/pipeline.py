@@ -423,9 +423,14 @@ class AudioOverviewPipeline:
             choices = voice_model_options(tts.provider_name, "tts", tts.model).get("voices", [])
             host_voice = host_voice or tts.voice
             expert_voice = expert_voice or next(
-                (str(item["id"]) for item in choices if item.get("id") != host_voice), None
+                (str(item["id"]) for item in choices if str(item["id"]) != host_voice),
+                None,
             )
-            if not host_voice or not expert_voice:
+            # Providers without live voice discovery report no choices, so the
+            # catalog's own voices are the only way to pick a second speaker.
+            expert_voice = expert_voice or (tts.expert_voice or None)
+            host_voice = host_voice or (tts.expert_voice or None)
+            if not host_voice or not expert_voice or host_voice == expert_voice:
                 raise AudioOverviewError(
                     "Configure distinct host and expert voices for the active TTS model."
                 )

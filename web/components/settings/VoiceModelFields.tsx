@@ -30,6 +30,7 @@ export function VoiceModelFields({
 }) {
   const { t } = useTranslation()
   const speedId = useId()
+  const expertVoiceId = useId()
   const instructionId = useId()
   const timeoutId = useId()
   const languages = preset?.languages ?? []
@@ -72,6 +73,25 @@ export function VoiceModelFields({
               placeholder={preset?.formats[0] ?? 'mp3'}
             />
           </>
+        )}
+        {service === 'tts' && (
+          <div className="space-y-1.5">
+            <label htmlFor={expertVoiceId} className="text-xs font-medium">
+              {t('Expert voice')}
+            </label>
+            <input
+              id={expertVoiceId}
+              type="text"
+              className={inputClass}
+              disabled={disabled}
+              value={model.expert_voice ?? ''}
+              placeholder={t('Voice ID from your speech provider')}
+              onChange={e => update('expert_voice', e.target.value)}
+            />
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {t('Second speaker for audio overviews when your provider lists no voices.')}
+            </p>
+          </div>
         )}
         {(service === 'stt' || Boolean(preset?.languages.length)) && (
           <RegistryModelIdField

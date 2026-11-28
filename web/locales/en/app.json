@@ -6201,6 +6201,7 @@
   "Accept": "Accept",
   "Host voice": "Host voice",
   "Expert voice": "Expert voice",
+  "Second speaker for audio overviews when your provider lists no voices.": "Second speaker for audio overviews when your provider lists no voices.",
   "Duration (minutes)": "Duration (minutes)",
   "Voice ID from your speech provider": "Voice ID from your speech provider",
   "Configure distinct host and expert voices for the active TTS model.": "Configure distinct host and expert voices for the active TTS model.",

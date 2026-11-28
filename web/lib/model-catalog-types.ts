@@ -62,6 +62,9 @@ export type CatalogModel = {
   // codec (mp3/wav/...) and is reused by imagegen ("url"/"b64_json").
   // `language` is an optional STT hint.
   voice?: string;
+  // Second TTS voice for two-speaker audio overviews when the provider has
+  // no live voice discovery (anything OpenAI-compatible).
+  expert_voice?: string;
   speed?: string;
   sample_rate?: string;
   instructions?: string;
