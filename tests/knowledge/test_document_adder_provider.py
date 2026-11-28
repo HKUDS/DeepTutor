@@ -459,6 +459,52 @@ def test_llamaindex_indexes_a_folder_batch_in_one_publish(monkeypatch, tmp_path:
     assert set(adder.get_ingested_hashes()) == {"a.txt", "b.txt"}
 
 
+def test_llamaindex_batch_reports_embedding_progress_before_publish(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from deeptutor.knowledge.progress_tracker import ProgressTracker
+
+    adder, files = _llamaindex_adder(tmp_path, ["a.txt", "b.txt"])
+    tracker = ProgressTracker("kb", tmp_path)
+    tracker.task_id = "upload-task"
+    adder.progress_tracker = tracker
+    snapshots = []
+    task_ids = []
+
+    class _ProgressService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, _kb_name, file_paths, **kwargs):
+            task_ids.append(kwargs.get("task_id"))
+            callback = kwargs.get("progress_callback")
+            for current in (1, 2, 4):
+                if callback:
+                    callback(current, 4)
+                snapshots.append(tracker.get_progress())
+            kwargs["indexed_file_callback"](file_paths)
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _ProgressService)
+
+    result = asyncio.run(adder.process_new_documents(files))
+
+    assert [snapshot["progress_percent"] for snapshot in snapshots] == [25, 50, 100]
+    assert [snapshot["current"] for snapshot in snapshots] == [1, 2, 4]
+    assert all(snapshot["total"] == 4 for snapshot in snapshots)
+    assert all(snapshot["task_id"] == tracker.task_id for snapshot in snapshots)
+    assert all(snapshot["stage"] == "processing_documents" for snapshot in snapshots)
+    assert all(
+        snapshot["message_key"] == "Embedding batches: {{current}}/{{total}}"
+        for snapshot in snapshots
+    )
+    assert task_ids == [tracker.task_id]
+    assert result.processed_files == files
+    assert result.failures == []
+    final = tracker.get_progress()
+    assert final["current"] == final["total"] == len(files)
+
+
 def test_llamaindex_batch_reports_files_the_provider_skipped(monkeypatch, tmp_path: Path) -> None:
     adder, files = _llamaindex_adder(tmp_path, ["kept.txt", "skipped.txt"])
 
