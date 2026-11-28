@@ -30,7 +30,7 @@ def _replay_output_item(item: dict[str, Any]) -> dict[str, Any]:
 
 def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     """Convert Chat Completions messages to Responses API input items."""
-    system_prompt = ""
+    system_parts: list[str] = []
     input_items: list[dict[str, Any]] = []
 
     for idx, msg in enumerate(messages):
@@ -38,7 +38,17 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
         content = msg.get("content")
 
         if role == "system":
-            system_prompt = content if isinstance(content, str) else ""
+            if isinstance(content, list):
+                content = "\n".join(
+                    part["text"]
+                    for part in content
+                    if isinstance(part, dict)
+                    and part.get("type") == "text"
+                    and isinstance(part.get("text"), str)
+                    and part["text"]
+                )
+            if isinstance(content, str) and content:
+                system_parts.append(content)
             continue
 
         if role == "user":
@@ -93,7 +103,7 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
                 {"type": "function_call_output", "call_id": call_id, "output": output_text}
             )
 
-    return system_prompt, input_items
+    return "\n\n".join(system_parts), input_items
 
 
 # GPT-5.6 introduced explicit cache breakpoints in the Responses API.
