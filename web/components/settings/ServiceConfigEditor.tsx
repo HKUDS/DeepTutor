@@ -27,6 +27,7 @@ import {
 } from "@/lib/reasoning-effort";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
+import { GitHubCopilotAuthCard } from "./GitHubCopilotAuthCard";
 import {
   isBoundManagedCodexProfile,
   isCodexOAuthProfile,
@@ -378,7 +379,9 @@ export function ServiceConfigEditor({
     const binding = connection?.binding ?? activeProfile.binding ?? "";
     const baseUrl = connection?.base_url ?? activeProfile.base_url ?? "";
     const apiKey = connection?.api_key ?? activeProfile.api_key ?? "";
-    if (!binding || (!CLI_LOGIN_BINDINGS.has(binding) && !baseUrl.trim()))
+    const isUrlOptionalBinding =
+      CLI_LOGIN_BINDINGS.has(binding) || binding === "github_copilot";
+    if (!binding || (!isUrlOptionalBinding && !baseUrl.trim()))
       return;
 
     const profileId = activeProfile.id;
@@ -407,6 +410,7 @@ export function ServiceConfigEditor({
       }
       const payload = (await response.json()) as {
         models?: Array<{ id: string; name?: string }>;
+        source?: string;
       };
       const fetched = payload.models || [];
       if (fetched.length === 0) throw new Error(t("No models returned"));
@@ -455,7 +459,22 @@ export function ServiceConfigEditor({
           target.active_model_id = profile.models[0]?.id ?? null;
         }
       });
-      setToast(t("Synced {{count}} models", { count: fetched.length }));
+      const toastMessage =
+        payload.source === "fallback"
+          ? t(
+              "Synced {{count}} fallback models (live SDK/CLI catalog unavailable)",
+              { count: fetched.length },
+            )
+          : payload.source === "sdk"
+            ? t("Synced {{count}} models from SDK", { count: fetched.length })
+            : payload.source === "cli"
+              ? t("Synced {{count}} models from CLI", { count: fetched.length })
+              : payload.source === "cache"
+                ? t("Synced {{count}} models from local CLI cache", {
+                    count: fetched.length,
+                  })
+                : t("Synced {{count}} models", { count: fetched.length });
+      setToast(toastMessage);
     } catch (error) {
       setToast(error instanceof Error ? error.message : String(error));
     } finally {
@@ -723,10 +742,18 @@ export function ServiceConfigEditor({
                               });
                             }
                           }}
+                          onCopilotAuthenticated={() =>
+                            void syncProviderModels({
+                              binding: "github_copilot",
+                              base_url: "",
+                              api_key: "",
+                            })
+                          }
                         />
 
                         {service !== "search" &&
                           !isCodexOAuth &&
+                          openedProfile.binding !== "github_copilot" &&
                           !CLI_LOGIN_BINDINGS.has(
                             openedProfile.binding ?? "",
                           ) && (
@@ -768,10 +795,13 @@ export function ServiceConfigEditor({
                               })}
                               action={
                                 <span className="flex items-center gap-2">
-                                  {service === "llm" &&
-                                    CLI_LOGIN_BINDINGS.has(
-                                      openedProfile.binding ?? "",
-                                    ) && (
+                                  {LLM_SHAPED.has(service) &&
+                                    ((service === "llm" &&
+                                      CLI_LOGIN_BINDINGS.has(
+                                        openedProfile.binding ?? "",
+                                      )) ||
+                                      openedProfile.binding ===
+                                        "github_copilot") && (
                                       <CardAction
                                         onClick={() =>
                                           void syncProviderModels()
@@ -1434,6 +1464,7 @@ function ProfileFields({
   searchProviderMissingKey,
   supportedSearchProviderNames,
   onProviderChanged,
+  onCopilotAuthenticated,
 }: {
   service: ServiceName;
   profile: CatalogProfile;
@@ -1448,6 +1479,7 @@ function ProfileFields({
     provider: ProviderOption,
     previousProvider: string,
   ) => void;
+  onCopilotAuthenticated?: () => void;
 }) {
   const { t } = useTranslation();
   const {
@@ -1508,6 +1540,8 @@ function ProfileFields({
   );
   const isCodeBuddyAuth =
     service === "llm" && providerValue === "codebuddy";
+  const isGitHubCopilotAuth =
+    LLM_SHAPED.has(service) && providerValue === "github_copilot";
   const isCliLogin =
     service === "llm" && CLI_LOGIN_BINDINGS.has(providerValue);
   const apiFormats = LLM_SHAPED.has(service)
@@ -1537,7 +1571,7 @@ function ProfileFields({
   };
 
   const fields =
-    isCodexOAuth || isCliLogin
+    isCodexOAuth || isCliLogin || isGitHubCopilotAuth
       ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
       : service === "search"
         ? searchProviderFields(profile.provider, providerOption)
@@ -1609,7 +1643,7 @@ function ProfileFields({
               if (renamed !== profile.name) {
                 updateProfileField(service, "name", renamed);
               }
-              if (CLI_LOGIN_BINDINGS.has(val)) {
+              if (CLI_LOGIN_BINDINGS.has(val) || val === "github_copilot") {
                 updateProfileField(service, "base_url", "");
                 updateProfileField(service, "api_key", "");
               } else if (match?.base_url) {
@@ -1697,6 +1731,11 @@ function ProfileFields({
           <CodeBuddyAuthCard />
         </div>
       )}
+      {isGitHubCopilotAuth && (
+        <div className="sm:col-span-2">
+          <GitHubCopilotAuthCard onAuthenticated={onCopilotAuthenticated} />
+        </div>
+      )}
       {linkedConnection && (
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2.5 sm:col-span-2">
           <span className="text-[11.5px] text-[var(--muted-foreground)]">
@@ -1755,7 +1794,7 @@ function ProfileFields({
           </div>
         </div>
       )}
-      {!isCodexOAuth && !isCliLogin && (
+      {!isCodexOAuth && !isCliLogin && !isGitHubCopilotAuth && (
         <details
           key={providerValue}
           open={showConnectionOptions}

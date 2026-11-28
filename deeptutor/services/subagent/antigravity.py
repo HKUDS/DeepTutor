@@ -19,7 +19,7 @@ in a same-named field:
 
 Sessions resume with ``--conversation <conversation_id>`` (the id the ``init``
 event hands back), the model is pinned with ``--model`` and reasoning depth with
-``--effort low|medium|high``.
+``--effort low|medium|high|xhigh|max``.
 
 Permissions differ from Gemini CLI in a way worth stating: headless ``agy``
 *soft-denies* tools that would need approval rather than blocking on them, so an
@@ -76,7 +76,7 @@ _SKIP_PERMISSION_MODES = frozenset({"bypassPermissions", "acceptEdits"})
 
 # `--effort` accepts exactly these; anything else is dropped rather than passed
 # through to a non-zero exit on an unknown value.
-_EFFORTS = frozenset({"low", "medium", "high"})
+_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 # Terminal statuses the CLI reports in its `result` event.
 _FAILED_STATUSES = frozenset({"ERROR", "CANCELED", "INTERRUPTED", "INVALID"})

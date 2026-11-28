@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "1e0cc75529883c725fb2e03f1102adb3d53b07abe75dbbb29f500f6b14d20b57",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3612,6 +3612,38 @@
       {
         "path": "/providers/codebuddy/auth/logout",
         "name": "logout_codebuddy_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/github-copilot/auth/status",
+        "name": "get_github_copilot_auth_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/github-copilot/auth/start",
+        "name": "start_github_copilot_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/github-copilot/auth/cancel",
+        "name": "cancel_github_copilot_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/github-copilot/auth/logout",
+        "name": "logout_github_copilot_auth",
         "kind": "http",
         "methods": [
           "POST"

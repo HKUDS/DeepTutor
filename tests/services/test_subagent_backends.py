@@ -794,8 +794,12 @@ async def test_claude_options_prefers_synced_cache(monkeypatch) -> None:
 
     monkeypatch.setattr(
         cm,
-        "load_cached_claude_models",
-        lambda: ([{"slug": "opus", "display_name": "Opus 4.8 (synced)"}], "2026-06-17T00:00:00Z"),
+        "load_cached_claude_catalog",
+        lambda: (
+            [{"slug": "opus", "display_name": "Opus 4.8 (synced)"}],
+            "2026-06-17T00:00:00Z",
+            "sdk",
+        ),
     )
 
     async def fake_probe(cmd):
@@ -807,6 +811,7 @@ async def test_claude_options_prefers_synced_cache(monkeypatch) -> None:
     assert [m.slug for m in opts.models] == ["opus"]
     assert opts.models[0].display_name == "Opus 4.8 (synced)"
     assert opts.synced_at == "2026-06-17T00:00:00Z"
+    assert opts.catalog_source == "sdk"
 
 
 # ---- persistent session registry (cross-turn continuity) ---------------------

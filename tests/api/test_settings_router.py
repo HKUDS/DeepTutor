@@ -1630,26 +1630,27 @@ async def test_fetch_models_requires_base_url() -> None:
 async def test_fetch_models_allows_codebuddy_without_base_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import deeptutor.services.llm.factory as factory_module
+    import deeptutor.services.llm.provider_core.codebuddy_models as codebuddy_models_module
 
-    async def _fake_fetch(
-        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
-    ):
-        assert (binding, base_url, api_key) == ("codebuddy", "", None)
-        return ["hy3", "glm-5.2"]
+    async def _fake_fetch_with_source(api_key: str | None = None):
+        assert api_key is None
+        return ["hy3", "glm-5.2"], "cache"
 
-    monkeypatch.setattr(factory_module, "fetch_models", _fake_fetch)
+    monkeypatch.setattr(
+        codebuddy_models_module,
+        "fetch_codebuddy_models_with_source",
+        _fake_fetch_with_source,
+    )
 
     response = await settings_router.fetch_models_from_provider(
         settings_router.FetchModelsPayload(binding="codebuddy")
     )
 
-    assert response == {
-        "models": [
-            {"id": "hy3", "name": "hy3"},
-            {"id": "glm-5.2", "name": "glm-5.2"},
-        ]
-    }
+    assert response["models"] == [
+        {"id": "hy3", "name": "hy3"},
+        {"id": "glm-5.2", "name": "glm-5.2"},
+    ]
+    assert response["source"] == "cache"
 
 
 @pytest.mark.asyncio

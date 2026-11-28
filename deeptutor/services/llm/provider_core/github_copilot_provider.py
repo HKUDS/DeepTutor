@@ -35,6 +35,7 @@ class GitHubCopilotProvider(OpenAICompatProvider):
     ):
         self._copilot_access_token: str | None = None
         self._copilot_expires_at: float = 0.0
+        self._credential_version: int | None = None
         self._storage = get_github_copilot_storage()
         self._models: dict[str, CopilotModel] = {}
         self._refresh_lock = asyncio.Lock()
@@ -55,9 +56,19 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             configure_env=configure_env,
         )
 
+    def _read_owner_credentials(self) -> tuple[Any, int]:
+        load_with_version = getattr(self._storage, "load_with_version", None)
+        if callable(load_with_version):
+            return load_with_version()
+        return self._storage.load(), 0
+
     async def _exchange_token(self) -> str:
-        stored = self._storage.load()
+        stored, version = await asyncio.to_thread(self._read_owner_credentials)
         if stored is None:
+            self._copilot_access_token = None
+            self._copilot_expires_at = 0.0
+            self._credential_version = None
+            self._models = {}
             raise RuntimeError(
                 "GitHub Copilot is not logged in for this owner. "
                 "Run: deeptutor provider login github-copilot"
@@ -70,6 +81,7 @@ class GitHubCopilotProvider(OpenAICompatProvider):
         self._models = {model.id: model for model in models}
         self._copilot_expires_at = access.expires_at
         self._copilot_access_token = access.token
+        self._credential_version = version
         return self._copilot_access_token
 
     async def _ensure_api_key(self) -> None:
@@ -79,9 +91,15 @@ class GitHubCopilotProvider(OpenAICompatProvider):
     async def _refresh_api_key(self) -> None:
         now = time.time()
         if self._copilot_access_token and now < self._copilot_expires_at - _EXPIRY_SKEW_SECONDS:
-            self.api_key = self._copilot_access_token
-            self._client.api_key = self._copilot_access_token
-            return
+            stored, version = await asyncio.to_thread(self._read_owner_credentials)
+            if stored is not None and version == self._credential_version:
+                self.api_key = self._copilot_access_token
+                self._client.api_key = self._copilot_access_token
+                return
+            self._copilot_access_token = None
+            self._copilot_expires_at = 0.0
+            self._credential_version = None
+            self._models = {}
 
         token = await self._exchange_token()
         self.api_key = token

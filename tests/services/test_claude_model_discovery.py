@@ -170,3 +170,49 @@ async def test_user_cancellation_does_not_launch_fallback(monkeypatch, cache):
     )
     with pytest.raises(asyncio.CancelledError):
         await module.sync_claude_models()
+
+
+@pytest.mark.asyncio
+async def test_claude_catalog_tracks_sdk_tui_legacy_and_fallback_sources(monkeypatch, cache):
+    from deeptutor.services.subagent import models as models_mod
+
+    monkeypatch.setattr(models_mod, "probe_version", lambda _cmd: _async_val((True, "2.x")))
+
+    # 1) No cache -> fallback
+    opts = await models_mod._claude_options()
+    assert opts.catalog_source == "fallback"
+
+    # 2) SDK sync -> source="sdk"
+    async def discover():
+        return claude_sdk.parse_models(ROWS)
+
+    monkeypatch.setattr(module, "_discover_sdk_models", discover)
+    await module.sync_claude_models()
+    models, stamp, source = module.load_cached_claude_catalog()
+    assert models and stamp and source == "sdk"
+    assert (await models_mod._claude_options()).catalog_source == "sdk"
+
+    # 3) TUI fallback sync -> source="tui"
+    async def missing():
+        raise ImportError("no sdk")
+
+    monkeypatch.setattr(module, "_discover_sdk_models", missing)
+    monkeypatch.setattr(
+        module,
+        "_capture_model_screen",
+        lambda: "Select model\n 1. Sonnet  Sonnet Test · Fast",
+    )
+    await module.sync_claude_models()
+    _, _, source = module.load_cached_claude_catalog()
+    assert source == "tui"
+    assert (await models_mod._claude_options()).catalog_source == "tui"
+
+    # 4) Legacy cache without "source" key -> source="cache"
+    module._write_cache([{"slug": "opus", "display_name": "Opus"}], "2026-01-01T00:00:00Z")
+    _, _, source = module.load_cached_claude_catalog()
+    assert source == "cache"
+    assert (await models_mod._claude_options()).catalog_source == "cache"
+
+
+async def _async_val(value):
+    return value

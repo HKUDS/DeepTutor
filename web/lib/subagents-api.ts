@@ -85,6 +85,7 @@ export interface SubagentBackendOptions {
   efforts: string[];
   allow_custom_model: boolean;
   synced_at: string;
+  catalog_source?: string;
   detail: string;
 }
 

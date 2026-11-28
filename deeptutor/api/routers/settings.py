@@ -18,13 +18,14 @@ from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
 from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
+from deeptutor.services.github_copilot_auth import get_github_copilot_auth_service
 from deeptutor.services.codex_auth import (
     CodexAuthError,
     get_codex_oauth_service,
@@ -1079,6 +1080,84 @@ async def cancel_codebuddy_auth() -> dict[str, Any]:
 async def logout_codebuddy_auth() -> dict[str, Any]:
     _require_settings_admin()
     return await get_codebuddy_auth_service().logout()
+
+
+class GitHubCopilotAuthStatusResponse(BaseModel):
+    """Strict public contract for GitHub Copilot web auth endpoints."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    connection: Literal["disconnected", "authorizing", "connected", "error"]
+    operation_state: Literal["waiting", "completed", "cancelled", "failed"] | None = None
+    verification_uri: str | None = None
+    user_code: str | None = None
+    expires_at: float | None = None
+    account_id: str | None = None
+    error_code: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_waiting_invariants(self) -> "GitHubCopilotAuthStatusResponse":
+        if self.operation_state == "waiting" and (
+            self.connection != "authorizing"
+            or not self.verification_uri
+            or not self.user_code
+        ):
+            raise ValueError("waiting state requires authorizing connection, verification_uri, and user_code")
+        return self
+
+
+async def _run_copilot_auth_action(
+    response: Response,
+    action: str,
+) -> GitHubCopilotAuthStatusResponse:
+    _require_settings_admin()
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        service = get_github_copilot_auth_service()
+        payload = await getattr(service, action)()
+    except (RuntimeError, OSError):
+        payload = {
+            "connection": "error",
+            "operation_state": "failed",
+            "verification_uri": None,
+            "user_code": None,
+            "expires_at": None,
+            "account_id": None,
+            "error_code": "credentials_invalid",
+        }
+    return GitHubCopilotAuthStatusResponse.model_validate(payload)
+
+
+@router.get(
+    "/providers/github-copilot/auth/status",
+    response_model=GitHubCopilotAuthStatusResponse,
+)
+async def get_github_copilot_auth_status(response: Response) -> GitHubCopilotAuthStatusResponse:
+    return await _run_copilot_auth_action(response, "status")
+
+
+@router.post(
+    "/providers/github-copilot/auth/start",
+    response_model=GitHubCopilotAuthStatusResponse,
+)
+async def start_github_copilot_auth(response: Response) -> GitHubCopilotAuthStatusResponse:
+    return await _run_copilot_auth_action(response, "start_login")
+
+
+@router.post(
+    "/providers/github-copilot/auth/cancel",
+    response_model=GitHubCopilotAuthStatusResponse,
+)
+async def cancel_github_copilot_auth(response: Response) -> GitHubCopilotAuthStatusResponse:
+    return await _run_copilot_auth_action(response, "cancel_login")
+
+
+@router.post(
+    "/providers/github-copilot/auth/logout",
+    response_model=GitHubCopilotAuthStatusResponse,
+)
+async def logout_github_copilot_auth(response: Response) -> GitHubCopilotAuthStatusResponse:
+    return await _run_copilot_auth_action(response, "logout")
 
 
 @router.post("/providers/openai-codex/models/reasoning-effort")
@@ -2148,10 +2227,22 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     if canonical == "claude_code":
         from deeptutor.services.llm.provider_core.claude_code_provider import (
-            fetch_claude_code_catalog,
+            fetch_claude_code_catalog_with_source,
         )
 
-        return {"models": await fetch_claude_code_catalog()}
+        models, source = await fetch_claude_code_catalog_with_source()
+        return {"models": models, "source": source}
+
+    if canonical == "codebuddy":
+        from deeptutor.services.llm.provider_core.codebuddy_models import (
+            fetch_codebuddy_models_with_source,
+        )
+
+        model_ids, source = await fetch_codebuddy_models_with_source(api_key)
+        return {
+            "models": [{"id": model_id, "name": model_id} for model_id in model_ids],
+            "source": source,
+        }
 
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")

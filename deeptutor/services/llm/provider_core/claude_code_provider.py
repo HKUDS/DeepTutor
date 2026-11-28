@@ -734,8 +734,8 @@ def _friendly_error(exc: Exception) -> str:
     return f"Error calling Claude Code: {message}"
 
 
-async def fetch_claude_code_catalog() -> list[dict[str, str]]:
-    """Models the signed-in Claude Code account offers, with display names.
+async def fetch_claude_code_catalog_with_source() -> tuple[list[dict[str, str]], str]:
+    """Return ``(models, source)`` where ``source`` is ``"sdk"`` or ``"fallback"``.
 
     Read from the CLI's ``initialize`` handshake, so no model request is made.
     The ``default`` entry is labelled generically: the CLI describes its own
@@ -749,14 +749,23 @@ async def fetch_claude_code_catalog() -> list[dict[str, str]]:
     except Exception as exc:
         logger.warning("Claude Code model catalog unavailable (%s)", type(exc).__name__)
         models = []
+    source = "sdk"
     if not models:
+        source = "fallback"
         models = [
             {"slug": name, "display_name": name} for name in CLAUDE_CODE_MODELS if name != "default"
         ]
-    return [
+    catalog = [
         {"id": "claude-code/default", "name": "Default (account setting)"},
         *[{"id": f"claude-code/{row['slug']}", "name": row["display_name"]} for row in models],
     ]
+    return catalog, source
+
+
+async def fetch_claude_code_catalog() -> list[dict[str, str]]:
+    """Models the signed-in Claude Code account offers, with display names."""
+    catalog, _ = await fetch_claude_code_catalog_with_source()
+    return catalog
 
 
 async def fetch_claude_code_models() -> list[str]:
@@ -769,5 +778,6 @@ __all__ = [
     "ClaudeCodeProvider",
     "DEFAULT_CLAUDE_CODE_MODEL",
     "fetch_claude_code_catalog",
+    "fetch_claude_code_catalog_with_source",
     "fetch_claude_code_models",
 ]

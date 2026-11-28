@@ -305,6 +305,42 @@ def test_backend_sync_endpoint(client, monkeypatch):
     assert client.post("/api/subagents/backends/bogus/sync").status_code == 400
 
 
+def test_non_admin_options_skip_account_catalogs(client, monkeypatch, tmp_path):
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.subagent import models as models_mod
+    from deeptutor.services.subagent.models import BackendOptions
+
+    seen_flags: list[bool] = []
+
+    async def fake_options(*, include_account_catalogs: bool = True):
+        seen_flags.append(include_account_catalogs)
+        return [
+            BackendOptions(
+                kind="antigravity",
+                display_name="Antigravity CLI",
+                available=True,
+                version="1.5.15",
+                models=[],
+                efforts=["low", "medium", "high", "xhigh", "max"],
+                allow_custom_model=True,
+                catalog_source="none",
+            )
+        ]
+
+    monkeypatch.setattr(models_mod, "list_backend_options", fake_options)
+    reader = CurrentUser(
+        id="u_reader",
+        username="reader",
+        role="user",
+        scope=UserScope(kind="user", user_id="u_reader", root=tmp_path / "reader"),
+    )
+    with user_context(reader):
+        res = client.get("/api/subagents/backends/options")
+    assert res.status_code == 200
+    assert seen_flags == [False]
+
+
 def test_settings_put_merges_per_field_and_backend(client):
     # Save one field for claude_code …
     r1 = client.put(

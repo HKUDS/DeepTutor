@@ -256,3 +256,109 @@ def test_copilot_registry_and_probe_accept_empty_api_key():
         base_url="",
     )
     assert config.get_api_key() == ""
+
+
+def test_copilot_web_auth_routes_owner_isolated_and_admin_gated(client, tmp_path, monkeypatch):
+    from deeptutor.multi_user.context import user_from_token_payload
+
+    # Initially disconnected and marked no-store.
+    res = client.get("/api/settings/providers/github-copilot/auth/status")
+    assert res.status_code == 200
+    assert res.headers.get("cache-control") == "no-store"
+    assert res.json()["connection"] == "disconnected"
+
+    # CLI login for local-admin is immediately visible via web status.
+    _login()
+    res = client.get("/api/settings/providers/github-copilot/auth/status")
+    assert res.status_code == 200
+    assert res.json()["connection"] == "connected"
+    assert res.json()["account_id"] == "fixture-account"
+    assert "fixture-github" not in res.text
+
+    # Two distinct production admins (both receive shared admin_scope from
+    # user_from_token_payload) must have strictly isolated Copilot auth state.
+    admin_a = user_from_token_payload(
+        SimpleNamespace(user_id="u_admin_a", username="alice", role="admin")
+    )
+    admin_b = user_from_token_payload(
+        SimpleNamespace(user_id="u_admin_b", username="bob", role="admin")
+    )
+    assert admin_a.scope.kind == "admin" and admin_b.scope.kind == "admin"
+
+    with user_context(admin_a):
+        assert client.get("/api/settings/providers/github-copilot/auth/status").json()["connection"] == "disconnected"
+        auth.get_github_copilot_storage().save(
+            GitHubToken("fixture-admin-a", 2_000_000_000_000, "alice-gh")
+        )
+        res_a = client.get("/api/settings/providers/github-copilot/auth/status")
+        assert res_a.json()["connection"] == "connected"
+        assert res_a.json()["account_id"] == "alice-gh"
+
+    with user_context(admin_b):
+        res_b = client.get("/api/settings/providers/github-copilot/auth/status")
+        assert res_b.status_code == 200
+        assert res_b.json()["connection"] == "disconnected"
+        # Admin B logging out or cancelling must not affect Admin A.
+        out_b = client.post("/api/settings/providers/github-copilot/auth/logout")
+        assert out_b.status_code == 200
+        assert out_b.headers.get("cache-control") == "no-store"
+
+    with user_context(admin_a):
+        still_a = client.get("/api/settings/providers/github-copilot/auth/status")
+        assert still_a.json()["connection"] == "connected"
+        assert still_a.json()["account_id"] == "alice-gh"
+
+    # Non-admin user is rejected with 403 on all auth routes.
+    reader = CurrentUser(
+        id="u_reader",
+        username="reader",
+        role="user",
+        scope=UserScope(kind="user", user_id="u_reader", root=tmp_path / "reader"),
+    )
+    with user_context(reader):
+        for method, path in (
+            ("get", "/api/settings/providers/github-copilot/auth/status"),
+            ("post", "/api/settings/providers/github-copilot/auth/start"),
+            ("post", "/api/settings/providers/github-copilot/auth/cancel"),
+            ("post", "/api/settings/providers/github-copilot/auth/logout"),
+        ):
+            assert getattr(client, method)(path).status_code == 403
+
+    # Logout disconnects local-admin and clears stored token.
+    out = client.post("/api/settings/providers/github-copilot/auth/logout")
+    assert out.status_code == 200
+    assert out.headers.get("cache-control") == "no-store"
+    assert out.json()["connection"] == "disconnected"
+    assert auth.load_github_token() is None
+
+
+def test_fetch_models_reports_source_for_claude_code_and_codebuddy(client, monkeypatch):
+    from deeptutor.services.llm.provider_core import claude_code_provider, codebuddy_models
+
+    monkeypatch.setattr(
+        claude_code_provider,
+        "fetch_claude_code_catalog_with_source",
+        AsyncMock(
+            return_value=(
+                [
+                    {"id": "claude-code/default", "name": "Default (account setting)"},
+                    {"id": "claude-code/opus", "name": "Opus"},
+                ],
+                "fallback",
+            )
+        ),
+    )
+    cc_res = client.post(ENDPOINT, json={"binding": "claude_code"})
+    assert cc_res.status_code == 200
+    assert cc_res.json()["source"] == "fallback"
+    assert len(cc_res.json()["models"]) == 2
+
+    monkeypatch.setattr(
+        codebuddy_models,
+        "fetch_codebuddy_models_with_source",
+        AsyncMock(return_value=(["hy3", "glm-5.2"], "cli")),
+    )
+    cb_res = client.post(ENDPOINT, json={"binding": "codebuddy"})
+    assert cb_res.status_code == 200
+    assert cb_res.json()["source"] == "cli"
+    assert [m["id"] for m in cb_res.json()["models"]] == ["hy3", "glm-5.2"]

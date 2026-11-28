@@ -106,6 +106,12 @@ def _client_cache_key(
     serialized_key = json.dumps(config.api_key or "", ensure_ascii=False, separators=(",", ":"))
     secret = hashlib.sha256(serialized_key.encode("utf-8")).hexdigest()[:16]
     headers = json.dumps(config.extra_headers or {}, sort_keys=True, separators=(",", ":"))
+    owner_identity = ""
+    spec = find_by_name(config.binding)
+    if spec and spec.backend == "github_copilot":
+        from deeptutor.services.github_copilot_storage import get_github_copilot_storage
+
+        owner_identity = str(get_github_copilot_storage().credentials_path)
     return (
         loop,
         config.binding,
@@ -117,6 +123,7 @@ def _client_cache_key(
         config.wire_api,
         config.api_format,
         disable_ssl_verify,
+        owner_identity,
     )
 
 
@@ -331,6 +338,32 @@ def reset_agentic_client_pool() -> None:
         return
     for client in clients:
         _schedule_client_close(client, loop)
+
+
+def evict_agentic_clients_for_owner(owner_identity: str) -> None:
+    """Retire only cached agentic clients bound to ``owner_identity`` on their owning loop."""
+    if not owner_identity:
+        return
+    with _agentic_client_pool_lock:
+        matching_keys = [key for key in _agentic_client_pool if key and key[-1] == owner_identity]
+        evicted: list[tuple[asyncio.AbstractEventLoop, Any]] = [
+            (key[0], _agentic_client_pool.pop(key)) for key in matching_keys
+        ]
+    if not evicted:
+        return
+    try:
+        current_loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+    for owner_loop, client in evicted:
+        if owner_loop is current_loop and current_loop is not None:
+            _schedule_client_close(client, current_loop)
+        elif owner_loop.is_running() and not owner_loop.is_closed():
+            with contextlib.suppress(RuntimeError):
+                owner_loop.call_soon_threadsafe(_schedule_client_close, client, owner_loop)
+        elif current_loop is None:
+            with contextlib.suppress(Exception):
+                asyncio.run(_close_client(client))
 
 
 def agentic_client_pool_size() -> int:
