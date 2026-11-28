@@ -25,6 +25,10 @@ _LANGUAGE_CUES: tuple[tuple[str, str], ...] = (
     ("vi", r"(?:bằng\s+tiếng\s+việt|bang\s+tieng\s+viet|in\s+vietnamese|用越南(?:语|語|文))"),
     ("tr", r"(?:türkçe\s+olarak|türkçe\s+yaz(?:ın)?\b|in\s+turkish|用土耳其(?:语|文))"),
     ("hu", r"(?:magyarul|magyar\s+nyelven|in\s+hungarian|auf\s+ungarisch)"),
+    (
+        "el",
+        r"(?:(?:στα|σε)\s+ελληνικ[άα]|στην\s+ελληνικ[ήη](?:\s+γλ[ώω]σσα)?|in\s+greek|用希腊(?:语|文))",
+    ),
     ("en", r"(?:in\s+english|英語で|用(?:英语|英文)|en\s+anglais|en\s+inglés)"),
 )
 
@@ -47,7 +51,7 @@ def _explicit_language(user_intent: str) -> str | None:
 
 def _script_language(user_intent: str) -> str | None:
     """Infer high-confidence scripts without a language-detection dependency."""
-    counts = {"latin": 0, "han": 0, "kana": 0, "hangul": 0, "cyrillic": 0}
+    counts = {"latin": 0, "han": 0, "kana": 0, "hangul": 0, "cyrillic": 0, "greek": 0}
 
     for char in user_intent:
         if not char.isalpha():
@@ -61,6 +65,8 @@ def _script_language(user_intent: str) -> str | None:
             counts["hangul"] += 1
         elif script == "CYRILLIC":
             counts["cyrillic"] += 1
+        elif script == "GREEK":
+            counts["greek"] += 1
         elif (
             "\u3400" <= char <= "\u4dbf"
             or "\u4e00" <= char <= "\u9fff"
@@ -76,6 +82,10 @@ def _script_language(user_intent: str) -> str | None:
         return "ko"
     if counts["cyrillic"] > counts["latin"]:
         return "ru"
+    # A stray π or λ in an English request stays English; a request written
+    # in Greek letters is unambiguous.
+    if counts["greek"] > counts["latin"]:
+        return "el"
     if counts["han"] > max(counts["latin"], counts["hangul"], counts["cyrillic"]):
         return "zh"
     return None

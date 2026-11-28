@@ -6586,6 +6586,7 @@
   "settings.modelImport.selected": "Kijelölve: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "language.hungarian": "Magyar",
+  "language.greek": "Ελληνικά",
   "Web fetch backend": "Webes lekérési háttérszolgáltatás",
   "Current section {{section}} · furthest position {{percent}}%": "Aktuális szakasz: {{section}} · legmesszebbi pozíció: {{percent}}%",
   "Quiz records have not been initialized.": "A kvízadatok még nincsenek inicializálva.",

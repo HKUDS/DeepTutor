@@ -33,6 +33,7 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "tr",
   "hi",
   "hu",
+  "el",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -54,6 +55,8 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   "português": "pt",
   turkish: "tr",
   "türkçe": "tr",
+  greek: "el",
+  "ελληνικά": "el",
   italian: "it",
   italiano: "it",
   arabic: "ar",

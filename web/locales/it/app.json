@@ -6635,6 +6635,7 @@
   "Showing {{shown}} of {{total}} help records": "Visualizzati {{shown}} di {{total}} registri degli aiuti",
   "Reading position and quiz results do not establish independent mastery.": "La posizione di lettura e i risultati dei quiz non attestano la padronanza autonoma.",
   "language.hungarian": "Magyar",
+  "language.greek": "Ελληνικά",
   "{{count}} round_many": "{{count}} giri",
   "contextBudget.note.deferredTools_many": "Gli strumenti estesi {{count}} si caricano su richiesta: i loro schemi non costano nulla finché non vengono utilizzati.",
   "{{count}} modules_many": "Moduli {{count}}",
