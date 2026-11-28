@@ -33,6 +33,17 @@ test("bare LaTeX stops at the first English word", () => {
   );
 });
 
+test("a control character left by JSON escape decoding becomes a backslash", () => {
+  // `\begin` in a tool argument decoded as JSON is U+0008 + "egin".
+  const corrupted = "\u0008egin{pmatrix} 0.5 & 0.5 \\\\ 0.5 & 0.5 \\end{pmatrix}";
+
+  const result = normalizeMathMarkup(corrupted);
+
+  assert.ok(result.includes("\\begin{pmatrix}"), result);
+  assert.ok(!result.includes("\u0008"), result);
+  assert.ok(result.includes("$$\n\\begin{pmatrix}"), result);
+});
+
 test("a bare environment is promoted to display math exactly once", () => {
   const result = normalizeMathMarkup(
     "\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}",
@@ -223,6 +234,9 @@ test("real formulas survive the same pass", () => {
     "设 $x$ 为变量，$y$ 为常量。",
     "$\\text{速度} = \\frac{s}{t}$",
     "已知 $速度 = 路程/时间$ 求解。",
+    "求 $N$ 的方差 $Var(N)$。",
+    "> 方差 $Var(N)$ 已知。",
+    "统计量 $Cov(X,Y)$ 与 $Corr(X,Y)$。",
     "$$\n\\overline{A+B}=\\bar{A}\\bar{B}\n$$",
   ]) {
     assert.equal(normalizeMathMarkup(input), input);
@@ -261,6 +275,9 @@ test("routing agrees with what normalisation produces", () => {
     assert.equal(hasMarkdownMath(input), true, input);
     assert.notEqual(normalizeMathMarkup(input), input, input);
   }
+  // Already-delimited statistics notation must route to KaTeX and survive
+  // normalisation byte-for-byte.
+  assert.equal(hasMarkdownMath("求 $N$ 的方差 $Var(N)$。"), true);
 
   const shouldNot = [
     "价格是 $5 和 $10。",
