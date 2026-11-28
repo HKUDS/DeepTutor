@@ -107,6 +107,22 @@ def test_legacy_mastery_suffix_is_removed_but_literal_user_quote_is_preserved():
     assert replay_history(source)[0]["content"] == record["messages"][0]["content"]
 
 
+def test_tagged_mastery_status_snapshot_replays_byte_for_byte():
+    """Issue #2922: the legacy suffix cleanup must not blank a separate snapshot."""
+    import json
+
+    from deeptutor.services.session.model_history import _MASTERY_SNAPSHOT_NOTICE
+
+    snapshot = {
+        "role": "user",
+        "content": _MASTERY_SNAPSHOT_NOTICE + json.dumps({"path_id": "p", "map": {}}),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    record = turn_record()
+    record["messages"].insert(0, dict(snapshot))
+    assert replay_history(rows(record))[0] == snapshot
+
+
 def test_invalid_or_incomplete_protocol_uses_display_history():
     record = turn_record()
     record["messages"].pop(2)

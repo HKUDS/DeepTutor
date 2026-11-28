@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import errno
 from pathlib import Path
+import sys
 
 try:  # POSIX
     import fcntl
@@ -18,7 +19,7 @@ except ImportError:  # pragma: no cover - exercised only off Windows
 @contextmanager
 def exclusive_lock(lock_path: Path) -> Iterator[None]:
     with lock_path.open("a+b") as lock_file:
-        if fcntl is not None:
+        if sys.platform != "win32" and fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         elif msvcrt is not None:
             # Without a lock, workers starting together race the WAL switch
@@ -41,7 +42,7 @@ def exclusive_lock(lock_path: Path) -> Iterator[None]:
         try:
             yield
         finally:
-            if fcntl is not None:
+            if sys.platform != "win32" and fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             elif msvcrt is not None:
                 lock_file.seek(0)

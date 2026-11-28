@@ -258,7 +258,7 @@ def get_agent_params(module_name: str) -> dict:
 
     # Per-module defaults come from the shipped DEFAULT_AGENTS_SETTINGS so that
     # adding a new capability seeded with non-default tokens (e.g. visualize at
-    # 16k) doesn't require existing users to hand-edit their stale agents.yaml.
+    # 32k) doesn't require existing users to hand-edit their stale agents.yaml.
     # Imported lazily to avoid a circular dependency with services.setup.
     from deeptutor.services.setup.init import DEFAULT_AGENTS_SETTINGS
 

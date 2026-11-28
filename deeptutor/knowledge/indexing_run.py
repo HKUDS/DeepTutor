@@ -222,6 +222,15 @@ class IndexingRun:
                 "usable_version": None,
                 "candidate_storage": None,
             }
+            if (
+                previous
+                and self.provider == previous.get("provider") == "llamaindex"
+                and self.action == previous.get("action") == "rebuild"
+                and previous.get("state") in {"failed", "interrupted", "cancelled"}
+                and not previous.get("usable_version")
+            ):
+                # A rejected preflight must not erase an earlier resumable candidate.
+                self.data["candidate_storage"] = previous.get("candidate_storage")
             from deeptutor.utils.file_types import FileTypeRouter
 
             candidates = list(dict.fromkeys(self.sources))

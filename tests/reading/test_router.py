@@ -960,3 +960,17 @@ def test_collection_color_round_trips_through_create_and_patch(client: TestClien
         json={"title": "Slow reading", "color": "green"},
     ).json()["workspace"]
     assert (patched["title"], patched["color"]) == ("Slow reading", "green")
+
+
+def test_upload_with_a_long_multilingual_filename_is_stored(client: TestClient) -> None:
+    # 100 CJK characters are 300 UTF-8 bytes, past the 255-byte name limit of
+    # ext4 and most Linux filesystems; the upload must not use it verbatim.
+    name = "课" * 100 + ".pdf"
+
+    body = _upload(client, name=name)
+
+    assert body["filename"] == name
+    assert body["has_raw_view"] is True
+    raw = client.get(f"/api/reading/materials/{body['material_id']}/raw")
+    assert raw.status_code == 200
+    assert raw.content.startswith(b"%PDF")

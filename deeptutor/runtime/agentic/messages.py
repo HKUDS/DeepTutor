@@ -84,7 +84,7 @@ def assistant_message_with_tool_calls(
         "content": content or None,
         "tool_calls": serialized_calls,
     }
-    if reasoning_content:
+    if reasoning_content is not None:
         message["reasoning_content"] = reasoning_content
     if thinking_blocks:
         message["thinking_blocks"] = thinking_blocks
@@ -105,7 +105,7 @@ def assistant_message(
     a round needs depends only on whether it called tools.
     """
     message: dict[str, Any] = {"role": "assistant", "content": content}
-    if reasoning_content:
+    if reasoning_content is not None:
         message["reasoning_content"] = reasoning_content
     if thinking_blocks:
         message["thinking_blocks"] = thinking_blocks

@@ -253,6 +253,16 @@ frontend container uses to reach the backend container:
 }
 ```
 
+A `system.json` that cannot be read as a settings document — a stray trailing
+comma, a truncated file, or a top-level value that is not a JSON object — is
+left exactly as it is on disk, and the defaults are used for that process. The
+warning names the file and the parse error, and it is written to the process
+output (so it shows up in `docker logs`) and, at most once a minute per worker
+process, to the backend log. Fix the JSON to make the edit take effect: the
+loader never rewrites an unreadable document, so the settings you wrote are
+still there to repair. Saving settings from the UI does write the document, so
+repair the file before saving.
+
 The entrypoint reads this on every start and exports
 `DEEPTUTOR_API_BASE_URL` for `proxy.ts` (precedence: `next_public_api_base`,
 then `next_public_api_base_external`, then `http://localhost:8001`). Note

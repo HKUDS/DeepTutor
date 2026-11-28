@@ -47,6 +47,26 @@ def test_list_notebooks_empty(manager: NotebookManager) -> None:
         assert data["total"] == 0
 
 
+def test_structurally_invalid_notebook_does_not_hide_healthy_notebooks(
+    manager: NotebookManager,
+) -> None:
+    healthy = manager.create_notebook("Healthy")
+    broken = manager.base_dir / "broken.json"
+    broken.write_text("null", encoding="utf-8")
+    manager.index_file.write_text('{"notebooks": null}', encoding="utf-8")
+    with TestClient(_build_app(manager)) as client:
+        listed = client.get("/api/notebooks")
+        assert listed.status_code == 200
+        rows = {row["id"]: row for row in listed.json()["notebooks"]}
+        assert rows[healthy["id"]]["name"] == "Healthy"
+        assert rows["broken"]["unreadable"] is True
+        damaged = client.get("/api/notebooks/broken")
+        assert damaged.status_code == 409
+        assert damaged.json()["detail"]["code"] == "notebook_unreadable"
+        assert client.get(f"/api/notebooks/{healthy['id']}").status_code == 200
+        assert broken.read_text(encoding="utf-8") == "null"
+
+
 def test_create_and_list_notebook(manager: NotebookManager) -> None:
     with TestClient(_build_app(manager)) as client:
         create_resp = client.post(

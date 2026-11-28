@@ -6,7 +6,8 @@ import {
   SettingsProvider,
   useSettings,
 } from "@/features/settings/store/SettingsStore";
-import { THEME_STORAGE_KEY } from "@/lib/theme";
+import { LANGUAGE_EVENT } from "@/context/app-shell-storage";
+import { THEME_EVENT, THEME_STORAGE_KEY } from "@/lib/theme";
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 
@@ -189,4 +190,70 @@ it("includes the confirmed theme in a failed-load draft after retry", async () =
   const body = JSON.parse(String((uiPuts()[0][1] as RequestInit).body));
   expect(body.language).toBe("zh");
   expect(body.theme).toBe("snow");
+});
+
+it.each([
+  ["language", "fr"], ["language", "en"], ["theme", "glass"], ["theme", "snow"],
+] as const)("clears the only pending %s edit when the desktop menu selects %s", async (field, selected) => {
+  installFetch(true, "snow");
+  await ready();
+  expect(settings.hasUnsavedChanges).toBe(false);
+  await act(async () => {
+    if (field === "language") await settings.updateLanguage("zh");
+    else await settings.updateTheme("dark");
+  });
+  expect(settings.hasUnsavedChanges).toBe(true);
+  await act(async () => {
+    window.dispatchEvent(field === "language"
+      ? new CustomEvent(LANGUAGE_EVENT, { detail: { language: selected, source: "desktop" } })
+      : new CustomEvent(THEME_EVENT, { detail: { theme: selected } }));
+  });
+  expect(settings[field]).toBe(selected);
+  expect(settings.hasUnsavedChanges).toBe(false);
+});
+
+it("does not treat a desktop theme preview after a failed GET as confirmation from the server", async () => {
+  installFetch(false, "system");
+  await ready();
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: "glass" } }));
+  });
+  expect(settings.theme).toBe("glass");
+  await act(async () => { await settings.updateLanguage("fr"); });
+  await act(async () => { await settings.applyCatalog(); });
+  const body = JSON.parse(String((uiPuts()[0][1] as RequestInit).body));
+  expect(body.language).toBe("fr");
+  expect(body).not.toHaveProperty("theme");
+});
+
+it("keeps a different pending edit when the desktop menu changes language and theme", async () => {
+  installFetch(true, "snow");
+  await ready();
+
+  await act(async () => {
+    await settings.updateLanguage("zh");
+    await settings.updateResponseLanguage("de");
+  });
+  await act(async () => {
+    window.dispatchEvent(
+      new CustomEvent(LANGUAGE_EVENT, {
+        detail: { language: "fr", source: "desktop" },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent(THEME_EVENT, { detail: { theme: "glass" } }),
+    );
+  });
+
+  expect(settings.language).toBe("fr");
+  expect(settings.theme).toBe("glass");
+  expect(settings.responseLanguage).toBe("de");
+  expect(settings.hasUnsavedChanges).toBe(true);
+  await act(async () => {
+    await settings.applyCatalog();
+  });
+  const body = JSON.parse(String((uiPuts()[0][1] as RequestInit).body));
+  expect(body.language).toBe("fr");
+  expect(body.theme).toBe("glass");
+  expect(body.response_language).toBe("de");
 });

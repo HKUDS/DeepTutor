@@ -151,7 +151,7 @@ def _reset_runtime_singletons() -> None:
 
 
 def _get_pgid(pid: int | None) -> int | None:
-    if pid is None or os.name == "nt":
+    if pid is None or not hasattr(os, "getpgid"):
         return None
     try:
         return os.getpgid(pid)
@@ -241,7 +241,7 @@ def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | i
         if completed.returncode not in (0, 128):
             raise RuntimeError(f"taskkill {pid} failed with exit code {completed.returncode}")
         return
-    if os.name != "nt" and pgid is not None:
+    if pgid is not None and hasattr(os, "killpg"):
         os.killpg(pgid, sig)
     else:
         os.kill(pid, sig)
@@ -277,7 +277,7 @@ def _signal_target(
 
 def _group_alive(proc: ManagedProcess) -> bool:
     """A group can outlive its leader (npm and worker launchers do this)."""
-    if os.name == "nt" or proc.pgid is None:
+    if proc.pgid is None or not hasattr(os, "killpg"):
         return False
     try:
         os.killpg(proc.pgid, 0)
@@ -335,7 +335,7 @@ def _terminate_all(
                 logger.warning("Could not inspect %s", proc.name, exc_info=True)
         if running or _group_alive(proc):
             active.append(proc)
-            if not running and os.name != "nt":
+            if not running and hasattr(os, "getpgid"):
                 # Recover same-group children even when the launcher has
                 # already reaped npm or another short-lived parent.
                 for child in psutil.process_iter():

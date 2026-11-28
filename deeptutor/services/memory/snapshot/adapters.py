@@ -301,8 +301,19 @@ def _partner_session_entity(
     """
     records: list[dict] = []
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        # Preserve line boundaries even when one record contains invalid bytes.
+        # Reject escaped bytes before parsing; never expose them as message text.
+        with path.open("r", encoding="utf-8", errors="surrogateescape") as fh:
             for line_number, raw in enumerate(fh, 1):
+                try:
+                    raw.encode("utf-8")
+                except UnicodeEncodeError:
+                    logger.warning(
+                        "partner snapshot skipped invalid UTF-8 record in %s at line %d",
+                        path,
+                        line_number,
+                    )
+                    continue
                 raw = raw.strip()
                 if not raw:
                     continue

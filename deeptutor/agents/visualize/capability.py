@@ -168,8 +168,8 @@ class VisualizeCapability(TurnCapability):
         # Read the visualize budget instead of stating it here: a reasoning
         # model can spend most of one round on chain-of-thought, which truncated
         # the submit_visualization arguments mid-JSON and left a blank canvas
-        # with no error (#1546). The defaults are the values this call used to
-        # hardcode, so an untouched install behaves exactly as before.
+        # with no error (#1546). Each request is capped to the model's output
+        # limit, so the 32k default does not break models that stop at 16k.
         try:
             params = get_visualize_params()
         except Exception as exc:  # pragma: no cover - defensive config read
@@ -179,7 +179,7 @@ class VisualizeCapability(TurnCapability):
             language=context.language,
             max_rounds=5,
             temperature=params.get("temperature", 0.15),
-            max_tokens=params.get("max_tokens", 16000),
+            max_tokens=params.get("max_tokens", 32768),
             event_source=self.name,
             event_stage="generating",
             emit_result=False,

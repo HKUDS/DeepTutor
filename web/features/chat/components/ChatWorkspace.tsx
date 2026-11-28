@@ -44,10 +44,6 @@ import {
 } from "@/lib/session-load";
 import { PageCustomizeButton } from "@/components/customization/PageCustomizeButton";
 import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
-// Imported eagerly so the drawer shell is always mounted off-screen —
-// clicking a chip becomes a single CSS class flip, no chunk fetch + double
-// render. The heavy renderers inside still load lazily.
-import FilePreviewDrawer from "@/components/chat/preview/FilePreviewDrawer";
 import { buildSessionActivity } from "@/lib/session-activity";
 import Tooltip from "@/shared/ui/Tooltip";
 import SessionViewerPanel, {
@@ -174,6 +170,11 @@ import SelectionActions, {
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
 import { buildMasteryAnswerTurn } from "@/lib/mastery-question";
 
+const FilePreviewDrawer = dynamic(
+  () => import("@/components/chat/preview/FilePreviewDrawer"),
+  { ssr: false },
+);
+
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
   {
@@ -280,6 +281,18 @@ export default function ChatWorkspace() {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
   const requestedWorkspaceId = useActiveWorkspaceId() || null;
   const { t } = useTranslation();
+  useEffect(() => {
+    function showDesktopFileNotice(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const message: unknown = event.detail?.message;
+      const tone: unknown = event.detail?.tone;
+      if (typeof message === "string" && (tone === "success" || tone === "error")) {
+        notify(message, { tone });
+      }
+    }
+    window.addEventListener("deeptutor:desktop-file-notice", showDesktopFileNotice);
+    return () => window.removeEventListener("deeptutor:desktop-file-notice", showDesktopFileNotice);
+  }, []);
   const {
     capabilities,
     visibleCapabilities,
@@ -404,6 +417,7 @@ export default function ChatWorkspace() {
   const [previewSource, setPreviewSource] = useState<FilePreviewSource | null>(
     null,
   );
+  const [previewDrawerOpened, setPreviewDrawerOpened] = useState(false);
   // Right-side panels — Activity (floating cards) and Viewer (full sidebar
   // with tabs for file previews + web pages). Each independently togglable
   // and persisted across reloads.
@@ -1653,6 +1667,7 @@ export default function ChatWorkspace() {
     (index: number) => {
       const a = attachments[index];
       if (!a) return;
+      setPreviewDrawerOpened(true);
       setPreviewSource({
         filename: a.filename,
         mimeType: a.mimeType,
@@ -3144,11 +3159,15 @@ export default function ChatWorkspace() {
               messages={chatSaveMessages}
               onClose={handleCloseSaveModal}
             />
-            <FilePreviewDrawer
-              open={previewSource !== null}
-              source={previewSource}
-              onClose={handleClosePreview}
-            />
+            {/* Mount off-screen once a pending file can be previewed. Keep the
+                shell mounted after first use so it can slide out on close. */}
+            {attachments.length > 0 || previewDrawerOpened ? (
+              <FilePreviewDrawer
+                open={previewSource !== null}
+                source={previewSource}
+                onClose={handleClosePreview}
+              />
+            ) : null}
             <SessionViewerPanel
               taskDraftIds={draftTaskIds}
               onTaskDraftChange={ids => setDraftTaskSelections(value => ({ ...value, [state.sessionKey]: ids }))}

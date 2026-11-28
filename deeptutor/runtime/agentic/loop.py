@@ -315,7 +315,7 @@ async def run_agentic_loop(
                 assistant_message_with_tool_calls(
                     step.text,
                     step.tool_calls,
-                    reasoning_content=step.reasoning_content or None,
+                    reasoning_content=step.reasoning_content,
                     thinking_blocks=list(step.thinking_blocks) or None,
                 )
             )
@@ -351,7 +351,7 @@ async def run_agentic_loop(
                 messages.append(
                     assistant_message(
                         step.text,
-                        reasoning_content=step.reasoning_content or None,
+                        reasoning_content=step.reasoning_content,
                         thinking_blocks=list(step.thinking_blocks) or None,
                     )
                 )
@@ -469,7 +469,7 @@ def _append_repair_messages(
         messages.append(
             assistant_message(
                 clipped,
-                reasoning_content=step.reasoning_content or None,
+                reasoning_content=step.reasoning_content,
                 thinking_blocks=list(step.thinking_blocks) or None,
             )
         )

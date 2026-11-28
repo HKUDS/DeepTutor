@@ -1,5 +1,8 @@
 """Markdown export — a generated book has to be able to leave the app."""
 
+from markdown_it import MarkdownIt
+import pytest
+
 from deeptutor.book.export import export_filename, render_block, render_book_markdown
 from deeptutor.book.models import (
     Block,
@@ -12,6 +15,49 @@ from deeptutor.book.models import (
 
 def _ready(block_type: BlockType, payload: dict, **kwargs) -> Block:
     return Block(type=block_type, status=BlockStatus.READY, payload=payload, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("block_type", "payload", "source", "language"),
+    [
+        (
+            BlockType.CODE,
+            {"language": "python", "code": 'text = """\n```\nsample\n```\n"""'},
+            'text = """\n```\nsample\n```\n"""',
+            "python",
+        ),
+        (
+            BlockType.CODE,
+            {"language": "markdown", "code": "```````\nsample\n```````"},
+            "```````\nsample\n```````",
+            "markdown",
+        ),
+        (
+            BlockType.FIGURE,
+            {"code": {"language": "html", "content": "<pre>\n```\nsample\n```\n</pre>"}},
+            "<pre>\n```\nsample\n```\n</pre>",
+            "html",
+        ),
+        (
+            BlockType.INTERACTIVE,
+            {"code": {"language": "html", "content": "<pre>\n```\nsample\n```\n</pre>"}},
+            "<pre>\n```\nsample\n```\n</pre>",
+            "html",
+        ),
+    ],
+)
+def test_exported_fences_preserve_embedded_backticks(block_type, payload, source, language) -> None:
+    markdown = render_block(_ready(block_type, payload))
+    fences = [token for token in MarkdownIt().parse(markdown) if token.type == "fence"]
+    assert len(fences) == 1
+    assert fences[0].info == language
+    assert fences[0].content == source + "\n"
+
+
+def test_plain_code_keeps_the_existing_export_format() -> None:
+    assert render_block(_ready(BlockType.CODE, {"language": "python", "code": "print(1)"})) == (
+        "```python\nprint(1)\n```"
+    )
 
 
 def test_section_renders_intro_subsections_and_takeaway() -> None:

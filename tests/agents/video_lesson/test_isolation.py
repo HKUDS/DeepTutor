@@ -6,10 +6,12 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
 from deeptutor.agents.video_lesson import runtime
+from deeptutor.agents.video_lesson.layout_check import check_layout, chrome_path, sample_frames
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -46,6 +48,122 @@ async def test_real_render_and_runtime_error(tmp_path: Path) -> None:
     lesson.write_text(CONFIG + 'export const Lesson = () => {throw new Error("fixture failure")};')
     result = await runtime.build_lesson(lesson, tmp_path / "player.js")
     assert not result.ok and any("fixture failure" in error for error in result.errors)
+
+
+@pytest.mark.skipif(chrome_path() is None, reason="Chrome is required for the opening layout check")
+async def test_opening_and_flow_compile_in_sandbox(tmp_path: Path) -> None:
+    code = """
+import {SceneLayout, ContentFlow, Title, Body, Card, Scenes, lessonLength} from "./kit";
+export const VIDEO_LESSON_SCENES = [{voice: "s1", frames: 60, content: <SceneLayout content={<ContentFlow>
+  <Title opening>题目</Title><Body opening delay={10}>已知条件和目标</Body>
+  <Card delay={30}>答案</Card><Body>未标记旧内容</Body></ContentFlow>} />},
+  {voice: "s1", frames: 60, content: <SceneLayout content={<ContentFlow>
+    <Title opening>第二幕</Title></ContentFlow>} />}];
+export const LESSON = {durationInFrames: lessonLength(VIDEO_LESSON_SCENES), fps: 30, width: 1920, height: 1080, sceneContract: "fixed-v1"};
+export const Lesson = () => <Scenes scenes={VIDEO_LESSON_SCENES} />;
+"""
+    voice = 'export const VOICE = {s1: {text: "", frames: 30, captions: []}};'
+    lesson = runtime.prepare_workdir(tmp_path, code, voice=voice)
+    result = await runtime.build_lesson(lesson, tmp_path / "player.js")
+    assert result.ok, result.errors
+    assert result.scene_lengths == [60, 60]
+    page = runtime.write_page(
+        tmp_path / "player.js", tmp_path / "lesson.html", title="test", language="zh"
+    )
+    assert (
+        check_layout(page, [0, 30, 60], require_player_frame=True, expected_scene_lengths=[60, 60])
+        == []
+    )
+    # Same total but incorrect interior cut points cannot be mistaken for the same snapshot.
+    assert (
+        check_layout(page, [0], require_player_frame=True, expected_scene_lengths=[75, 45]) is None
+    )
+    script = """<script>
+window.addEventListener('load', () => setTimeout(() => {
+  const opacity = (text) => {
+    const el = [...document.querySelectorAll('div')].find(e => e.textContent === text && !e.querySelector('div'));
+    if (!el) return 'absent';
+    let value = 1;
+    for (let e = el; e; e = e.parentElement) value *= Number(getComputedStyle(e).opacity);
+    return String(value);
+  };
+  document.body.setAttribute('data-opacities', ['题目', '已知条件和目标', '答案', '未标记旧内容', '第二幕'].map(opacity).join(','));
+}, 1500));</script>"""
+    page.write_text(
+        page.read_text(encoding="utf-8").replace("</body>", script + "</body>"), encoding="utf-8"
+    )
+    for frame, expected in ((0, "1,1,0,0,absent"), (60, "absent,absent,absent,absent,0")):
+        proc = subprocess.run(
+            [
+                chrome_path(),
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                f"--user-data-dir={tmp_path / ('profile-' + str(frame))}",
+                "--virtual-time-budget=8000",
+                "--dump-dom",
+                f"{page.as_uri()}?frame={frame}",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert f'data-opacities="{expected}"' in proc.stdout
+
+
+@pytest.mark.skipif(chrome_path() is None, reason="Chrome is required for the layout check")
+async def test_fitted_graphic_is_not_reported_as_overflow(tmp_path: Path) -> None:
+    # A small drawing on a canvas wider than the region: the kit scales and centres
+    # it, so the scaled frame and the canvas exceed the region but the drawing fits.
+    code = """
+import {SceneLayout, ContentFlow, Title, Body, Scenes, lessonLength} from "./kit";
+const Drawing = () => <svg width={880} height={330}>
+  <line x1={300} y1={150} x2={560} y2={150} stroke="black" strokeWidth={4} />
+  <text x={300} y={200} fontSize={28}>x</text></svg>;
+export const VIDEO_LESSON_SCENES = [{voice: "s1", frames: 60, content: <SceneLayout
+  content={<ContentFlow><Title opening>题目</Title><Body opening>已知条件</Body></ContentFlow>}
+  graphic={<Drawing />} />}];
+export const LESSON = {durationInFrames: lessonLength(VIDEO_LESSON_SCENES), fps: 30, width: 1920, height: 1080, sceneContract: "fixed-v1"};
+export const Lesson = () => <Scenes scenes={VIDEO_LESSON_SCENES} />;
+"""
+    voice = 'export const VOICE = {s1: {text: "", frames: 30, captions: []}};'
+    lesson = runtime.prepare_workdir(tmp_path, code, voice=voice)
+    result = await runtime.build_lesson(lesson, tmp_path / "player.js")
+    assert result.ok, result.errors
+    page = runtime.write_page(
+        tmp_path / "player.js", tmp_path / "lesson.html", title="test", language="zh"
+    )
+    assert check_layout(page, [0, 30], require_player_frame=True, expected_scene_lengths=[60]) == []
+
+
+async def test_fixed_timeline_uses_narration_and_keeps_legacy_fallback(tmp_path: Path) -> None:
+    code = """
+import {Scenes, Stage, Title, lessonLength} from "./kit";
+export const VIDEO_LESSON_SCENES = [
+  {voice: "s1", frames: 60, content: <Stage><Title>First</Title></Stage>},
+  {voice: "s2", frames: 60, content: <Stage><Title>Second</Title></Stage>},
+];
+export const LESSON = {durationInFrames: lessonLength(VIDEO_LESSON_SCENES), fps: 30,
+  width: 1920, height: 1080, sceneContract: "fixed-v1"};
+export const Lesson = () => <Scenes scenes={VIDEO_LESSON_SCENES} />;
+"""
+    voice = 'export const VOICE = {s1:{text:"",frames:100,captions:[]},s2:{text:"",frames:10,captions:[]}};'
+    lesson = runtime.prepare_workdir(tmp_path, code, voice=voice)
+    result = await runtime.build_lesson(lesson, tmp_path / "player.js")
+    assert result.ok, result.errors
+    assert result.scene_lengths == [130, 60]
+    assert {0, 15, 129, 130, 145, 189}.issubset(
+        sample_frames(190, scene_lengths=result.scene_lengths)
+    )
+
+    # Invalid fixed contract must not invent trusted cuts; legacy Lesson remains playable.
+    lesson.write_text(code.replace('sceneContract: "fixed-v1"', 'sceneContract: "unknown"'))
+    legacy = await runtime.build_lesson(lesson, tmp_path / "legacy.js")
+    assert legacy.ok, legacy.errors
+    assert legacy.scene_lengths is None
 
 
 async def test_real_kit_animation_and_captions(tmp_path: Path) -> None:

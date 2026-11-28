@@ -87,6 +87,78 @@ def test_settlement_delivery_requires_fresh_quiz_preparation_receipt(case, tmp_p
         assert recovery is None
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expect_recovery"),
+    [
+        ("non_evidence_write", True),
+        ("evidence_replaced", False),
+        ("evidence_cleared", False),
+        ("objective_advanced", False),
+        ("legacy_version_bump", False),
+    ],
+)
+def test_settlement_delivery_tracks_lesson_evidence_id_across_non_evidence_writes(
+    mutation, expect_recovery, tmp_path, monkeypatch
+):
+    _use_store_root(monkeypatch, tmp_path)
+    progress = LearningProgress(
+        book_id="path-1",
+        modules=[
+            LearningModule(
+                id="module-1",
+                name="Colours",
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp-1",
+                        name="Primary colours",
+                        type=KnowledgeType.CONCEPT,
+                        module_id="module-1",
+                    ),
+                    KnowledgePoint(
+                        id="kp-2",
+                        name="Secondary colours",
+                        type=KnowledgeType.CONCEPT,
+                        module_id="module-1",
+                    ),
+                ],
+            )
+        ],
+        lesson_evidence={} if mutation == "legacy_version_bump" else {"kp-1": {"id": "ev-1"}},
+    )
+    store = LearningStore()
+    store.save(progress)
+    context, capability = _context(), MasteryLoopCapability()
+    capability.augment_kwargs("mastery_quiz", {}, context)
+    prepared = capability.augment_kwargs("mastery_prepare_lesson", {}, context)
+    prepared["_bind_lesson_objective"]("kp-1")
+
+    before_version = store.load("path-1").version
+
+    def mutate(tx):
+        tx.touch()
+        if mutation in {"non_evidence_write", "legacy_version_bump"}:
+            tx.progress.explained_objectives["kp-1"] = {"summary": "explained"}
+        elif mutation == "evidence_replaced":
+            tx.progress.lesson_evidence["kp-1"] = {"id": "ev-2"}
+        elif mutation == "evidence_cleared":
+            tx.progress.lesson_evidence.pop("kp-1", None)
+        elif mutation == "objective_advanced":
+            tx.progress.qualitative_mastery["kp-1"] = True
+
+    store.mutate("path-1", mutate)
+    assert store.load("path-1").version == before_version + 1
+    if mutation == "objective_advanced":
+        from deeptutor.learning.policy import next_objective
+
+        assert next_objective(store.load("path-1")).knowledge_point_id == "kp-2"
+    recovery = capability.settlement_recovery(context)
+    if expect_recovery:
+        assert recovery is not None and recovery[1] == ("mastery_quiz",)
+    else:
+        assert recovery is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("changed", [None, "path", "session", "turn"])
 async def test_mastery_source_presentation_callback_is_server_bound(changed, monkeypatch):

@@ -1840,6 +1840,8 @@
   "Close tab": "Đóng tab",
   "Close viewer": "Đóng trình xem",
   "Back to conversation": "Quay lại cuộc trò chuyện",
+  "This file is unavailable.": "Tệp này không khả dụng.",
+  "Conversation snapshot": "Bản lưu của cuộc trò chuyện",
   "Loading {{host}}…": "Đang tải {{host}}…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Nhiều trang web từ chối nhúng vì lý do bảo mật. Nếu trang bên dưới vẫn trống, hãy dùng “Mở trong trình duyệt”.",
   "Open URL": "Mở URL",

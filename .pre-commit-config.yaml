@@ -14,8 +14,8 @@ repos:
     hooks:
       - id: deeptutor-repo-hygiene
         name: DeepTutor repository hygiene
-        entry: python3 scripts/check_repo_hygiene.py
-        language: system
+        entry: python scripts/check_repo_hygiene.py
+        language: python
         pass_filenames: false
         always_run: true
 

@@ -5,6 +5,7 @@ import json
 import pytest
 
 from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+from deeptutor.capabilities.mastery.snapshot import compact_status
 from deeptutor.capabilities.mastery.tools import MasteryStatusTool
 from deeptutor.core.context import UnifiedContext
 from deeptutor.learning.models import KnowledgePoint, LearningModule, LearningProgress
@@ -52,13 +53,19 @@ async def test_runtime_brief_retains_live_objective_prerequisites_and_discovery(
     block = await MasteryLoopCapability().pre_loop(context, None)
     brief = json.loads(block.content[block.content.index("{") :])
     assert brief["state_scope"] == "working_brief"
-    assert brief["next"] == json.loads(full.content)["next"]
+    assert brief["next"] == compact_status(json.loads(full.content))["next"]
     assert brief["path_revision"] == before["version"]
     points = {p["id"]: p for m in brief["map"]["modules"] for p in m["knowledge_points"]}
     assert set(points) == {"p0-0", "p1-0"}
     assert points["p0-0"]["topic_source_ids"] == ["selected-source"]
     assert brief["map"]["counts"]["total"] == 80
-    assert "mastery_status" in brief["inspection_instruction"]
+    # How to read a working brief is stated once in the system prompt.
+    assert "inspection_instruction" not in brief
+    from deeptutor.capabilities.mastery.snapshot import status_guide
+    from deeptutor.capabilities.mastery.tools import WORKING_BRIEF_INSTRUCTION
+
+    assert "mastery_status" in WORKING_BRIEF_INSTRUCTION
+    assert WORKING_BRIEF_INSTRUCTION in status_guide("{working_brief}")
     assert len(block.content) < len(full.content) * 0.3
     assert store.load("path").model_dump() == before
     # Outline work needs the entire map, including objective IDs for edits.
@@ -105,6 +112,7 @@ async def test_native_pending_question_and_profile_remain_exact(tmp_path, monkey
     brief = json.loads(block.content[block.content.index("{") :])
     full = json.loads((await MasteryStatusTool().execute(_mastery_path_id="path")).content)
     assert brief["next"]["pending_question"] == full["next"]["pending_question"]
-    assert brief["learner_profile"] == full["learner_profile"]
+    assert brief["learner_profile"] == compact_status(full)["learner_profile"]
+    assert brief["learner_profile"]["preferences"] == "Use connected explanations"
     assert "private key" not in block.content
     assert {p["id"] for m in brief["map"]["modules"] for p in m["knowledge_points"]} == {"two"}

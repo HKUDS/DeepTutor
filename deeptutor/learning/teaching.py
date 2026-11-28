@@ -107,6 +107,38 @@ def apply_teaching_updates(
     }
 
 
+# Fixed guidance returned with the learner profile. The per-turn mastery
+# status snapshot leaves both out and the system prompt states them once.
+TEACHING_FOCUS_INSTRUCTION = (
+    "Use the current learner request and these objective-local notes to choose the next "
+    "useful explanation, not a fixed script. For not_helped, change the recorded strategy "
+    "and supply the missing connection or prerequisite before another assessment. "
+    "Keep helped strategies when relevant; unknown is not understanding. "
+    "A delivered explanation is not proof that it was read or that the whole objective "
+    "was taught. Ask a brief clarification only if the missing link is genuinely unclear. "
+    "Do not invent feedback when these notes are empty or add a mandatory reflection call."
+)
+TEACHING_GUIDANCE = (
+    "Honor the learner's current explicit request over older preferences. "
+    "Use fresh path preferences over conflicting historical summaries or legacy style notes; "
+    "do not resurrect corrected or removed requests from memory. "
+    "Persona and skill teaching styles are compatible defaults, not competing obligations. "
+    "Apply pacing as a preference, not a rigid chunk counter: choose the next useful "
+    "explanation or assessment within the current objective and mode. "
+    "Do not force filler teaching, diagnostic tests or immediate quizzes merely because "
+    "an explanation was recorded. Preserve a requested display format; a numeric importance "
+    "label is a teacher estimate, not an examination probability. "
+    "Briefly explain a necessary substantial deviation instead of silently replacing the request. "
+    "This adjusts teaching style only, never mode authorization, source trust, "
+    "pending-question identity or mastery credit. "
+    "Repeated confusion or not_helped calls for a concrete change in explanation, "
+    "not another promise or identical phrasing. Tentative notes are hypotheses; "
+    "unknown does not mean understood. Record results only from a literal current-message learner quote, "
+    "never from having explained, silence or an unanswered question. "
+    "Teaching feedback gives no mastery credit. Update only relevant changed keys."
+)
+
+
 def teaching_guidance(
     profile: LearnerProfile, knowledge_point_id: str, *, include_history: bool = False
 ) -> dict:
@@ -138,33 +170,7 @@ def teaching_guidance(
                 for key, item in observations
                 if item.knowledge_point_id == knowledge_point_id
             ][:3],
-            "instruction": (
-                "Use the current learner request and these objective-local notes to choose the next "
-                "useful explanation, not a fixed script. For not_helped, change the recorded strategy "
-                "and supply the missing connection or prerequisite before another assessment. "
-                "Keep helped strategies when relevant; unknown is not understanding. "
-                "A delivered explanation is not proof that it was read or that the whole objective "
-                "was taught. Ask a brief clarification only if the missing link is genuinely unclear. "
-                "Do not invent feedback when these notes are empty or add a mandatory reflection call."
-            ),
+            "instruction": TEACHING_FOCUS_INSTRUCTION,
         },
-        "teaching_guidance": (
-            "Honor the learner's current explicit request over older preferences. "
-            "Use fresh path preferences over conflicting historical summaries or legacy style notes; "
-            "do not resurrect corrected or removed requests from memory. "
-            "Persona and skill teaching styles are compatible defaults, not competing obligations. "
-            "Apply pacing as a preference, not a rigid chunk counter: choose the next useful "
-            "explanation or assessment within the current objective and mode. "
-            "Do not force filler teaching, diagnostic tests or immediate quizzes merely because "
-            "an explanation was recorded. Preserve a requested display format; a numeric importance "
-            "label is a teacher estimate, not an examination probability. "
-            "Briefly explain a necessary substantial deviation instead of silently replacing the request. "
-            "This adjusts teaching style only, never mode authorization, source trust, "
-            "pending-question identity or mastery credit. "
-            "Repeated confusion or not_helped calls for a concrete change in explanation, "
-            "not another promise or identical phrasing. Tentative notes are hypotheses; "
-            "unknown does not mean understood. Record results only from a literal current-message learner quote, "
-            "never from having explained, silence or an unanswered question. "
-            "Teaching feedback gives no mastery credit. Update only relevant changed keys."
-        ),
+        "teaching_guidance": TEACHING_GUIDANCE,
     }
