@@ -1,7 +1,8 @@
 """Render stored calendar events as RFC 5545 iCalendar text.
 
 Timed events use local wall time with ``TZID`` and a ``VTIMEZONE`` per used
-zone. Offsets come from ``zoneinfo`` transitions in a window covering the
+zone. A non-recurring event that uses the second occurrence of a repeated
+wall time is written in UTC to preserve the intended instant. Offsets come from ``zoneinfo`` transitions in a window covering the
 exported events (padded by a year; spans over 40 years are rejected). UTC timed events use
 the ``Z`` form and skip ``VTIMEZONE``. All-day events use ``VALUE=DATE`` with
 the store's exclusive end date.
@@ -165,10 +166,12 @@ def _dtstart_dtend(event: CalendarEvent) -> list[str]:
             _prop("DTSTART", _ics_date(timing.dtstart), VALUE="DATE"),
             _prop("DTEND", _ics_date(timing.dtend), VALUE="DATE"),
         ]
-    if event.tzid == "UTC":
+    # RFC 5545 local times in a repeated hour always select the first
+    # occurrence. UTC preserves both endpoints without changing a repeat rule.
+    if event.tzid == "UTC" or (not event.rrule and (timing.start_fold or timing.end_fold)):
         return [
-            _prop("DTSTART", f"{_ics_datetime(timing.dtstart)}Z"),
-            _prop("DTEND", f"{_ics_datetime(timing.dtend)}Z"),
+            _prop("DTSTART", _stamp(event.start)),
+            _prop("DTEND", _stamp(event.end)),
         ]
     return [
         _prop("DTSTART", _ics_datetime(timing.dtstart), TZID=event.tzid),
