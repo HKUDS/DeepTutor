@@ -210,6 +210,15 @@ class TestParseJsonResponseThinkTags:
         response = '<think>reasoning here</think>\n```json\n{"answer": 42}\n```'
         assert parse_json_response(response) == {"answer": 42}
 
+    def test_fence_inside_think_block_is_not_the_payload(self) -> None:
+        """A JSON draft fenced inside the reasoning must not shadow the real object."""
+        response = '<think>Maybe ```json\n{"draft": 1}\n``` first</think>\n{"answer": 42}'
+        assert parse_json_response(response) == {"answer": 42}
+
+    def test_unlabeled_fence_inside_think_block_is_not_the_payload(self) -> None:
+        response = '<think>shape:\n```\n{"draft": 1}\n```</think>\n{"answer": 42}'
+        assert parse_json_response(response) == {"answer": 42}
+
     def test_think_tag_case_insensitive(self) -> None:
         response = '<THINK>step by step</THINK>{"ok": true}'
         assert parse_json_response(response) == {"ok": True}

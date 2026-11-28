@@ -113,9 +113,20 @@ def parse_json_response(
     if "```" in response:
         fence = re.compile(r"```([A-Za-z0-9_-]*)[ \t]*\n?(.*?)```", re.DOTALL)
         matches = list(fence.finditer(response))
-        blocks = [m[2].strip() for m in matches if m[1].lower() == "json"]
+        # A fence drafted inside <think> reasoning is not the payload; leave it
+        # for the <think> stripping below instead of picking it here.
+        think_spans = [
+            m.span()
+            for m in re.finditer(
+                r"<think\b[^>]*>.*?</think>", response, flags=re.DOTALL | re.IGNORECASE
+            )
+        ]
+        candidates = [
+            m for m in matches if not any(start <= m.start() < end for start, end in think_spans)
+        ]
+        blocks = [m[2].strip() for m in candidates if m[1].lower() == "json"]
         if not blocks:
-            blocks = [m[2].strip() for m in matches if not m[1]]
+            blocks = [m[2].strip() for m in candidates if not m[1]]
         if blocks:
             extracted_response = next(
                 (block for block in blocks if block.startswith(("{", "["))), blocks[0]
