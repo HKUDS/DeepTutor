@@ -6664,5 +6664,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Anmerkungen durchsuchen…",
+  "No matching annotations": "Keine passenden Anmerkungen",
+  "Try a different word, or clear the search.": "Versuche ein anderes Wort oder lösche die Suche.",
+  "Download annotated PDF": "Annotiertes PDF herunterladen",
+  "Download as Markdown": "Als Markdown herunterladen",
+  "Annotated original when available, otherwise the marks": "Annotiertes Original, falls vorhanden, sonst die Markierungen",
+  "Change colour": "Farbe ändern",
+  "Document order": "Dokumentreihenfolge",
+  "Select annotations": "Anmerkungen auswählen",
+  "Filter by colour": "Nach Farbe filtern",
+  "All colours": "Alle Farben",
+  "Could not copy to the clipboard.": "Kopieren in die Zwischenablage fehlgeschlagen.",
+  "Some annotations could not be removed.": "Einige Anmerkungen konnten nicht entfernt werden.",
+  "This annotation was removed. Copy your draft before closing.": "Diese Anmerkung wurde entfernt. Kopiere deinen Entwurf vor dem Schließen."
 }

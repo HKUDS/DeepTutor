@@ -179,3 +179,85 @@ async def test_material_detail_loads_the_outline_once(
     assert response.status_code == 200, response.text
     assert response.json()["outline"] is not None
     assert len(calls) == 1, f"the outline was read {len(calls)} times, expected 1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["save", "delete"])
+async def test_annotation_lock_wait_does_not_block_event_loop(
+    stored_material, monkeypatch, operation
+):
+    from deeptutor.reading import Annotation
+
+    store = ReadingStore()
+    saved = store.save_annotation(
+        stored_material.material_id, Annotation(annotation_id="", locator=1, note="original")
+    )
+    window: dict[str, float] = {}
+    method = "save_annotation" if operation == "save" else "delete_annotation"
+    monkeypatch.setattr(ReadingStore, method, _slow(getattr(ReadingStore, method), window))
+
+    async def request(client):
+        base = f"/api/reading/materials/{stored_material.material_id}/annotations"
+        if operation == "save":
+            response = await client.put(base, json={"locator": 1, "note": "new"})
+        else:
+            response = await client.delete(f"{base}/{saved.annotation_id}")
+        assert response.status_code == 200
+
+    inside, warm = await _ticks_during(window, request)
+    assert warm > 0
+    assert inside >= 3, "annotation lock wait blocked the API event loop"
+
+
+@pytest.mark.asyncio
+async def test_material_delete_lock_wait_does_not_block_event_loop(stored_material, monkeypatch):
+    window: dict[str, float] = {}
+    monkeypatch.setattr(ReadingStore, "staged_delete", _slow(ReadingStore.staged_delete, window))
+
+    async def request(client):
+        response = await client.delete(f"/api/reading/materials/{stored_material.material_id}")
+        assert response.status_code == 200
+
+    inside, warm = await _ticks_during(window, request)
+    assert warm > 0
+    assert inside >= 3, "material deletion lock wait blocked the API event loop"
+
+
+@pytest.mark.asyncio
+async def test_kiwix_ingestion_lock_wait_does_not_block_event_loop(reading_home, monkeypatch):
+    from types import SimpleNamespace
+
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.rag.pipelines.kiwix.client import KiwixClient
+
+    resource = SimpleNamespace(id="offline-library", name="offline-library")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda _ref: resource)
+    monkeypatch.setattr(
+        knowledge_access,
+        "manager_for_resource",
+        lambda _resource: SimpleNamespace(
+            get_metadata=lambda _name: {
+                "type": "kiwix",
+                "server_url": "http://127.0.0.1:8999",
+                "zim_name": "sample",
+            }
+        ),
+    )
+
+    async def article(_self, _path):
+        return "# Article\nA locally supplied article for testing the store boundary."
+
+    monkeypatch.setattr(KiwixClient, "read_article", article)
+    window: dict[str, float] = {}
+    monkeypatch.setattr(ReadingStore, "ingest_units", _slow(ReadingStore.ingest_units, window))
+
+    async def request(client):
+        response = await client.post(
+            "/api/reading/library/import-zim-article",
+            json={"kb_ref": "offline-library", "article_path": "Article"},
+        )
+        assert response.status_code == 200, response.text
+
+    inside, warm = await _ticks_during(window, request)
+    assert warm > 0
+    assert inside >= 3

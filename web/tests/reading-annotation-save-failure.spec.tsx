@@ -232,3 +232,39 @@ describe("rolling back a failed save", () => {
     expect(result.current.error).toBe("offline");
   });
 });
+
+/**
+ * A 409 is not a fault to retry: another tab moved the row on, and the list is
+ * about to show what the server holds. The server's own wording ("this
+ * annotation changed or was removed since you loaded it") reads like the
+ * reader did something wrong, so the client says what actually happened.
+ */
+describe("a write refused by a newer version", () => {
+  it("names the conflict instead of repeating the server's wording", async () => {
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", [mark("a", "old")]);
+
+    api.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: "this annotation changed or was removed since you loaded it",
+        }),
+        { status: 409 },
+      ),
+    );
+    // The reconcile read that follows the refusal answers with the newer row.
+    api.fetch.mockResolvedValueOnce(response([mark("a", "theirs")]));
+
+    let saved = true;
+    await act(async () => {
+      saved = await result.current.saveMark(draft, mark("a", "edited"));
+      await flush();
+    });
+
+    expect(saved).toBe(false);
+    expect(result.current.annotations[0].note).toBe("theirs");
+    expect(result.current.error).toBe(
+      "Another tab changed this annotation first, so this change was not saved.",
+    );
+  });
+});

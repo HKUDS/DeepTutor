@@ -31,6 +31,7 @@ from dataclasses import replace as dataclass_replace
 import hashlib
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import posixpath
@@ -46,6 +47,7 @@ from deeptutor.reading.extract import MARKDOWN_SUFFIXES, extract_material, synth
 from deeptutor.reading.models import (
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
+    AnnotationConflict,
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
@@ -60,6 +62,7 @@ from deeptutor.reading.models import (
 )
 from deeptutor.services.file_io import atomic_write_text as _atomic_write
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.session.migration_lock import exclusive_lock
 from deeptutor.services.session.selection_grounding import rendered_markdown_text
 
 logger = logging.getLogger(__name__)
@@ -250,6 +253,13 @@ class ReadingStore:
         with lock:
             yield
 
+    @contextmanager
+    def _annotation_guard(self, material_id: str) -> Iterator[None]:
+        lock_dir = self.root / "_annotation_locks"
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        with exclusive_lock(lock_dir / f"{self._content_id(material_id)}.lock"):
+            yield
+
     # -- ingest -----------------------------------------------------------
 
     def ingest(self, source: Path | str, *, filename: str | None = None) -> MaterialManifest:
@@ -284,7 +294,7 @@ class ReadingStore:
         material_id = content_hash(source_data)
         display_name = (filename or path.name).strip() or path.name
 
-        with self._locked(material_id):
+        with self._annotation_guard(material_id), self._locked(material_id):
             existing = self._load_manifest(material_id)
             if existing is not None and self._is_complete(material_id, existing):
                 wants_epub_upgrade = (
@@ -459,7 +469,7 @@ class ReadingStore:
         file exactly as it was.
         """
         resolved_id = self._validate_id(material_id)
-        with self._locked(resolved_id):
+        with self._annotation_guard(resolved_id), self._locked(resolved_id):
             existing = self._load_manifest(resolved_id)
             if existing is None:
                 raise MaterialNotFound(f"material {material_id!r} not found")
@@ -652,7 +662,7 @@ class ReadingStore:
             raise ReadingError(f"{render_mode} materials require playable source bytes")
 
         display_name = (filename or "material").strip() or "material"
-        with self._locked(material_id):
+        with self._annotation_guard(material_id), self._locked(material_id):
             existing = self._load_manifest(content_id)
             material_dir = self._dir(material_id)
             stage_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
@@ -1171,7 +1181,7 @@ class ReadingStore:
             yield False
             return
         staged_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.deleting"
-        with self._locked(material_id):
+        with self._annotation_guard(material_id), self._locked(material_id):
             os.replace(material_dir, staged_dir)
             try:
                 yield True
@@ -1197,7 +1207,7 @@ class ReadingStore:
         if not _CONTENT_ID_RE.fullmatch(resolved_content):
             raise ReadingError(f"invalid content id for material {material_id!r}")
         content_dir = self.root / resolved_content
-        with self._locked(resolved_content):
+        with self._annotation_guard(resolved_content), self._locked(resolved_content):
             for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR):
                 state_path = content_dir / state_dir / f"{resolved_id}.json"
                 state_path.unlink(missing_ok=True)
@@ -1274,7 +1284,13 @@ class ReadingStore:
                 if not quote_selectors:
                     # A numeric position alone cannot be trusted after the text
                     # changes. Leave it pinned to the archived revision for review.
-                    migrated.append(dataclass_replace(row, resolution="unresolved"))
+                    migrated.append(
+                        dataclass_replace(
+                            row,
+                            resolution="unresolved",
+                            updated_at=max(time.time(), math.nextafter(row.updated_at, math.inf)),
+                        )
+                    )
                     changed = True
                     continue
                 quote_selector = quote_selectors[0]
@@ -1286,7 +1302,12 @@ class ReadingStore:
                     locator, (start, end) = matches[0]
                     unit_text = new_unit_texts[locator]
                     canonical_exact = unit_text[start:end]
-                    new_quote = dataclass_replace(quote_selector, exact=canonical_exact)
+                    new_quote = dataclass_replace(
+                        quote_selector,
+                        exact=canonical_exact,
+                        prefix=unit_text[max(0, start - 10) : start],
+                        suffix=unit_text[end : end + 10],
+                    )
                     new_selectors: list[TextSelector] = []
                     for s in row.selectors:
                         if s is quote_selector:
@@ -1303,14 +1324,27 @@ class ReadingStore:
                             selectors=tuple(new_selectors),
                             material_revision=new_revision,
                             resolution="resolved",
+                            updated_at=max(time.time(), math.nextafter(row.updated_at, math.inf)),
                         )
                     )
                     changed = True
                 elif len(matches) > 1:
-                    migrated.append(dataclass_replace(row, resolution="ambiguous"))
+                    migrated.append(
+                        dataclass_replace(
+                            row,
+                            resolution="ambiguous",
+                            updated_at=max(time.time(), math.nextafter(row.updated_at, math.inf)),
+                        )
+                    )
                     changed = True
                 else:
-                    migrated.append(dataclass_replace(row, resolution="unresolved"))
+                    migrated.append(
+                        dataclass_replace(
+                            row,
+                            resolution="unresolved",
+                            updated_at=max(time.time(), math.nextafter(row.updated_at, math.inf)),
+                        )
+                    )
                     changed = True
 
             if changed:
@@ -1330,19 +1364,63 @@ class ReadingStore:
         )
 
     def save_annotation(self, material_id: str, annotation: Annotation) -> Annotation:
+        # The API constructs a store per request. An instance-local RLock alone
+        # cannot serialize read/compare/write across requests or workers.
+        with self._annotation_guard(material_id):
+            return self._save_annotation_locked(material_id, annotation)
+
+    def _save_annotation_locked(self, material_id: str, annotation: Annotation) -> Annotation:
         """Insert or update one annotation and return the stored row.
 
         Read-modify-write under the material lock, so two rapid highlights from
         the same reader cannot clobber each other.
         """
         manifest = self.manifest(material_id)
+        if len(annotation.source_anchor) > 4096:
+            raise ReadingError("source anchor is too long")
+        previous = next(
+            (
+                row
+                for row in self.annotations(material_id)
+                if row.annotation_id == annotation.annotation_id
+            ),
+            None,
+        )
+        if annotation.expected_updated_at is not None and (
+            previous is None or previous.updated_at != annotation.expected_updated_at
+        ):
+            raise AnnotationConflict("this annotation changed or was removed since you loaded it")
+        # An unchanged anchor may no longer resolve after a revision migration;
+        # changing only its note or appearance must remain possible.
+        if previous is not None and (
+            previous.locator == annotation.locator
+            and previous.quote == annotation.quote
+            and previous.source_anchor == annotation.source_anchor
+            and previous.selectors == annotation.selectors
+        ):
+            updated = dataclass_replace(
+                previous,
+                kind=annotation.kind,
+                color=annotation.color,
+                note=annotation.note,
+                rects=annotation.rects,
+                updated_at=max(time.time(), math.nextafter(previous.updated_at, math.inf)),
+            )
+            with self._locked(material_id):
+                rows = self.annotations(material_id)
+                self._write_annotations(
+                    material_id,
+                    [
+                        updated if row.annotation_id == updated.annotation_id else row
+                        for row in rows
+                    ],
+                )
+            return updated
         if not 1 <= annotation.locator <= manifest.unit_count:
             raise ReadingError(
                 f"{manifest.unit} {annotation.locator} is out of range — "
                 f"this material has {manifest.unit_count}."
             )
-        if len(annotation.source_anchor) > 4096:
-            raise ReadingError("source anchor is too long")
         quote_selectors = [
             selector for selector in annotation.selectors if isinstance(selector, TextQuoteSelector)
         ]
@@ -1439,9 +1517,11 @@ class ReadingStore:
             else:
                 stored = dataclass_replace(
                     stored,
+                    author=existing[index].author,
+                    resolution=existing[index].resolution,
                     material_revision=existing[index].material_revision,
                     created_at=existing[index].created_at or now,
-                    updated_at=now,
+                    updated_at=max(now, math.nextafter(existing[index].updated_at, math.inf)),
                 )
                 existing[index] = stored
             self._write_annotations(material_id, existing)
@@ -1523,13 +1603,28 @@ class ReadingStore:
             json.dumps([row.to_dict() for row in rows], ensure_ascii=False, indent=2),
         )
 
-    def delete_annotation(self, material_id: str, annotation_id: str) -> bool:
+    def delete_annotation(
+        self, material_id: str, annotation_id: str, *, expected_updated_at: float | None = None
+    ) -> bool:
+        with self._annotation_guard(material_id):
+            return self._delete_annotation_locked(material_id, annotation_id, expected_updated_at)
+
+    def _delete_annotation_locked(
+        self, material_id: str, annotation_id: str, expected_updated_at: float | None
+    ) -> bool:
         self.manifest(material_id)
         target = str(annotation_id or "").strip()
         if not target:
             return False
         with self._locked(material_id):
             existing = self.annotations(material_id)
+            current = next((row for row in existing if row.annotation_id == target), None)
+            if (
+                current is not None
+                and expected_updated_at is not None
+                and current.updated_at != expected_updated_at
+            ):
+                raise AnnotationConflict("this annotation changed since you loaded it")
             remaining = [row for row in existing if row.annotation_id != target]
             if len(remaining) == len(existing):
                 return False

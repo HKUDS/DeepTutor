@@ -389,6 +389,11 @@
             "title": "Rects",
             "type": "array"
           },
+          "resolution": {
+            "default": "resolved",
+            "title": "Resolution",
+            "type": "string"
+          },
           "selectors": {
             "items": {
               "additionalProperties": true,
@@ -434,6 +439,18 @@
             "default": "yellow",
             "title": "Color",
             "type": "string"
+          },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
           },
           "kind": {
             "default": "highlight",
@@ -49978,6 +49995,23 @@
             "schema": {
               "title": "Annotation Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_updated_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Updated At"
             }
           },
           {

@@ -1,4 +1,5 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { ApiError } from "@/shared/api/errors";
 
 // ── Immersive reading (materials under data/user/workspace/reading) ──
 //
@@ -38,6 +39,28 @@ export const ANNOTATION_SWATCH: Record<AnnotationColor, string> = {
   pink: "#faa1c7",
   purple: "#c7aefa",
 };
+
+/**
+ * The English label for one palette colour.
+ *
+ * Lives beside the palette because three surfaces name the same five colours —
+ * the selection toolbar, the mark list, and anything else that offers a
+ * swatch — and a second copy would drift.
+ */
+export function annotationColorLabel(color: AnnotationColor): string {
+  switch (color) {
+    case "green":
+      return "Green";
+    case "blue":
+      return "Blue";
+    case "pink":
+      return "Pink";
+    case "purple":
+      return "Purple";
+    default:
+      return "Yellow";
+  }
+}
 
 export interface MaterialInfo {
   material_id: string;
@@ -137,6 +160,14 @@ export interface AnnotationDraft {
   rects?: NormalisedRect[];
   source_anchor?: string;
   selectors?: ReadingTextSelector[];
+  /**
+   * The `updated_at` this edit was built from.
+   *
+   * The store refuses the write with 409 when the row moved since — two tabs on
+   * one document would otherwise silently revert each other's changes. Omitted
+   * for creates.
+   */
+  expected_updated_at?: number;
 }
 
 export interface ReadingPosition {
@@ -228,7 +259,17 @@ async function unwrap<T>(response: Response): Promise<T> {
   } catch {
     // Non-JSON error body (a proxy page, say) — keep the status line.
   }
-  throw new Error(detail);
+  // The shared error type, not a second one of our own: callers branch on
+  // `status` (a 409 from an annotation write means the row moved on), and the
+  // rest of the app already speaks `ApiError`.
+  throw new ApiError({
+    code: `http_${response.status}`,
+    message: detail,
+    retryable:
+      response.status === 408 || response.status === 429 || response.status >= 500,
+    scope: "network",
+    status: response.status,
+  });
 }
 
 export async function getSupportedFormats(): Promise<SupportedFormats> {
@@ -599,10 +640,14 @@ export async function saveAnnotation(
 export async function deleteAnnotation(
   materialId: string,
   annotationId: string,
+  expectedUpdatedAt?: number,
 ): Promise<void> {
+  const condition = expectedUpdatedAt !== undefined
+    ? `?expected_updated_at=${encodeURIComponent(expectedUpdatedAt)}`
+    : "";
   await unwrap(
     await apiFetch(
-      apiUrl(`${BASE}/materials/${materialId}/annotations/${annotationId}`),
+      apiUrl(`${BASE}/materials/${materialId}/annotations/${annotationId}${condition}`),
       { method: "DELETE" },
     ),
   );

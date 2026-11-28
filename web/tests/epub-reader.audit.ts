@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 
 import { expect, test as base, type Page } from '@playwright/test'
 import JSZip from 'jszip'
@@ -174,4 +175,77 @@ test('faithfully renders EPUB resources, navigates, and restores its CFI', async
   await page.reload()
   const restoredFrame = page.locator('iframe').contentFrame()
   await expect(restoredFrame.getByRole('heading', { name: 'Second chapter' })).toBeVisible()
+})
+
+test('saved note edits sync between real tabs and stale writes return 409', async ({ page, context, openEpub }) => {
+  const id = await openEpub()
+  const url = `/api/reading/materials/${id}/annotations`
+  const createdResponse = await page.request.put(url, { data: { locator: 1, kind: 'highlight', quote: 'This layout comes from the EPUB.', note: 'first note' } })
+  expect(createdResponse.ok(), await createdResponse.text()).toBe(true)
+  const original = await createdResponse.json()
+  await page.reload()
+  const second = await context.newPage()
+  await second.goto(page.url())
+  for (const tab of [page, second]) {
+    const nav = await contents(tab)
+    await nav.getByRole('tab', { name: /Annotations/ }).click()
+    await expect(nav.getByText('first note')).toBeVisible()
+  }
+  const nav = await contents(page)
+  const secondNav = await contents(second)
+  await nav.getByRole('button', { name: 'Edit note', exact: true }).click()
+  await secondNav.getByRole('button', { name: 'Edit note', exact: true }).click()
+  await nav.getByTestId('annotation-note-input').fill('updated in first tab')
+  await secondNav.getByTestId('annotation-note-input').fill('draft from second tab')
+  const refreshed = second.waitForResponse(response => response.url().includes(url) && response.request().method() === 'GET' && response.ok())
+  await nav.getByTestId('annotation-note-save').click()
+  await refreshed
+  await expect(nav.getByText('updated in first tab')).toBeVisible()
+  await expect(secondNav.getByTestId('annotation-note-input')).toHaveValue('draft from second tab')
+  const conflict = second.waitForResponse(response => response.url().includes(url) && response.request().method() === 'PUT')
+  await secondNav.getByTestId('annotation-note-save').click()
+  expect((await conflict).status()).toBe(409)
+  await expect(secondNav.getByTestId('annotation-note-input')).toHaveValue('draft from second tab')
+  const stale = await second.request.put(url, { data: { ...original, note: 'stale overwrite', expected_updated_at: original.updated_at } })
+  expect(stale.status()).toBe(409)
+  const staleDelete = await second.request.delete(`${url}/${original.annotation_id}?expected_updated_at=${original.updated_at}`)
+  expect(staleDelete.status()).toBe(409)
+  const list = await (await page.request.get(url)).json()
+  expect(list.find((row: {annotation_id: string}) => row.annotation_id === original.annotation_id).note).toBe('updated in first tab')
+  await second.close()
+})
+
+test('annotation controls remain usable in a narrow viewport', async ({ page, openEpub }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const id = await openEpub()
+  const url = `/api/reading/materials/${id}/annotations`
+  const created = await page.request.put(url, { data: { locator: 1, kind: 'highlight', quote: 'This layout comes from the EPUB.', note: 'mobile note' } })
+  expect(created.ok(), await created.text()).toBe(true)
+  await page.reload()
+  const nav = await contents(page)
+  await nav.getByRole('tab', { name: /Annotations/ }).click()
+  await expect(nav.getByText('mobile note')).toBeVisible()
+  await nav.getByRole('button', { name: 'Edit note', exact: true }).click()
+  await expect(nav.getByTestId('annotation-note-input')).toBeVisible()
+  await nav.getByTestId('annotation-note-input').fill('updated on narrow screen')
+  await nav.getByTestId('annotation-note-save').click()
+  await expect(nav.getByText('updated on narrow screen')).toBeVisible()
+})
+
+test('workspace menu downloads Markdown containing the saved annotation', async ({ page, openEpub }) => {
+  const id = await openEpub()
+  const saved = await page.request.put(`/api/reading/materials/${id}/annotations`, {
+    data: { locator: 1, kind: 'highlight', quote: 'This layout comes from the EPUB.', note: 'Exported audit note' },
+  })
+  expect(saved.ok(), await saved.text()).toBe(true)
+  await expect(page.locator('iframe').contentFrame().getByRole('heading', { name: 'Illustrated chapter' })).toBeVisible()
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download as Markdown', exact: true }).click()
+  const download = await downloaded
+  expect(download.suggestedFilename()).toMatch(/\.md$/)
+  expect(await download.failure()).toBeNull()
+  const markdown = await readFile((await download.path())!, 'utf8')
+  expect(markdown).toContain('Exported audit note')
+  expect(markdown).toContain('This layout comes from the EPUB.')
 })
