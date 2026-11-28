@@ -21,6 +21,11 @@ KNOWN_LARGE_CONTEXT_MARKERS = (
     "deepseek",
     "moonshot",
     "kimi",
+    # Moonshot's coding endpoint advertises the K3 family as bare ``k3``,
+    # ``k3-256k`` and ``k3.1-pro``. Neither "kimi" nor "moonshot" appears in
+    # those ids, so an un-annotated catalog entry fell back to 16_384 and the
+    # history planner built a 5_734-token plan for a 256k-token model.
+    "k3",
     # xAI: grok-3/4+ all ship >=128k windows; without this, an un-annotated
     # model entry falls back to 16_384 and the agentic loop snips every tool
     # result (see context_window_guard in agents/loop/pipeline.py).
@@ -125,6 +130,16 @@ KNOWN_CONTEXT_WINDOWS: dict[str, int] = {
     "kimi-k2.7-code": 262144,
     "kimi-k2.7-code-highspeed": 262144,
     "kimi-k3": 1048576,
+    # Moonshot Kimi K3 family, read from the provider's own ``GET /v1/models``
+    # (``context_length`` / ``limit.context``; kimi.com coding endpoint,
+    # 2026-11-27). These are the ids that endpoint actually advertises: a bare
+    # ``k3`` name previously resolved to the 16_384 fallback.
+    "k3": 1048576,
+    "k3-256k": 262144,
+    "k3.1-pro": 1048576,
+    "k3.1-pro-highspeed": 1048576,
+    "kimi-for-coding": 1048576,
+    "kimi-for-coding-highspeed": 262144,
     "minimax-m2": 204800,
     "minimax-m2.1": 204800,
     "minimax-m2.5": 204800,
