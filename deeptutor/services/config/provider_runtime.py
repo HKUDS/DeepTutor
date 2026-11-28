@@ -614,6 +614,14 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
         default_api_base="https://api.openai.com/v1",
         default_model="gpt-image-1",
     ),
+    # Gemini image models speak native generateContent with IMAGE modality rather
+    # than the OpenAI-compatible /images/generations endpoint.
+    "gemini": GenerationProviderSpec(
+        label="Google Gemini",
+        default_api_base="https://generativelanguage.googleapis.com/v1beta",
+        adapter="gemini",
+        default_model="gemini-3.1-flash-image",
+    ),
     "xai": GenerationProviderSpec(
         label="xAI (Grok Imagine)",
         default_api_base="https://api.x.ai/v1",
@@ -695,6 +703,7 @@ GENERATION_PROVIDER_ALIASES = {
     "doubao": "volcengine",
     "seedream": "volcengine",
     "seedance": "volcengine",
+    "google": "gemini",
     "azure": "azure_openai",
     "aoai": "azure_openai",
     "openai_compatible": "custom",
