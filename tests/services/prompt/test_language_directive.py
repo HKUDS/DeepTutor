@@ -84,3 +84,26 @@ def test_loop_preserves_requested_output_language_with_english_prompt_assets(
     assert pipeline._prompt_assembler.language == "en"
     rendered = pipeline._prompt_assembler.render([PromptBlock(name="Base", content="body")])
     assert label in rendered
+
+
+@pytest.mark.parametrize("language", ["en", "zh", "ja", "fr"])
+@pytest.mark.parametrize("allow_user_override", [False, True])
+def test_the_directive_keeps_a_studied_language_in_its_own_language(
+    language: str, allow_user_override: bool
+) -> None:
+    """#2933: an English antonyms lesson taught to a learner whose reply
+    language is Chinese came back as a lesson on Chinese antonyms.
+
+    The directive tells the model to write quiz stems and options in the reply
+    language and never switch, so without a carve-out it is right to translate
+    the subject matter itself. The reply language is the language of the
+    explanation; a language being studied keeps its own words and exercises.
+    """
+    directive = language_directive(language, allow_user_override=allow_user_override)
+    assert "Do NOT switch languages" in directive or "不得切换语言" in directive
+    if language == "zh":
+        assert "所学的科目本身就是一门语言" in directive
+        assert "保留原语言" in directive
+    else:
+        assert "the subject being studied is itself a language" in directive
+        assert "never substitute the equivalent material" in directive

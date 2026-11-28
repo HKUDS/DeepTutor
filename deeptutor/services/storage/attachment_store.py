@@ -63,6 +63,21 @@ def _coerce_filename(filename: str) -> str:
     return cleaned or "file"
 
 
+# Most filesystems reject a single path component longer than 255 bytes.
+_NAME_MAX_BYTES = 255
+
+
+def _fit_filename(name: str, max_bytes: int) -> str:
+    """Shorten *name* to at most *max_bytes* UTF-8 bytes, keeping a short extension."""
+    if len(name.encode()) <= max_bytes:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    ext = dot + ext if stem and len(ext.encode()) <= 16 else ""
+    stem = name[: -len(ext)] if ext else name
+    room = max(max_bytes - len(ext.encode()), 1)
+    return stem.encode()[:room].decode(errors="ignore") + ext
+
+
 @runtime_checkable
 class AttachmentStore(Protocol):
     """Storage backend for chat attachments.
@@ -122,7 +137,9 @@ class LocalDiskAttachmentStore:
         return self._root
 
     def _stored_filename(self, attachment_id: str, filename: str) -> str:
-        return f"{attachment_id}_{_coerce_filename(filename)}"
+        prefix = f"{attachment_id}_"
+        room = _NAME_MAX_BYTES - len(prefix.encode())
+        return prefix + _fit_filename(_coerce_filename(filename), room)
 
     def _session_dir(self, session_id: str) -> Path:
         sid = _coerce_filename(session_id)

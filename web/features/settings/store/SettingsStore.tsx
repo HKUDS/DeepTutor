@@ -26,6 +26,7 @@ import {
 
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
 import {
+  LANGUAGE_EVENT,
   normalizeCodeBlockTheme,
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
@@ -43,6 +44,7 @@ import { applyExtensionPayload } from "@/lib/settings-extensions";
 import {
   getStoredThemePreference,
   setTheme as applyThemePreference,
+  THEME_EVENT,
 } from "@/lib/theme";
 import {
   detachProfileConnection,
@@ -678,6 +680,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const stageUiRef = useRef<(patch: Partial<UiSettings>) => Promise<void>>(
     async () => {},
   );
+  const externalUiPatchRef = useRef<Partial<UiSettings> | null>(null);
+  const [externalUiRevision, setExternalUiRevision] = useState(0);
   const [language, setLanguage] = useState<UiSettings["language"]>("en");
   const [responseLanguage, setResponseLanguage] =
     useState<UiSettings["response_language"]>("en");
@@ -962,6 +966,51 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (stored) setTheme(stored);
   }, []);
 
+  // The desktop shell menu changes theme/language outside React (writes
+  // localStorage and dispatches the shared events). Mirror those into the
+  // settings drafts so the preview cards and pickers follow the menu live.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onExternalTheme = (event: Event) => {
+      const next = (event as CustomEvent<{ theme?: unknown }>).detail?.theme;
+      if (
+        next === "system" ||
+        next === "snow" ||
+        next === "light" ||
+        next === "dark" ||
+        next === "glass"
+      ) {
+        // A local preview is not a successful GET from the server.
+        setTheme(next);
+        if (pendingRef.current.has("ui")) {
+          externalUiPatchRef.current = { ...externalUiPatchRef.current, theme: next };
+          setExternalUiRevision((revision) => revision + 1);
+        }
+      }
+    };
+    const onExternalLanguage = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ language?: unknown; source?: unknown }>
+      ).detail;
+      // The settings load also broadcasts LANGUAGE_EVENT to AppShell.
+      if (detail?.source !== "desktop" || typeof detail.language !== "string") {
+        return;
+      }
+      const language = detail.language as UiSettings["language"];
+      setLanguage(language);
+      if (pendingRef.current.has("ui")) {
+        externalUiPatchRef.current = { ...externalUiPatchRef.current, language };
+        setExternalUiRevision((revision) => revision + 1);
+      }
+    };
+    window.addEventListener(THEME_EVENT, onExternalTheme);
+    window.addEventListener(LANGUAGE_EVENT, onExternalLanguage);
+    return () => {
+      window.removeEventListener(THEME_EVENT, onExternalTheme);
+      window.removeEventListener(LANGUAGE_EVENT, onExternalLanguage);
+    };
+  }, []);
+
   // A language change recreates loadSettings; it must not close an ongoing test.
   useEffect(() => () => eventSourceRef.current?.close(), []);
 
@@ -1042,6 +1091,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [liveUi, registerExtension],
   );
   stageUiRef.current = stageUi;
+  // Compare with the new live baseline, not the render preceding the event.
+  // The revision also handles selecting a menu value already in the baseline.
+  useEffect(() => {
+    const patch = externalUiPatchRef.current;
+    if (!patch) return;
+    externalUiPatchRef.current = null;
+    if (pendingRef.current.has("ui")) void stageUi(patch);
+  }, [externalUiRevision, stageUi]);
   const updateTheme = useCallback(async (theme: UiSettings["theme"]) => stageUi({ theme }), [stageUi],
   );
   const updateLanguage = useCallback(async (language: UiSettings["language"]) => stageUi({ language }), [stageUi],

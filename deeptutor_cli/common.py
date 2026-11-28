@@ -38,6 +38,10 @@ _LLM_ROUND_CALL_KINDS = frozenset({"agent_loop_round", "llm_final_response"})
 def _utf8_aware_terminal_input(stream: TextIO) -> Iterator[None]:
     """Make canonical-mode erase treat UTF-8 input as complete characters."""
 
+    if sys.platform == "win32":
+        yield
+        return
+
     try:
         import termios
     except ImportError:

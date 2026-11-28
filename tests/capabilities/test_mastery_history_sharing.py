@@ -43,6 +43,7 @@ def large_state():
 def expand_shared(messages):
     """Every reference must resolve directly to a full inline value."""
     payloads = {}
+    snapshots = 0
     for message in messages:
         if message.get("role") == "tool":
             try:
@@ -50,7 +51,8 @@ def expand_shared(messages):
             except ValueError:
                 pass
         if message.get("_context_snapshot") == "mastery_status_snapshot":
-            payloads[("snapshot", "mastery_status_snapshot")] = json.loads(
+            snapshots += 1
+            payloads[("snapshot", snapshots)] = json.loads(
                 message["content"][len(_MASTERY_SNAPSHOT_NOTICE) :]
             )
 
@@ -58,8 +60,10 @@ def expand_shared(messages):
         if isinstance(value, dict):
             if set(value) == {"$mastery_same_value"}:
                 ref = value["$mastery_same_value"]
-                kind = "snapshot" if "snapshot" in ref else "tool_call_id"
-                target = payloads[(kind, ref[kind])]
+                if "snapshot" in ref:
+                    target = payloads[("snapshot", ref.get("occurrence", 1))]
+                else:
+                    target = payloads[("tool_call_id", ref["tool_call_id"])]
                 for part in ref["pointer"].split("/")[1:]:
                     key = part.replace("~1", "/").replace("~0", "~")
                     target = target[int(key)] if isinstance(target, list) else target[key]
@@ -127,6 +131,49 @@ def test_adding_a_current_snapshot_preserves_the_projected_history_prefix() -> N
     assert projected[: len(history)] == previous
     assert projected[-1] == snapshot
     assert expand_shared(projected) == expand_shared([*history, snapshot])
+
+
+def status_snapshot(payload):
+    return {
+        "role": "user",
+        "content": _MASTERY_SNAPSHOT_NOTICE + json.dumps(payload),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+
+
+def test_replayed_status_snapshots_keep_earlier_turns_byte_identical() -> None:
+    """Issue #2922: replay keeps sent snapshots, so a changed status adds a second one.
+
+    Projection of an earlier turn must not depend on snapshots appended later,
+    otherwise every status change rewrites the cached request prefix.
+    """
+    first_map = large_state()
+    second_map = deepcopy(first_map)
+    second_map["modules"][1]["objective"] = "The learner now explains the example alone. " * 90
+    turn_one = [
+        status_snapshot({"path_id": "p", "map": first_map}),
+        {"role": "user", "content": "Start the lesson."},
+        *exchange("s1", "mastery_status", {"path_id": "p", "map": first_map}),
+        {"role": "assistant", "content": "Lesson one."},
+    ]
+    previous = deepcopy(turn_one)
+    share_mastery_history(previous, len(previous))
+    assert "$mastery_same_value" in previous[3]["content"]
+
+    turn_two = [
+        status_snapshot({"path_id": "p", "map": second_map}),
+        {"role": "user", "content": "Continue."},
+        *exchange("s2", "mastery_status", {"path_id": "p", "map": second_map}),
+    ]
+    messages = [*turn_one, *turn_two]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+
+    assert projected[: len(previous)] == previous
+    assert projected[len(turn_one)] == messages[len(turn_one)]
+    reference = json.loads(projected[-1]["content"])["map"]["$mastery_same_value"]
+    assert reference == {"snapshot": "mastery_status_snapshot", "occurrence": 2, "pointer": "/map"}
+    assert expand_shared(projected) == expand_shared(messages)
 
 
 def test_current_snapshot_and_current_tool_results_are_full_anchors_only():
@@ -232,3 +279,98 @@ def test_current_round_projection_is_disposable_and_preserves_changed_state():
     assert expand_shared(projected) == expand_shared(original)
     assert projected[1] == original[1]
     assert "$mastery_same_value" in projected[3]["content"]
+
+
+def test_short_header_snapshots_are_still_shared_anchors() -> None:
+    """Snapshots now start with only their first line; older sessions keep the long notice."""
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER, snapshot_payload_text
+
+    payload = {"path_id": "p", "map": large_state()}
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(payload),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("later", "mastery_status", payload)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+    assert projected[0] == snapshot
+    reference = json.loads(projected[-1]["content"])["map"]["$mastery_same_value"]
+    assert reference == {"snapshot": "mastery_status_snapshot", "pointer": "/map"}
+    assert json.loads(snapshot_payload_text(snapshot["content"])) == payload
+    legacy = _MASTERY_SNAPSHOT_NOTICE + json.dumps(payload)
+    assert json.loads(snapshot_payload_text(legacy)) == payload
+    assert snapshot_payload_text("[Runtime context: workspace]\n{}") is None
+
+
+def _status_with_defaults():
+    points = [
+        {
+            "id": f"kp{n}",
+            "name": f"Point {n}: derivatives of composed functions",
+            "type": "procedure",
+            "prerequisite_ids": [],
+            "topic_source_ids": [],
+            "status": "learning" if n == 0 else "new",
+            "mastery": 0.4 if n == 0 else 0,
+            "mastery_source": "",
+            "override_note": "",
+            "deferred": False,
+        }
+        for n in range(12)
+    ]
+    return {
+        "path_id": "p",
+        "map": {"name": "Derivatives", "modules": [{"id": "m1", "knowledge_points": points}]},
+        "learning_stages": {f"kp{n}": "not_yet_covered" for n in range(12)},
+    }
+
+
+def test_a_full_status_result_shares_the_map_a_compact_snapshot_already_sent():
+    """The snapshot leaves defaults out; a later full read must still reuse it."""
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER, STATE_REFERENCE_NOTICE
+    from deeptutor.capabilities.mastery.snapshot import compact_status
+
+    full = _status_with_defaults()
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(compact_status(full)),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("read", "mastery_status", full)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+
+    assert projected[0] == snapshot
+    shared = json.loads(projected[-1]["content"])
+    assert shared["map"] == {
+        "$mastery_same_value": {
+            "snapshot": "mastery_status_snapshot",
+            "pointer": "/map",
+            "defaults_omitted": True,
+        }
+    }
+    assert len(projected[-1]["content"]) < len(messages[-1]["content"]) / 2
+    # The reference resolves to the compact map, which is the full one less defaults.
+    sent = json.loads(snapshot["content"][len(SNAPSHOT_HEADER) :])
+    assert sent["map"] == compact_status(full)["map"]
+    assert '"defaults_omitted": true' in STATE_REFERENCE_NOTICE
+
+
+def test_a_changed_map_is_not_shared_with_an_older_compact_snapshot():
+    from deeptutor.capabilities.mastery.history import SNAPSHOT_HEADER
+    from deeptutor.capabilities.mastery.snapshot import compact_status
+
+    before = _status_with_defaults()
+    after = deepcopy(before)
+    after["map"]["modules"][0]["knowledge_points"][3]["status"] = "learning"
+    snapshot = {
+        "role": "user",
+        "content": SNAPSHOT_HEADER + json.dumps(compact_status(before)),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    messages = [snapshot, *exchange("read", "mastery_status", after)]
+    projected = deepcopy(messages)
+    share_mastery_history(projected, len(projected))
+
+    assert json.loads(projected[-1]["content"])["map"] == after["map"]

@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from deeptutor.runtime.home import get_runtime_home
+
 from ..services.config.loader import get_runtime_settings_dir
 
 
@@ -33,7 +35,7 @@ class ConfigManager:
         if getattr(self, "_initialized", False):
             return
 
-        self.project_root = project_root or Path(__file__).parent.parent.parent
+        self.project_root = project_root or get_runtime_home()
         self.config_path = get_runtime_settings_dir(self.project_root) / "main.yaml"
         self._config_cache: Dict[str, Any] = {}
         self._last_mtime: float = 0.0

@@ -1560,6 +1560,7 @@ def _carry_dir(source: Path, target: Path) -> None:
 
 
 _MAX_FILENAME_CHARS = 180
+_MAX_FILENAME_BYTES = 255
 
 
 def _safe_filename(name: str, *, fallback: str) -> str:
@@ -1574,7 +1575,7 @@ def _safe_filename(name: str, *, fallback: str) -> str:
     if os.altsep:
         base = base.replace(os.altsep, "_")
     base = base.strip(". ") or Path(fallback).name or "material"
-    if len(base) <= _MAX_FILENAME_CHARS:
+    if len(base) <= _MAX_FILENAME_CHARS and len(base.encode("utf-8")) <= _MAX_FILENAME_BYTES:
         return base
     # Cut the stem, not the extension: the stored original is found again by
     # its suffix (a PDF is only re-extracted when the raw file ends in .pdf).
@@ -1582,6 +1583,8 @@ def _safe_filename(name: str, *, fallback: str) -> str:
     if len(suffix) > 16:
         suffix = ""
     stem = base[: len(base) - len(suffix)][: _MAX_FILENAME_CHARS - len(suffix)]
+    byte_budget = _MAX_FILENAME_BYTES - len(suffix.encode("utf-8"))
+    stem = stem.encode("utf-8")[:byte_budget].decode("utf-8", errors="ignore")
     return stem.rstrip(". ") + suffix
 
 

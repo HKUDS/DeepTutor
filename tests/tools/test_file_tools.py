@@ -58,3 +58,19 @@ async def test_file_tools_block_paths_outside_workspace(tmp_path) -> None:
     result = await ReadFileTool().execute(path=str(outside), **kwargs)
     assert not result.success
     assert "outside the turn workspace" in result.content
+
+
+@pytest.mark.asyncio
+async def test_read_file_char_budget_points_to_the_first_unseen_line(tmp_path) -> None:
+    kwargs, workspace = _ctx(tmp_path)
+    lines = [f"{i:04d} " + "x" * 95 for i in range(1, 2001)]
+    (workspace / "big.txt").write_text("\n".join(lines), encoding="utf-8")
+
+    read = await ReadFileTool().execute(path="big.txt", **kwargs)
+
+    shown = [line for line in read.content.splitlines() if "| " in line]
+    last = int(shown[-1].split("|", 1)[0])
+    assert last < 2000
+    assert shown[-1].endswith(lines[last - 1])
+    assert f"use offset={last + 1}" in read.content
+    assert len(read.content) <= ReadFileTool._MAX_CHARS + 200

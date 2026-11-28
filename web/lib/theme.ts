@@ -12,8 +12,22 @@ export type Theme = "light" | "dark" | "glass" | "snow";
 export type ThemePreference = Theme | "system";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
+export const THEME_EVENT = "deeptutor:theme";
 
 const EXPLICIT_THEMES = new Set<string>(["light", "dark", "glass", "snow"]);
+
+let themeEventAttached = false;
+
+function attachThemeEventListener(): void {
+  if (themeEventAttached || typeof window === "undefined") return;
+  themeEventAttached = true;
+  window.addEventListener(THEME_EVENT, (event: Event) => {
+    const next = (event as CustomEvent<{ theme?: unknown }>).detail?.theme;
+    if (next === "system" || (typeof next === "string" && EXPLICIT_THEMES.has(next))) {
+      setTheme(next as ThemePreference);
+    }
+  });
+}
 
 type ThemeChangeListener = (theme: Theme) => void;
 const themeListeners = new Set<ThemeChangeListener>();
@@ -169,6 +183,7 @@ function syncSystemThemeSubscription(preference: ThemePreference | null): void {
  * A missing value follows the OS and is not written back.
  */
 export function initializeTheme(): Theme {
+  attachThemeEventListener();
   const preference = getStoredThemePreference();
   const resolved = resolveTheme(preference);
   applyThemeToDocument(resolved);

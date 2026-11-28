@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib
 from pathlib import Path
 
@@ -154,6 +155,32 @@ def test_workspace_item_endpoint_serves_the_published_snapshot(workspace_api) ->
     assert "inline" in response.headers["content-disposition"]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["content-security-policy"].startswith("sandbox;")
+
+
+@pytest.mark.parametrize("mime_type", ["text/markdown; charset=utf-8", "text/x-markdown", ""])
+def test_workspace_markdown_browser_view_uses_the_filename_and_normalized_mime(
+    workspace_api, monkeypatch, mime_type
+):
+    client, service = workspace_api
+    binding = service.current_binding(ensure_output=True)
+    source = binding.root / "notes.md"
+    source.write_text("# Snapshot", encoding="utf-8")
+    item = service.publish(binding, [{"path": "notes.md"}])[0]
+    blob, _ = service.resolve_published_item(item.workspace_id, item.workspace_item_id)
+    assert not blob.suffix
+    monkeypatch.setattr(
+        service, "resolve_published_item", lambda *_: (blob, replace(item, mime_type=mime_type))
+    )
+
+    metadata = client.head(item.url)
+    assert metadata.status_code == 200
+    assert 'filename="notes.md"' in metadata.headers["content-disposition"]
+    assert metadata.headers["content-type"].startswith(mime_type or "text/markdown")
+
+    browser_view = client.get(item.url, params={"view": "browser"})
+    assert browser_view.status_code == 200
+    assert browser_view.headers["content-type"].startswith("text/plain")
+    assert browser_view.text == "# Snapshot"
 
 
 @pytest.fixture

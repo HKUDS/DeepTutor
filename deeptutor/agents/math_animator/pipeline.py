@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable
 
 from deeptutor.core.context import Attachment
+from deeptutor.services.config.capabilities_settings import get_math_animator_params
 from deeptutor.services.model_selection.task_agent import task_model_agent
 
 from .agents import (
@@ -236,9 +237,13 @@ class MathAnimatorPipeline:
 
             review_callback = _geometry_callback
 
+        # Read the repair deadline once so an in-flight render keeps the value it
+        # started with; this single site covers every caller (#2767).
+        repair_timeout_seconds = get_math_animator_params()["repair_timeout"]
         retry_manager = CodeRetryManager(
             renderer=renderer,
             max_retries=4,
+            repair_timeout_seconds=repair_timeout_seconds,
             on_retry=on_retry,
             on_status=on_retry_status,
             review_callback=review_callback,

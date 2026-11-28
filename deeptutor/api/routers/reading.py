@@ -62,6 +62,7 @@ from deeptutor.reading.knowledge_capture import (
     send_workspace_to_notebook,
 )
 from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
+from deeptutor.reading.store import _safe_filename
 from deeptutor.services.session.workspace_preferences import WORKSPACE_MODE_READING
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -1062,7 +1063,11 @@ async def upload_material(
         filename = filename[: -len(".zip")]
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="dt-reading-"))
-    tmp_path = tmp_dir / Path(filename).name
+    # The temp copy only needs the right suffix; the display name is passed on
+    # separately. A long multilingual name can exceed the 255-byte filename
+    # limit of most Linux filesystems, so it is shortened the same way the
+    # stored original is.
+    tmp_path = tmp_dir / _safe_filename(Path(filename).name, fallback="upload")
     written = 0
     try:
         with tmp_path.open("wb") as sink:

@@ -19,7 +19,13 @@ def test_narrate_falls_back_to_captions_when_speech_fails(monkeypatch) -> None:
     async def broken(text: str, voice: str) -> Clip:
         raise RuntimeError("offline")
 
+    async def broken_settings(text: str) -> Clip:
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(narration, "_settings_provider", lambda: "offline-fixture")
+    monkeypatch.setattr(narration, "speak_with_settings", broken_settings)
     monkeypatch.setattr(narration, "speak", broken)
+    monkeypatch.setattr(narration.importlib.util, "find_spec", lambda name: object())
     cache: dict = {}
     clips = asyncio.run(narration.narrate([NarrationLine("s1", "一句话。")], "zh", cache))
     assert clips["s1"].audio is None and clips["s1"].captions

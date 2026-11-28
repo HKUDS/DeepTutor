@@ -90,9 +90,19 @@ class ReadFileTool(_WorkspaceTool):
                 )
             start = offset - 1
             end = min(start + limit, total)
-            numbered = [f"{start + i + 1}| {line}" for i, line in enumerate(lines[start:end])]
+            # Stop at the last whole line that fits, so the continuation
+            # offset below points at the first line the caller has not seen.
+            numbered: list[str] = []
+            size = 0
+            for number in range(start, end):
+                entry = f"{number + 1}| {lines[number]}"
+                size += len(entry) + 1
+                if numbered and size > self._MAX_CHARS:
+                    break
+                numbered.append(entry)
+            end = start + len(numbered)
             text = "\n".join(numbered)
-            if len(text) > self._MAX_CHARS:
+            if len(text) > self._MAX_CHARS:  # a single line longer than the budget
                 text = text[: self._MAX_CHARS].rstrip() + "\n...[truncated]"
             suffix = (
                 f"\n\n(showing lines {offset}-{end} of {total}; use offset={end + 1} to continue)"

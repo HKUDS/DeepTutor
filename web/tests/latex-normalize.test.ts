@@ -52,6 +52,55 @@ test("bare LaTeX inside a table cell stays inside its cell", () => {
   );
 });
 
+test("bare single-letter scripts in question stems and options render as math (#2805)", () => {
+  const cases = [
+    ["谐振频率 f_0 = 20 MHz，品质因数 Q_0 = 100，通频带 B_{0.707} = 0.4 MHz。",
+      "谐振频率 $f_0$ = 20 MHz，品质因数 $Q_0$ = 100，通频带 $B_{0.707}$ = 0.4 MHz。"],
+    ["R'_L = 0.3125 kΩ，p_2 = 1/4", "$R'_L$ = 0.3125 kΩ，$p_2$ = 1/4"],
+    ["f_0", "$f_0$"],
+    ["a_1 + b_2", "$a_1$ + $b_2$"],
+    ["x^2 + y^{12}", "$x^2$ + $y^{12}$"],
+    ["x_i^2", "$x_i^2$"],
+    ["| B_{0.707} | Q_L |", "| $B_{0.707}$ | $Q_L$ |"],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(hasMarkdownMath(input), true, input);
+    assert.equal(normalizeMathMarkup(input), expected, input);
+    assert.equal(normalizeMathMarkup(expected), expected, input);
+  }
+});
+
+test("bare-script recovery preserves code, paths, links and ordinary identifiers", () => {
+  for (const input of [
+    "user_id report_2026 MAX_LEN snake_case foo_bar_baz",
+    "a_1.txt x^2.png ./a_1 ../a_1 /tmp/a_1 C:\\tmp\\a_1",
+    "https://example.com/a_1?q=x^2#b_2",
+    "[a_1](https://example.com/b_2) ![x^2](images/a_1.png)",
+    "<https://example.com/a_1> <span data-id=\"a_1\">plain</span>",
+    "`f_0` and ``x_i^2``",
+    "```python\nf_0 = x_i ** 2\n```",
+    "~~~text\nf_0 x^2\n~~~",
+    "    f_0 = x_i ** 2",
+    ">     x_1 = 2",
+    "- ```js\n  x_1 = 2\n  ```",
+    "[label][link]\n\n[link]: a_1",
+    '[link]: foo.html "x_1"',
+    "a_1_more foo_a_1 a_12b a__1 a^^2",
+    "éx_1 αx_1 变量x_1 foo:x_1 x_1: value",
+    '{"x_1": 2} call f_0() or obj.x_1',
+    "x_{unfinished x_{a+b} x_{12",
+    "a\\_1",
+  ]) {
+    assert.equal(normalizeMathMarkup(input), input, input);
+    assert.equal(hasMarkdownMath(input), false, input);
+  }
+  const mixed = "f_0, `x_i` and [a_1](https://example.com/b_2), user_id";
+  assert.equal(normalizeMathMarkup(mixed), "$f_0$, `x_i` and [a_1](https://example.com/b_2), user_id");
+  assert.equal(normalizeMathMarkup("@@DTMASKSCRIPT_CODE0@@ f_0"), "@@DTMASKSCRIPT_CODE0@@ $f_0$");
+  assert.equal(normalizeMathMarkup("`$5` and f_0"), "`$5` and $f_0$");
+  assert.equal(normalizeMathMarkup("$x_i$ and f_0"), "$x_i$ and $f_0$");
+});
+
 // ---------------------------------------------------------------------------
 // formulas the model put in a code span
 // ---------------------------------------------------------------------------

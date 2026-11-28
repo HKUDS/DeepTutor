@@ -104,12 +104,17 @@ class BaseAgent(ABC):
             self.model = model or env_llm.model
             self.api_version = api_version or getattr(env_llm, "api_version", None)
             self.binding = binding or getattr(env_llm, "binding", "openai")
+            # Only meaningful for the active model; a model override drops it.
+            self.context_window = (
+                None if model and model != env_llm.model else env_llm.context_window
+            )
         except Exception:
             self.api_key = api_key
             self.base_url = base_url
             self.model = model
             self.api_version = api_version
             self.binding = binding or "openai"
+            self.context_window = None
 
         # Get Agent-specific configuration (if config provided)
         self.agent_config = self.config.get("agents", {}).get(agent_name, {})
@@ -196,6 +201,26 @@ class BaseAgent(ABC):
         """
         return self._agent_params["max_tokens"]
 
+    def get_context_window(self, model: str | None = None) -> int | None:
+        """Configured or detected context window of the model being called.
+
+        ``None`` when unknown or when ``model`` is not the active model, so the
+        output budget is then only capped by the model's known output limit.
+        """
+        window = getattr(self, "context_window", None)
+        if model and model != self.get_model():
+            return None
+        return window
+
+    def get_output_budget(self, model: str | None = None) -> int:
+        """``get_max_tokens()`` as actually sent: capped to fit the model."""
+        from deeptutor.services.llm.output_limits import cap_output_tokens
+
+        model = model or self.get_model()
+        return cap_output_tokens(
+            self.get_max_tokens(), model=model, context_window=self.get_context_window(model)
+        )
+
     def get_max_retries(self) -> int:
         """
         Get maximum retry count.
@@ -223,6 +248,7 @@ class BaseAgent(ABC):
             self.model = llm_config.model
             self.api_version = getattr(llm_config, "api_version", None)
             self.binding = getattr(llm_config, "binding", "openai")
+            self.context_window = llm_config.context_window
             self.logger.debug(
                 f"Config refreshed: model={self.model}, base_url={self.base_url[:30]}..."
                 if self.base_url
@@ -400,7 +426,11 @@ class BaseAgent(ABC):
 
         # Handle token limit for newer OpenAI models
         if max_tokens:
-            kwargs.update(get_token_limit_kwargs(model, max_tokens))
+            kwargs.update(
+                get_token_limit_kwargs(
+                    model, max_tokens, context_window=self.get_context_window(model)
+                )
+            )
 
         if reasoning_effort is not None:
             kwargs["reasoning_effort"] = reasoning_effort
@@ -572,7 +602,11 @@ class BaseAgent(ABC):
 
         # Handle token limit for newer OpenAI models
         if max_tokens:
-            kwargs.update(get_token_limit_kwargs(model, max_tokens))
+            kwargs.update(
+                get_token_limit_kwargs(
+                    model, max_tokens, context_window=self.get_context_window(model)
+                )
+            )
 
         if reasoning_effort is not None:
             kwargs["reasoning_effort"] = reasoning_effort

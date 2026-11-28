@@ -40,6 +40,7 @@ class BuildResult:
     stage: str
     errors: list[str] = field(default_factory=list)
     frames: list[dict] = field(default_factory=list)
+    scene_lengths: list[int] | None = None
 
 
 def runtime_dir() -> Path:
@@ -159,6 +160,7 @@ async def build_lesson(lesson: Path, bundle: Path) -> BuildResult:
         stage=str(data.get("stage", "")),
         errors=[str(e) for e in data.get("errors") or []],
         frames=list(data.get("frames") or []),
+        scene_lengths=data.get("sceneLengths"),
     )
 
 

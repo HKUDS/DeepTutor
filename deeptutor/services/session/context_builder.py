@@ -389,7 +389,7 @@ class ContextBuilder:
             while start < end:
                 middle = (start + end) // 2
                 candidate = [message for group in replay_groups[middle:] for message in group]
-                if _count_projected_model_tokens(candidate) <= recent_budget:
+                if self._recent_history_tokens(candidate) <= recent_budget:
                     end = middle
                 else:
                     start = middle + 1
@@ -412,6 +412,10 @@ class ContextBuilder:
             total += tokens
         cutoff = len(messages) - len(selected)
         return messages[:cutoff], selected
+
+    def _recent_history_tokens(self, replayed: list[dict[str, Any]]) -> int:
+        """Size a replayed tail when choosing how much history stays exact."""
+        return _count_projected_model_tokens(replayed)
 
     def _model_tokens(
         self,

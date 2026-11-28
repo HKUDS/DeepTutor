@@ -2,7 +2,7 @@
 
 [Handbook](README.md) · [Related guide](CONTAINERIZATION.md)
 
-DeepTutor can screen HTTP requests inside the backend with [fastapi-guard](https://github.com/Guard-Core/fastapi-guard). It is **off by default**. When it is off, the package is never imported and the middleware stack is unchanged. Like any new setting, `system.json` gains the disabled `security_guard` block with its defaults on the next load, and a malformed block is replaced by the defaults.
+DeepTutor can screen HTTP requests inside the backend with [fastapi-guard](https://github.com/Guard-Core/fastapi-guard). It is **off by default**. When it is off, the package is never imported and the middleware stack is unchanged. Like any new setting, `system.json` gains the disabled `security_guard` block with its defaults on the next load, and a malformed block is replaced by the defaults. That block-level rule only applies while the document parses: a `system.json` that cannot be parsed at all is left untouched, the defaults apply for that process, and the parse error is logged — so a typo does not silently reset `security_guard.enabled`.
 
 The guard is an application-layer control. It complements a reverse proxy, WAF or firewall at the edge, and it keeps working when the backend port is reached without one (for example a published `:8001`, `deeptutor serve` on a LAN, or a tunnel).
 

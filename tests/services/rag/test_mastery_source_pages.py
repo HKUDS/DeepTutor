@@ -24,6 +24,9 @@ from deeptutor.learning.models import (
 )
 from deeptutor.learning.service import LearningService, MasteryInteractionError
 from deeptutor.learning.storage import LearningStore
+from deeptutor.services.rag.index_versioning import (
+    resolve_storage_dir_for_read as real_resolve_storage_dir_for_read,
+)
 from deeptutor.services.rag.source_pages import (
     SourcePageError,
     SourceRef,
@@ -748,6 +751,22 @@ def test_useful_partial_lesson_is_cached_but_not_assessment_permission(material,
     assert not progress.mastery_levels and not progress.quiz_attempts
 
 
+def test_incomplete_objective_packet_does_not_suggest_focusless_repreparation(
+    material, monkeypatch
+):
+    _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert evidence["coverage"]["scope"] == "objective"
+    assert evidence["coverage"]["complete"] is False
+
+    with pytest.raises(lessons.LessonUnavailable, match="assessment") as exc:
+        lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+
+    message = str(exc.value)
+    assert "without a focus" not in message
+    assert "later mechanism" in message
+
+
 def test_final_repair_gap_preserves_already_inspected_useful_sources(material, monkeypatch):
     calls = _install_preparation(
         material, monkeypatch, rankings=[_partial_selection(repair=True), _partial_selection()]
@@ -1014,6 +1033,40 @@ def test_mastery_assess_succeeds_after_focus_replaces_the_teaching_packet(materi
     )
     assert receipt["result"] == "correct"
     assert graded.qualitative_mastery["kp"] is True
+
+
+def test_scope_rejection_names_the_recovery_action(material, monkeypatch):
+    """#2848: a focus-scoped packet must tell the tutor how to get gradable evidence.
+
+    Refusing the packet is intended; leaving the tutor to retry the same
+    focused preparation forever is not.
+    """
+    _install_preparation(material, monkeypatch)
+    asyncio.run(
+        lessons.prepare_lesson(
+            material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+        )
+    )
+    with pytest.raises(lessons.LessonUnavailable, match="without a focus") as exc:
+        lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+    assert "mastery_prepare_lesson" in str(exc.value)
+
+
+def test_objective_preparation_after_a_refused_assessment_clears_the_gate(material, monkeypatch):
+    """The recovery the rejection names is actually available to the tutor."""
+    _install_preparation(material, monkeypatch)
+    asyncio.run(
+        lessons.prepare_lesson(
+            material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+        )
+    )
+    with pytest.raises(lessons.LessonUnavailable):
+        lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+
+    objective = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert objective["coverage"]["scope"] == "objective"
+    snapshot = lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+    assert snapshot["id"] == objective["id"]
 
 
 @pytest.mark.parametrize(
@@ -1499,3 +1552,42 @@ def test_preparation_instructions_travel_in_actual_messages(material, monkeypatc
     assert asyncio.run(
         lessons._ask(material.config, "Return only JSON", {"objective": "membrane"})
     ) == {"queries": ["membrane"]}
+
+
+@pytest.mark.parametrize("provider", ["pageindex", "lightrag"])
+def test_ready_index_of_a_provider_signed_version_is_not_rejected(material, monkeypatch, provider):
+    """#2895: PageIndex, GraphRAG and LightRAG versions carry a provider signature,
+    never the global embedding signature, so their ready index must be read."""
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        real_resolve_storage_dir_for_read,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.embedding_signature.signature_from_embedding_config",
+        lambda: SimpleNamespace(hash=lambda: "global-embedding"),
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb_metadata",
+        lambda kb: {"rag_provider": provider} if kb == "selected" else None,
+    )
+    (material.storage / "meta.json").write_text(
+        json.dumps({"version": "version-1", "provider": provider, "signature": provider}),
+        encoding="utf-8",
+    )
+    if provider == "pageindex":
+        from deeptutor.services.rag.pipelines.pageindex import storage as pageindex_storage
+
+        manifest = pageindex_storage.read_manifest(material.storage)
+        pageindex_storage.upsert_doc(manifest, "lesson.pdf", "doc-1")
+        pageindex_storage.write_manifest(material.storage, manifest)
+    else:
+        (material.storage / "kv_store_doc_status.json").write_text(
+            json.dumps({"doc-1": {"status": "processed", "chunks_list": ["chunk-1"]}}),
+            encoding="utf-8",
+        )
+
+    topic = material.store.get_topic("path")
+    progress = material.store.load("path")
+    _, snapshots = lessons.scope_snapshot(topic, progress, "kp")
+
+    assert "selected" in snapshots

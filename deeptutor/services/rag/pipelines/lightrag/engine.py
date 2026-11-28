@@ -489,11 +489,15 @@ async def query_with_sources(
 ) -> tuple[str, list[dict[str, Any]]]:
     from lightrag import QueryParam
 
+    query_kwargs = query_kwargs_from_settings()
+    if not callable(getattr(rag, "rerank_model_func", None)):
+        # LightRAG reranks by default and warns on every query without a model.
+        query_kwargs["enable_rerank"] = False
     param = QueryParam(
         mode=normalize_mode(mode) or DEFAULT_MODE,
         stream=False,
         include_references=True,
-        **query_kwargs_from_settings(),
+        **query_kwargs,
     )
     result = await rag.aquery_llm(question, param=param)
     if not isinstance(result, dict):

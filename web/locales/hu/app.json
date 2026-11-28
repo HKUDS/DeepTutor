@@ -1964,6 +1964,8 @@
   "Close tab": "Lap bezárása",
   "Close viewer": "Megjelenítő bezárása",
   "Back to conversation": "Vissza a beszélgetéshez",
+  "This file is unavailable.": "Ez a fájl nem érhető el.",
+  "Conversation snapshot": "A beszélgetés pillanatképe",
   "Loading {{host}}…": "{{host}} betöltése…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Sok oldal biztonsági okból megtagadja a beágyazást. Ha az alábbi oldal üresen marad, használja a(z) „Megnyitás böngészőben\" lehetőséget.",
   "Open URL": "URL megnyitása",

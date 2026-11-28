@@ -46,6 +46,22 @@ def test_writer_agent_starts_a_conversation_with_the_kit(monkeypatch: pytest.Mon
     assert "Explain a cobweb plot" in user["content"]
 
 
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_writer_instructs_fixed_scene_contract(
+    monkeypatch: pytest.MonkeyPatch, language: str
+) -> None:
+    monkeypatch.setattr(
+        "deeptutor.agents.base_agent.get_agent_params",
+        lambda _: {"temperature": 0.7, "max_tokens": 16000},
+    )
+    agent = LessonWriterAgent(api_key="test", base_url="http://localhost", language=language)
+    agent.start(user_input="Question", history="")
+    prompt = agent._messages[0]["content"]
+    assert 'sceneContract: "fixed-v1"' in prompt
+    assert "export const VIDEO_LESSON_SCENES: Scene[]" in prompt
+    assert "lessonLength(VIDEO_LESSON_SCENES)" in prompt
+
+
 def test_parse_draft_reads_the_narration() -> None:
     reply = (
         '```json\n{"title": "t", "narration": [{"id": "s1", "text": "第一句。"}, {"id": "", "text": "x"}]}\n```\n'

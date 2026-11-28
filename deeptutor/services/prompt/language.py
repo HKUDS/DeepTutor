@@ -63,6 +63,23 @@ _OVERRIDE_EN = (
 )
 
 
+# The language above is the one the reader is taught in, not the subject they
+# are taught. Without this, "quiz stems and options strictly in Chinese" turns
+# an English antonyms lesson into a lesson on Chinese antonyms (#2933).
+_SUBJECT_LANGUAGE_ZH = (
+    "这条要求管的是讲解所用的语言，而不是所学的内容：如果所学的科目本身就是一门语言"
+    "（例如英语词汇、反义词、语法），那门语言的单词、例句和练习题目要保留原语言，"
+    "只用上述语言讲解它们，不要换成上述语言里的同类内容。"
+)
+_SUBJECT_LANGUAGE_EN = (
+    " This sets the language you explain in, not the subject: when the subject "
+    "being studied is itself a language (for example English vocabulary, "
+    "antonyms or grammar), keep that language's words, sentences and exercise "
+    "items in it and explain them in the language above; never substitute the "
+    "equivalent material of the language above."
+)
+
+
 def language_directive(language: str | None, *, allow_user_override: bool = False) -> str:
     """Return a reader-facing language instruction for prompts.
 
@@ -86,6 +103,7 @@ def language_directive(language: str | None, *, allow_user_override: bool = Fals
             "题干、选项等），即使参考资料、JSON 字段名或英文术语出现在 prompt 中也"
             "不得切换语言；保留必要的专有名词原文（如人名、产品名、公式中的变量符号"
             f"等）即可，其余一律使用{label}。"
+            f"{_SUBJECT_LANGUAGE_ZH}"
         )
         return f"{body} {_OVERRIDE_ZH}" if allow_user_override else body
     if code == "en":
@@ -96,6 +114,7 @@ def language_directive(language: str | None, *, allow_user_override: bool = Fals
             "JSON keys, or examples in this prompt are in another language. "
             "Keep proper nouns (people, products, formula symbols) in their "
             "original form."
+            f"{_SUBJECT_LANGUAGE_EN}"
         )
         return f"{body} {_OVERRIDE_EN}" if allow_user_override else body
     body = (
@@ -103,6 +122,7 @@ def language_directive(language: str | None, *, allow_user_override: bool = Fals
         "Do NOT switch languages even if the source material, JSON keys, or "
         "examples in this prompt are in a different language. Keep proper "
         "nouns (people, products, formula symbols) in their original form."
+        f"{_SUBJECT_LANGUAGE_EN}"
     )
     return f"{body} {_OVERRIDE_EN}" if allow_user_override else body
 

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+import openai
 import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
@@ -24,7 +25,11 @@ from deeptutor.core.trace import ANSWER_BEARING_CALL_KINDS
 from deeptutor.learning.models import KnowledgePoint, LearningModule, LearningProgress
 from deeptutor.learning.storage import LearningStore
 from deeptutor.runtime.stream_bus import StreamBus
-from deeptutor.services.llm import LLMProviderTransportError, LLMReasoningBudgetExhausted
+from deeptutor.services.llm import (
+    LLMProviderError,
+    LLMProviderTransportError,
+    LLMReasoningBudgetExhausted,
+)
 from deeptutor.services.llm.provider_core.openai_responses import convert_messages
 
 
@@ -3294,6 +3299,118 @@ async def test_forced_finish_transport_failure_remains_structured(
     assert raised.value.error_code == "provider_transport"
     assert raised.value.retryable is True
     assert raised.value.partial_response is False
+
+
+@pytest.mark.asyncio
+async def test_forced_finish_provider_error_propagates_instead_of_empty_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-transport provider errors in forced finish must not become empty success."""
+
+    class _ToolThenProviderErrorClient:
+        def __init__(self) -> None:
+            self.call_count = 0
+            parent = self
+
+            class _Completions:
+                async def create(self, **kwargs):
+                    parent.call_count += 1
+                    if parent.call_count == 1:
+                        return _async_llm_stream(
+                            [
+                                _llm_chunk(
+                                    tool_calls=[
+                                        {
+                                            "id": "call-1",
+                                            "name": "web_search",
+                                            "arguments": json.dumps({"query": "q"}),
+                                        }
+                                    ]
+                                )
+                            ]
+                        )
+                    raise LLMProviderError("Error: unknown_parameter input[15].async_")
+
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    client = _ToolThenProviderErrorClient()
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    context = UnifiedContext(session_id="s1", user_message="Look up", enabled_tools=["web_search"])
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    with pytest.raises(LLMProviderError, match="unknown_parameter"):
+        await pipeline.run(context, bus)
+    await bus.close()
+    await consumer
+
+    assert client.call_count == 3
+    assert "useful response" not in _answer_text(events).lower()
+    assert context.runtime.model_turn is not None
+    assert not any(
+        "useful response" in str(msg.get("content") or "").lower()
+        for msg in context.runtime.model_turn["messages"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_forced_finish_openai_api_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct OpenAI SDK APIError during forced finish must propagate."""
+
+    class _ToolThenBadRequestClient:
+        def __init__(self) -> None:
+            self.call_count = 0
+            parent = self
+
+            class _Completions:
+                async def create(self, **kwargs):
+                    parent.call_count += 1
+                    if parent.call_count == 1:
+                        return _async_llm_stream(
+                            [
+                                _llm_chunk(
+                                    tool_calls=[
+                                        {
+                                            "id": "call-1",
+                                            "name": "web_search",
+                                            "arguments": json.dumps({"query": "q"}),
+                                        }
+                                    ]
+                                )
+                            ]
+                        )
+                    req = httpx.Request("POST", "https://api.example.com/v1/responses")
+                    resp = httpx.Response(400, request=req)
+                    raise openai.BadRequestError(
+                        "invalid_request_error: malformed input", response=resp, body={}
+                    )
+
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    client = _ToolThenBadRequestClient()
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    bus = StreamBus()
+    _events, consumer = await _collect_bus_events(bus)
+    with pytest.raises(openai.BadRequestError):
+        await pipeline.run(
+            UnifiedContext(session_id="s1", user_message="Look up", enabled_tools=["web_search"]),
+            bus,
+        )
+    await bus.close()
+    await consumer
+
+    assert client.call_count == 3
 
 
 @pytest.mark.asyncio
