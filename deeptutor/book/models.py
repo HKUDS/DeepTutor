@@ -474,6 +474,18 @@ class Page(BaseModel):
         return None
 
 
+def pages_in_reading_order(pages: list[Page], spine: Spine | None) -> list[Page]:
+    """Follow the saved outline, with page order as a fallback for unlisted pages."""
+    positions = {
+        page_id: (chapter_index, section_index)
+        for chapter_index, chapter in enumerate(spine.chapters if spine else [])
+        for section_index, page_id in enumerate(chapter.page_ids)
+    }
+    return sorted(
+        pages, key=lambda page: (*positions.get(page.id, (page.order, 100000)), page.created_at)
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 5: Progress
 # ─────────────────────────────────────────────────────────────────────────────
