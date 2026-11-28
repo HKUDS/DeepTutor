@@ -162,6 +162,17 @@ import {
   quoteText,
   type QuotePendingAttachment,
 } from "@/lib/quote-attachments";
+import {
+  InlineAnswersProvider,
+  inlineAnswerKey,
+  type InlineAnswer,
+} from "@/features/chat/inline-answers/context";
+import {
+  answerAttachment,
+  readAnswerAttachment,
+  type AnswerAttachmentPayload,
+} from "@/features/chat/inline-answers/answer-attachment";
+import "@/features/chat/inline-answers/inline-answers.css";
 import type { SideChatResponder } from "@/lib/side-chat";
 import QueuedMessages from "@/features/chat/components/QueuedMessages";
 import SelectionActions, {
@@ -1662,6 +1673,50 @@ export default function ChatWorkspace() {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  // Answers attached from an inline card. Sent messages win until the learner
+  // attaches a fresher answer to the next draft.
+  const inlineAnswers = useMemo(() => {
+    const attached = new Map<string, InlineAnswer>();
+    for (const message of state.messages) {
+      for (const attachment of message.attachments ?? []) {
+        const payload = readAnswerAttachment(attachment);
+        if (!payload) continue;
+        attached.set(inlineAnswerKey(payload.question_id, payload.source_message_id), {
+          ...payload,
+          messageId: message.id,
+        });
+      }
+    }
+    for (const attachment of attachments) {
+      const payload = readAnswerAttachment(attachment);
+      if (!payload) continue;
+      attached.set(inlineAnswerKey(payload.question_id, payload.source_message_id), {
+        ...payload,
+        messageId: undefined,
+      });
+    }
+    return attached;
+  }, [state.messages, attachments]);
+
+  const attachInlineAnswer = useCallback((payload: AnswerAttachmentPayload) => {
+    setAttachments((prev) => {
+      const key = inlineAnswerKey(payload.question_id, payload.source_message_id);
+      const kept = prev.filter((attachment) => {
+        const existing = readAnswerAttachment(attachment);
+        return (
+          !existing ||
+          inlineAnswerKey(existing.question_id, existing.source_message_id) !== key
+        );
+      });
+      return [...kept, answerAttachment(payload)];
+    });
+  }, []);
+
+  const inlineAnswersValue = useMemo(
+    () => ({ attached: inlineAnswers, attach: attachInlineAnswer }),
+    [inlineAnswers, attachInlineAnswer],
+  );
+
   const handlePreviewPendingAttachment = useCallback(
     (index: number) => {
       const a = attachments[index];
@@ -2831,7 +2886,8 @@ export default function ChatWorkspace() {
                       data-chat-column="true"
                       className="mx-auto w-full max-w-[960px] space-y-9 px-6"
                     >
-                      <ChatMessageList
+                      <InlineAnswersProvider value={inlineAnswersValue}>
+                        <ChatMessageList
                         messages={state.messages}
                         isStreaming={state.isStreaming}
                         sessionId={state.sessionId}
@@ -2880,7 +2936,8 @@ export default function ChatWorkspace() {
                         onOpenThread={openMessageThread}
                         onDeleteThread={deleteMessageThread}
                         onDetachThread={detachMessageThread}
-                      />
+                        />
+                      </InlineAnswersProvider>
                       <div
                         ref={messagesEndRef}
                         className="h-px w-full shrink-0"

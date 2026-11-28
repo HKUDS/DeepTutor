@@ -56,6 +56,7 @@ from .._turn_runtime_shared import (
     _TurnExecution,
     _workspace_mode,
 )
+from ..answer_attachments import answer_block, is_answer, read_answers, with_answers
 from ..quote_attachments import is_quote, quote_block, read_quotes, with_quotes
 from .inbox import TurnInbox
 
@@ -382,10 +383,12 @@ class TurnExecutor:
             # back as-is and keep it out of extraction.
             quotes = read_quotes(attachment_records)
             quote_records = [r for r in attachment_records if is_quote(r)]
+            answers = read_answers(attachment_records)
+            answer_records = [r for r in attachment_records if is_answer(r)]
             document_texts, attachment_records = extract_documents_from_records(
-                [r for r in attachment_records if not is_quote(r)]
+                [r for r in attachment_records if not is_quote(r) and not is_answer(r)]
             )
-            attachment_records = quote_records + attachment_records
+            attachment_records = quote_records + answer_records + attachment_records
             pdf_records = [
                 record
                 for record in attachment_records
@@ -685,7 +688,9 @@ class TurnExecutor:
                     language=str(payload.get("language", "en") or "en"),
                 )
                 source_manifest_text, source_index = render_manifest(inventory)
-                effective_user_message = with_quotes(raw_user_content, quotes)
+                effective_user_message = with_answers(
+                    with_quotes(raw_user_content, quotes), answers
+                )
             else:
                 if notebook_references:
                     referenced_records = get_notebook_manager().get_records_by_references(
@@ -795,6 +800,8 @@ class TurnExecutor:
                 context_parts: list[str] = []
                 if quotes:
                     context_parts.append(quote_block(quotes))
+                if answers:
+                    context_parts.append(answer_block(answers))
                 if document_texts:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:

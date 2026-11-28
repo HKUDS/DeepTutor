@@ -20,6 +20,8 @@ import {
 import { linkifyMediaTimestamps } from "@/lib/reading-media-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
+import { AnswerCard } from "@/features/chat/inline-answers/AnswerCard";
+import { splitAnswerMarkers } from "@/features/chat/inline-answers/markers";
 
 interface AssistantResponseProps {
   content: string;
@@ -37,6 +39,8 @@ interface AssistantResponseProps {
   readingMaterialRevision?: number;
   events?: StreamEvent[];
   language?: string;
+  /** Assistant message id, used to anchor inline answer cards and their chips. */
+  messageId?: number;
 }
 
 function AssistantResponseImpl({
@@ -47,6 +51,7 @@ function AssistantResponseImpl({
   readingMaterialRevision,
   events,
   language,
+  messageId,
 }: AssistantResponseProps) {
   const displayContent = useSmoothStreamText(content, isStreaming);
   // A locator becomes interactive only when this turn's persisted reading-tool
@@ -103,7 +108,9 @@ function AssistantResponseImpl({
   const hasRenderableSegment = useMemo(() => {
     return segments.some((segment) => {
       if (segment.kind === "think") return segment.content.trim().length > 0;
-      return hasVisibleMarkdownContent(segment.content);
+      return splitAnswerMarkers(segment.content).some(
+        (part) => part.type === "answer" || hasVisibleMarkdownContent(part.content),
+      );
     });
   }, [segments]);
 
@@ -141,18 +148,37 @@ function AssistantResponseImpl({
               language,
             );
 
-        if (!hasVisibleMarkdownContent(repairedContent)) {
+        const parts = splitAnswerMarkers(repairedContent);
+        if (
+          !parts.some(
+            (part) =>
+              part.type === "answer" || hasVisibleMarkdownContent(part.content),
+          )
+        ) {
           return <Fragment key={`text-${index}`} />;
         }
 
         return (
-          <MarkdownRenderer
-            key={`text-${index}`}
-            content={repairedContent}
-            variant="prose"
-            learningTextSize={16}
-            className="text-[var(--foreground)]"
-          />
+          <Fragment key={`text-${index}`}>
+            {parts.map((part, partIndex) =>
+              part.type === "answer" ? (
+                <AnswerCard
+                  key={`answer-${index}-${partIndex}-${part.id}`}
+                  messageId={messageId}
+                  questionId={part.id}
+                  disabled={isStreaming || messageId === undefined}
+                />
+              ) : hasVisibleMarkdownContent(part.content) ? (
+                <MarkdownRenderer
+                  key={`text-${index}-${partIndex}`}
+                  content={part.content}
+                  variant="prose"
+                  learningTextSize={16}
+                  className="text-[var(--foreground)]"
+                />
+              ) : null,
+            )}
+          </Fragment>
         );
       })}
     </div>
