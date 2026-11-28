@@ -23,6 +23,12 @@ function resize(width: number) {
 beforeEach(() => {
   contentHeight = 26;
   disconnect.mockClear();
+  // The hook coalesces value-driven measures on rAF; run them inline in tests.
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(0);
+    return 1;
+  });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
   vi.stubGlobal("ResizeObserver", class {
     constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
     observe() {}
