@@ -675,5 +675,6 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "10–3600 seconds. Leave blank for {{default}} seconds. Raise this for slow self-hosted backends.": "10–3600초. 비워 두면 {{default}}초입니다. 셀프 호스팅 백엔드가 느린 경우 이 값을 높이세요."
 }

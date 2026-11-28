@@ -60,6 +60,12 @@ class AsyncTaskVideogenAdapter(BaseVideogenAdapter):
                 resp = await client.post(submit_url, headers=self._headers(config), json=payload)
                 raise_for_provider(resp, "Video task submission")
                 return self._extract_task_id(resp)
+        except httpx.TimeoutException as exc:
+            raise GenerationProviderError(
+                f"Video task submission timed out after {config.request_timeout} s. "
+                "If this backend legitimately needs longer, raise the model's "
+                "request timeout in Settings > Media Generation."
+            ) from exc
         except httpx.HTTPError as exc:
             raise GenerationProviderError(f"Video task submission error: {exc}") from exc
 
@@ -81,6 +87,12 @@ class AsyncTaskVideogenAdapter(BaseVideogenAdapter):
                 raise_for_provider(video_resp, "Video download")
                 content = video_resp.content
                 content_type = video_resp.headers.get("content-type") or "video/mp4"
+        except httpx.TimeoutException as exc:
+            raise GenerationProviderError(
+                f"Video generation request timed out after {config.request_timeout} s. "
+                "If this backend legitimately needs longer, raise the model's "
+                "request timeout in Settings > Media Generation."
+            ) from exc
         except httpx.HTTPError as exc:
             raise GenerationProviderError(f"Video generation request error: {exc}") from exc
         if not content:

@@ -20,6 +20,34 @@ import httpx
 AUTH_BEARER = "bearer"  # Authorization: Bearer <key>  (OpenAI, Volcengine, gateways)
 AUTH_API_KEY_HEADER = "api_key_header"  # api-key: <key>  (Azure OpenAI)
 
+# Defaults for the per-request HTTP timeout of generation calls. Each can be
+# overridden per model through the catalog field ``request_timeout`` (same
+# convention as the voice services), bounded by these bounds.
+DEFAULT_IMAGEGEN_REQUEST_TIMEOUT = 120
+DEFAULT_VIDEOGEN_REQUEST_TIMEOUT = 60
+GENERATION_REQUEST_TIMEOUT_MIN = 10
+GENERATION_REQUEST_TIMEOUT_MAX = 3600
+
+
+def resolve_generation_request_timeout(value: object, *, default: int, label: str) -> int:
+    """Resolve a catalog ``request_timeout`` override.
+
+    An unset field keeps the service default; invalid edits fail loudly, and
+    values are bounded so one typo cannot park a request thread indefinitely.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        timeout = int(str(value).strip())
+    except (TypeError, ValueError):
+        timeout = 0
+    if not GENERATION_REQUEST_TIMEOUT_MIN <= timeout <= GENERATION_REQUEST_TIMEOUT_MAX:
+        raise ValueError(
+            f"{label} request timeout must be a whole number between "
+            f"{GENERATION_REQUEST_TIMEOUT_MIN} and {GENERATION_REQUEST_TIMEOUT_MAX} seconds."
+        )
+    return timeout
+
 
 class GenerationProviderError(RuntimeError):
     """Raised when an image/video provider request fails or is misconfigured."""
