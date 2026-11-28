@@ -1,0 +1,6 @@
+# Copy these values from the existing production Worker and uncomment both lines.
+# name = "<existing-worker-name>"
+# compatibility_date = "YYYY-MM-DD"
+
+[assets]
+directory = "./dist"
