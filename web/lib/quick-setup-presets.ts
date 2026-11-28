@@ -1,5 +1,12 @@
 import type { Discovery, ServiceName } from "@/lib/model-catalog-types";
 
+export interface QuickProviderRegion {
+  id: string;
+  labelKey: string;
+  baseUrl: string;
+  keyUrl: string;
+}
+
 export interface QuickProviderPreset {
   id: string;
   nameKey: string;
@@ -10,6 +17,7 @@ export interface QuickProviderPreset {
   badgeKey?: string;
   requiresBaseUrl?: boolean;
   requiresManualModel?: boolean;
+  regions?: QuickProviderRegion[];
 }
 
 export const FEATURED_DOMESTIC_PROVIDERS: QuickProviderPreset[] = [
@@ -71,9 +79,23 @@ export const MORE_PROVIDERS: QuickProviderPreset[] = [
     id: "minimax",
     nameKey: "quickSetup.vendor.minimax.name",
     taglineKey: "quickSetup.vendor.minimax.tagline",
-    keyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+    keyUrl: "https://platform.minimax.io/user-center/basic-information/interface-key",
     keyPlaceholderKey: "quickSetup.placeholder.apiKey",
-    recommendedModels: ["MiniMax-M1", "MiniMax-Text-01"],
+    recommendedModels: ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-M2.7"],
+    regions: [
+      {
+        id: "cn",
+        labelKey: "quickSetup.region.minimax.cn",
+        baseUrl: "https://api.minimaxi.com/v1",
+        keyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+      },
+      {
+        id: "global",
+        labelKey: "quickSetup.region.minimax.global",
+        baseUrl: "https://api.minimax.io/v1",
+        keyUrl: "https://platform.minimax.io/user-center/basic-information/interface-key",
+      },
+    ],
   },
   {
     id: "qianfan",
@@ -162,6 +184,26 @@ export function getQuickProviderGroups(language: string): {
 
 export function findQuickPreset(providerId: string): QuickProviderPreset | undefined {
   return ALL_QUICK_PROVIDERS.find((item) => item.id === providerId);
+}
+
+/**
+ * Resolve the active region for a multi-region provider (e.g. MiniMax CN vs Global).
+ * Defaults to China when the UI language is Chinese and International otherwise,
+ * ensuring the API key console URL and API endpoint always belong to the same region.
+ */
+export function resolveQuickPresetRegion(
+  preset: QuickProviderPreset,
+  selectedRegionId: string | null | undefined,
+  language: string,
+): QuickProviderRegion | null {
+  const regions = preset.regions;
+  if (!regions || regions.length === 0) return null;
+  if (selectedRegionId) {
+    const matched = regions.find((region) => region.id === selectedRegionId);
+    if (matched) return matched;
+  }
+  const preferredId = language.toLowerCase().startsWith("zh") ? "cn" : "global";
+  return regions.find((region) => region.id === preferredId) ?? regions[0];
 }
 
 /** Pick the best default model given discovered models and vendor recommendations. */

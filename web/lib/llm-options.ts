@@ -10,6 +10,7 @@ export interface BackendReasoningControl {
   levels?: string[];
   off_value?: string;
   on_value?: string;
+  default_on?: boolean;
 }
 
 export interface LLMOption extends LLMSelection {
@@ -21,7 +22,7 @@ export interface LLMOption extends LLMSelection {
   provider_label?: string;
   context_window?: number;
   reasoning_effort?: string;
-  supported_reasoning_efforts?: string[];
+  supported_reasoning_efforts?: string[] | null;
   /** Server-resolved reasoning control capability (single source of truth). */
   reasoning_control?: BackendReasoningControl;
   /** The model's own Settings declaration of reasoning support, when present. */

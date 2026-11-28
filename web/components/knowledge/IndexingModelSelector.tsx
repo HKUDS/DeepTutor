@@ -116,7 +116,7 @@ export default function IndexingModelSelector({
   );
   const reasoningOptions = (
     selected
-      ? selected.supported_reasoning_efforts !== undefined
+      ? Array.isArray(selected.supported_reasoning_efforts)
         ? reasoningEffortOptionsFromSupportedLevels(
             selected.supported_reasoning_efforts,
           )

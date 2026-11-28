@@ -6785,5 +6785,10 @@
   "modelGuide.voice.ifUnset": "按需可选，不需要语音交互时可以跳过。",
   "modelGuide.multimodal.purpose": "支持在对话中按需生成教学插图、示意图或短视频。",
   "modelGuide.multimodal.ifUnset": "按需可选，不配置不影响正常文字与文档学习。",
-  "settings.provider.clearApiKey": "清除 API Key"
+  "settings.provider.clearApiKey": "清除 API Key",
+  "quickSetup.step2.regionLabel": "区域接入点",
+  "quickSetup.step2.regionHint": "不同区域的 API Key 不互通，请与获取 Key 的平台保持一致。",
+  "quickSetup.region.minimax.cn": "中国大陆 (api.minimaxi.com)",
+  "quickSetup.region.minimax.global": "国际区 (api.minimax.io)",
+  "quickSetup.success.probeSkipped": "该接口未开放 /models 模型列表探活，已直接保存配置，发起对话即可验证可用性。"
 }

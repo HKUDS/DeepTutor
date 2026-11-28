@@ -6785,5 +6785,10 @@
   "modelGuide.voice.ifUnset": "Optional: configure only when you want voice playback or voice input.",
   "modelGuide.multimodal.purpose": "Generates teaching illustrations, diagrams, and short videos inside chat.",
   "modelGuide.multimodal.ifUnset": "Optional: leaving this unset does not affect normal text or document learning.",
-  "settings.provider.clearApiKey": "Clear API key"
+  "settings.provider.clearApiKey": "Clear API key",
+  "quickSetup.step2.regionLabel": "Region endpoint",
+  "quickSetup.step2.regionHint": "Keys are region-specific and cannot be shared across regions.",
+  "quickSetup.region.minimax.cn": "China (api.minimaxi.com)",
+  "quickSetup.region.minimax.global": "International (api.minimax.io)",
+  "quickSetup.success.probeSkipped": "This endpoint does not expose a /models list, so your configuration was saved directly. Start chatting to verify it works."
 }

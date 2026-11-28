@@ -151,5 +151,6 @@
   "quickSetup.vendor.openai.name": "OpenAI",
   "quickSetup.vendor.anthropic.name": "Anthropic (Claude)",
   "quickSetup.vendor.gemini.name": "Google Gemini",
-  "quickSetup.vendor.openrouter.name": "OpenRouter"
+  "quickSetup.vendor.openrouter.name": "OpenRouter",
+  "quickSetup.region.minimax.cn": "China (api.minimaxi.com)"
 }

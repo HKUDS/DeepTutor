@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
@@ -21,6 +21,7 @@ import {
 
 import ProviderIcon from "@/components/common/ProviderIcon";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { randomUuid } from "@/lib/random-uuid";
 import { flattenModels } from "@/lib/provider-registry";
 import {
@@ -37,6 +38,7 @@ import {
   formatFriendlySetupError,
   getQuickProviderGroups,
   pickRecommendedModel,
+  resolveQuickPresetRegion,
   type FriendlyErrorResult,
   type QuickProviderPreset,
 } from "@/lib/quick-setup-presets";
@@ -51,6 +53,7 @@ type SetupResultState = {
   discoveredModels: string[];
   profileId: string;
   modelEntryId: string;
+  probeSkipped?: boolean;
 };
 
 function hasActiveService(
@@ -92,7 +95,9 @@ export function QuickModelSetupWorkspace() {
     connectionTargets,
     providers,
     catalogEditable,
+    settingsLoading,
     reloadSettings,
+    saveRegistry,
   } = useSettings();
 
   const llmRows = useMemo(() => flattenModels(catalog, ["llm"]), [catalog]);
@@ -131,10 +136,18 @@ export function QuickModelSetupWorkspace() {
     [catalog.services],
   );
 
-  const [showAddForm, setShowAddForm] = useState(!hasConfiguredLlm);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const initializedShowFormRef = useRef(false);
+  useEffect(() => {
+    if (settingsLoading || initializedShowFormRef.current) return;
+    initializedShowFormRef.current = true;
+    setShowAddForm(!hasConfiguredLlm);
+  }, [settingsLoading, hasConfiguredLlm]);
+
   const [selectedVendorId, setSelectedVendorId] = useState<string>(
     () => featuredProviders[0]?.id ?? "deepseek",
   );
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [showMoreVendors, setShowMoreVendors] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -165,32 +178,45 @@ export function QuickModelSetupWorkspace() {
   const selectedPreset: QuickProviderPreset =
     findQuickPreset(selectedVendorId) ?? featuredProviders[0];
 
+  const activeRegion = useMemo(
+    () => resolveQuickPresetRegion(selectedPreset, selectedRegionId, uiLanguage),
+    [selectedPreset, selectedRegionId, uiLanguage],
+  );
+  const activeKeyUrl = activeRegion?.keyUrl ?? selectedPreset.keyUrl;
+
   const selectedTarget = targetByProvider.get(selectedPreset.id);
 
   const resolveDefaultBaseUrl = (vendorId: string): string => {
     if (vendorId === "custom") return customBaseUrl.trim();
+    if (vendorId === selectedPreset.id && activeRegion?.baseUrl) {
+      return activeRegion.baseUrl;
+    }
     const targetUrl = targetByProvider.get(vendorId)?.default_base_url;
     if (targetUrl) return targetUrl;
     const llmOpt = providers.llm?.find((p) => p.value === vendorId);
     return llmOpt?.base_url ?? "";
   };
 
-  const getSyncableCapabilities = (vendorId: string): ServiceName[] => {
-    const target = targetByProvider.get(vendorId);
-    if (!target) return [];
-    return SYNCABLE_EXTRA_SERVICES.map((item) => item.service).filter((svc) =>
-      Boolean(target.services[svc]),
-    );
-  };
+  const getSyncableCapabilities = useCallback(
+    (vendorId: string): ServiceName[] => {
+      const target = targetByProvider.get(vendorId);
+      if (!target) return [];
+      return SYNCABLE_EXTRA_SERVICES.map((item) => item.service).filter((svc) =>
+        Boolean(target.services[svc]),
+      );
+    },
+    [targetByProvider],
+  );
 
   const handleSelectVendor = (vendorId: string) => {
     setSelectedVendorId(vendorId);
+    setSelectedRegionId(null);
     setErrorState(null);
     setShowRawError(false);
     setSetupResult(null);
     setSyncedServices([]);
-    const preset = findQuickPreset(vendorId);
-    setManualModel(preset?.recommendedModels[0] ?? "");
+    setManualModel("");
+    setShowModelPicker(false);
   };
 
   const handleQuickConnect = async (event: React.FormEvent) => {
@@ -236,7 +262,12 @@ export function QuickModelSetupWorkspace() {
         detail?: string;
       };
 
-      if (!probeRes.ok || probePayload.status !== "connected") {
+      const probeAccepted =
+        probeRes.ok &&
+        (probePayload.status === "connected" ||
+          probePayload.status === "unavailable");
+
+      if (!probeAccepted) {
         setErrorState(
           formatFriendlySetupError(
             probePayload,
@@ -248,10 +279,13 @@ export function QuickModelSetupWorkspace() {
         return;
       }
 
-      const discoveredIds = (probePayload.models ?? [])
-        .filter((m) => !m.services?.length || m.services.includes("llm"))
-        .map((m) => m.id.trim())
-        .filter(Boolean);
+      const probeSkipped = probePayload.status === "unavailable";
+      const discoveredIds = probeSkipped
+        ? []
+        : (probePayload.models ?? [])
+            .filter((m) => !m.services?.length || m.services.includes("llm"))
+            .map((m) => m.id.trim())
+            .filter(Boolean);
 
       const chosenModel =
         manualModel.trim() || pickRecommendedModel(selectedPreset, discoveredIds);
@@ -322,17 +356,15 @@ export function QuickModelSetupWorkspace() {
         );
       }
 
+      invalidateLLMOptionsCache();
+
       if (!catalog.services.task?.mode || catalog.services.task.mode === "profiles") {
         const hasExplicitTask = hasActiveService(catalog.services, "task");
         if (!hasExplicitTask) {
-          await apiFetch(apiUrl("/api/settings/apply/registry"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              kind: "task_choice",
-              task: { mode: "inherit" },
-            }),
-          }).catch(() => {});
+          await saveRegistry({
+            kind: "task_choice",
+            task: { mode: "inherit" },
+          });
         }
       }
 
@@ -352,6 +384,7 @@ export function QuickModelSetupWorkspace() {
         discoveredModels: discoveredIds,
         profileId,
         modelEntryId,
+        probeSkipped,
       });
       setApiKey("");
     } catch (error) {
@@ -371,13 +404,16 @@ export function QuickModelSetupWorkspace() {
     connectionId: string,
     connectionName: string,
     servicesToSync: ServiceName[],
+    connectionBaseUrl?: string,
   ) => {
     if (!servicesToSync.length || syncingExtras) return;
     const target = targetByProvider.get(targetProviderId);
     if (!target) return;
 
     setSyncingExtras(true);
+    setErrorState(null);
     const newlySynced: ServiceName[] = [];
+    let firstFailure: string | null = null;
     try {
       for (const svc of servicesToSync) {
         const svcSpec = target.services[svc];
@@ -397,12 +433,18 @@ export function QuickModelSetupWorkspace() {
             : {}),
         };
 
+        const resolvedBaseUrl =
+          connectionBaseUrl &&
+          (!svcSpec.base_url || svcSpec.base_url === target.default_base_url)
+            ? connectionBaseUrl
+            : svcSpec.base_url || target.default_base_url || "";
+
         const profile: CatalogProfile = {
           id: profileId,
           name: connectionName,
           binding: svcSpec.provider || targetProviderId,
           connection_id: connectionId,
-          base_url: svcSpec.base_url || target.default_base_url || "",
+          base_url: resolvedBaseUrl,
           api_key: "***",
           api_version: "",
           models: [modelEntry],
@@ -420,14 +462,26 @@ export function QuickModelSetupWorkspace() {
         });
         if (res.ok) {
           newlySynced.push(svc);
+        } else {
+          const payload = await res.json().catch(() => ({}));
+          if (!firstFailure) {
+            firstFailure =
+              typeof payload.detail === "string"
+                ? payload.detail
+                : `HTTP ${res.status}`;
+          }
         }
       }
       if (newlySynced.length > 0) {
+        invalidateLLMOptionsCache();
         setSyncedServices((prev) => [...new Set([...prev, ...newlySynced])]);
         setSelectedSyncServices((prev) =>
           prev.filter((item) => !newlySynced.includes(item)),
         );
         await reloadSettings();
+      }
+      if (firstFailure) {
+        setErrorState(formatFriendlySetupError(null, firstFailure));
       }
     } finally {
       setSyncingExtras(false);
@@ -438,18 +492,17 @@ export function QuickModelSetupWorkspace() {
     const [profileId, modelId] = value.split("::");
     if (!profileId || !modelId) return;
     setSwitchingActive(true);
+    setErrorState(null);
     try {
-      await apiFetch(apiUrl("/api/settings/apply/registry"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "default",
-          service: "llm",
-          profile_id: profileId,
-          model_id: modelId,
-        }),
+      const ok = await saveRegistry({
+        kind: "default",
+        service: "llm",
+        profile_id: profileId,
+        model_id: modelId,
       });
-      await reloadSettings();
+      if (!ok) {
+        setErrorState(formatFriendlySetupError(null));
+      }
     } finally {
       setSwitchingActive(false);
     }
@@ -458,6 +511,7 @@ export function QuickModelSetupWorkspace() {
   const handleSwitchModelAfterSetup = async (nextModelName: string) => {
     if (!setupResult || !nextModelName.trim()) return;
     setSubmitting(true);
+    setErrorState(null);
     try {
       const updatedProfile: CatalogProfile = {
         id: setupResult.profileId,
@@ -487,10 +541,21 @@ export function QuickModelSetupWorkspace() {
         }),
       });
       if (res.ok) {
+        invalidateLLMOptionsCache();
         setSetupResult((prev) =>
           prev ? { ...prev, modelName: nextModelName.trim() } : null,
         );
         await reloadSettings();
+      } else {
+        const payload = await res.json().catch(() => ({}));
+        setErrorState(
+          formatFriendlySetupError(
+            null,
+            typeof payload.detail === "string"
+              ? payload.detail
+              : `HTTP ${res.status}`,
+          ),
+        );
       }
     } finally {
       setSubmitting(false);
@@ -511,7 +576,7 @@ export function QuickModelSetupWorkspace() {
     return getSyncableCapabilities(activeConnection.provider).filter(
       (svc) => !hasActiveService(catalog.services, svc),
     );
-  }, [activeConnection, catalog.services, targetByProvider]);
+  }, [activeConnection, catalog.services, getSyncableCapabilities]);
 
   const renderProviderCard = (preset: QuickProviderPreset) => {
     const isSelected = selectedPreset.id === preset.id;
@@ -574,8 +639,45 @@ export function QuickModelSetupWorkspace() {
     );
   };
 
+  if (catalogEditable === false) {
+    return (
+      <div className={`space-y-3 p-5 ${subPanelClass}`}>
+        <p className="text-[13.5px] leading-relaxed text-[var(--muted-foreground)]">
+          {t("Only administrators can manage providers.")}
+        </p>
+        <Link
+          href="/chat"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3.5 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90"
+        >
+          {t("quickSetup.action.startChat")}
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+    );
+  }
+
+  const formVisible = !settingsLoading && (showAddForm || !hasConfiguredLlm) && !setupResult;
+
   return (
     <div className="space-y-8">
+      {errorState && !formVisible && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3.5 text-[13px]">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle
+              size={16}
+              className="mt-0.5 shrink-0 text-red-600 dark:text-red-400"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-red-700 dark:text-red-300">
+                {t(errorState.titleKey)}
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-red-700/90 dark:text-red-300/90">
+                {t(errorState.detailKey)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Compact 3-Step Configuration Progress Strip */}
       <section className={`overflow-hidden ${subPanelClass}`}>
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,var(--border)_65%,transparent)] px-5 py-3">
@@ -825,6 +927,7 @@ export function QuickModelSetupWorkspace() {
                           activeConnection.id,
                           activeConnection.name,
                           [item.service],
+                          activeConnection.base_url,
                         )
                       }
                       className="ml-0.5 font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-80"
@@ -857,6 +960,12 @@ export function QuickModelSetupWorkspace() {
                     model: setupResult.modelName,
                   })}
                 </p>
+
+                {setupResult.probeSkipped && (
+                  <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+                    {t("quickSetup.success.probeSkipped")}
+                  </p>
+                )}
 
                 {setupResult.discoveredModels.length > 1 && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
@@ -960,6 +1069,7 @@ export function QuickModelSetupWorkspace() {
                             setupResult.connectionId,
                             setupResult.providerLabel,
                             selectedSyncServices,
+                            setupResult.connection.base_url,
                           )
                         }
                         className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-[13px] font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -995,7 +1105,7 @@ export function QuickModelSetupWorkspace() {
       )}
 
       {/* Main 1-Screen Quick Setup Flow */}
-      {(showAddForm || !hasConfiguredLlm) && !setupResult && (
+      {!settingsLoading && (showAddForm || !hasConfiguredLlm) && !setupResult && (
         <div className="space-y-7">
           {/* Step 1: Pick a Provider */}
           <section className="space-y-3.5">
@@ -1046,9 +1156,9 @@ export function QuickModelSetupWorkspace() {
                 </h2>
               </div>
 
-              {selectedPreset.keyUrl && (
+              {activeKeyUrl && (
                 <a
-                  href={selectedPreset.keyUrl}
+                  href={activeKeyUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[var(--muted-foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
@@ -1060,6 +1170,36 @@ export function QuickModelSetupWorkspace() {
             </div>
 
             <div className="mt-4 space-y-4">
+              {selectedPreset.regions && selectedPreset.regions.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="block text-[13px] font-medium text-[var(--foreground)]">
+                    {t("quickSetup.step2.regionLabel")}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPreset.regions.map((region) => {
+                      const isActive = activeRegion?.id === region.id;
+                      return (
+                        <button
+                          key={region.id}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => setSelectedRegionId(region.id)}
+                          className={`rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                            isActive
+                              ? "border-[var(--foreground)] bg-[color-mix(in_srgb,var(--foreground)_5%,var(--background))] text-[var(--foreground)]"
+                              : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {t(region.labelKey)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[12px] text-[var(--muted-foreground)]">
+                    {t("quickSetup.step2.regionHint")}
+                  </p>
+                </div>
+              )}
               {selectedPreset.requiresBaseUrl && (
                 <label className="block space-y-1.5">
                   <span className="text-[13px] font-medium text-[var(--foreground)]">

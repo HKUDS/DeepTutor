@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 #: Reasoning level to ask for on a second attempt, after a first one spent its
@@ -27,6 +28,9 @@ _PROVIDER_THINKING_STYLES = {
     "byteplus": "thinking_type",
     "byteplus_coding_plan": "thinking_type",
     "dashscope": "enable_thinking",
+    "siliconflow": "enable_thinking",
+    "zhipu": "thinking_type",
+    "moonshot": "thinking_type",
     "minimax": "reasoning_split",
 }
 _PROVIDER_REASONING_PATTERNS = {
@@ -190,6 +194,13 @@ def build_openai_compatible_reasoning_kwargs(
         minimax = minimax_reasoning_kwargs(model_name, (reasoning_effort or "").strip().lower())
         if minimax is not None:
             return minimax
+    if provider_name == "zhipu" and (
+        model_name.lower() == "glm-5.3" or model_name.lower().endswith("/glm-5.3")
+    ):
+        # GLM-5.3 always thinks and uses multi-level reasoning_effort (low/high/max);
+        # sending thinking.type=disabled is rejected with HTTP 400.
+        effort = (reasoning_effort or "").strip().lower()
+        return {"reasoning_effort": effort} if effort in {"low", "high", "max"} else {}
     if (
         provider_name == "openrouter"
         and model_name.lower() == "minimax/minimax-m3.1-flash:free"
@@ -309,10 +320,43 @@ _BINARY_MINIMAL_OFF_PROVIDERS = frozenset(
         "volcengine_coding_plan",
         "byteplus",
         "byteplus_coding_plan",
+        "siliconflow",
+        "zhipu",
+        "moonshot",
         "minimax",
     }
 )
 _VALID_WIRE_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
+_R1_TOKEN_RE = re.compile(r"(?:^|[^a-z0-9])r1(?:$|[^a-z0-9])")
+
+
+def _is_qwen_instruct(model_name: str) -> bool:
+    """Whether *model_name* is a Qwen Instruct variant without thinking controls."""
+    if "qwen" not in model_name:
+        return False
+    tokens = re.split(r"[-_/]", model_name)
+    return "instruct" in tokens
+
+
+def _default_toggle_on(
+    resolved_provider: str,
+    model_name: str,
+    configured_effort: str | None,
+) -> bool:
+    """Infer whether a binary-toggle model thinks by default when no turn override is set."""
+    configured = (configured_effort or "").strip().lower()
+    if configured:
+        return configured not in _THINKING_OFF_EFFORTS
+    if _is_qwen_instruct(model_name):
+        return False
+    patterns = _PROVIDER_REASONING_PATTERNS.get(resolved_provider, ())
+    if patterns and _matches(model_name, patterns):
+        return True
+    if resolved_provider in {"custom", "siliconflow"}:
+        custom_style, custom_patterns = _custom_thinking_style(model_name)
+        if custom_style and custom_patterns and _matches(model_name, custom_patterns):
+            return True
+    return False
 
 
 def resolve_reasoning_control(
@@ -321,12 +365,13 @@ def resolve_reasoning_control(
     *,
     supported_reasoning_efforts: list[str] | tuple[str, ...] | None = None,
     declared_reasoning: bool | None = None,
+    configured_effort: str | None = None,
 ) -> dict[str, Any]:
     """Single source of truth for how the UI controls reasoning for a model.
 
     Returns one of:
       - ``{"mode": "none"}``
-      - ``{"mode": "toggle", "off_value": "minimal"|"none", "on_value": "high"}``
+      - ``{"mode": "toggle", "off_value": "minimal"|"none", "on_value": "high", "default_on": bool}``
       - ``{"mode": "levels", "levels": [...]}``
     """
     if declared_reasoning is False:
@@ -347,12 +392,22 @@ def resolve_reasoning_control(
     resolved_provider = _REASONING_CONTROL_ALIASES.get(canonical, canonical)
     model_name = (model or "").strip().lower()
 
+    # Qwen Instruct variants never emit thinking controls on OpenAI-compatible
+    # paths; hide the toggle unless the user explicitly declared reasoning=True.
+    if declared_reasoning is not True and _is_qwen_instruct(model_name):
+        return {"mode": "none"}
+
     # 2. Known multi-level model families.
     if resolved_provider in {"minimax", "minimax_anthropic"}:
         if model_name == "minimax-m3.1-flash":
             return {"mode": "levels", "levels": ["low", "medium", "high", "xhigh", "max"]}
         if model_name == "minimax-m3":
-            return {"mode": "toggle", "off_value": "minimal", "on_value": "high"}
+            return {
+                "mode": "toggle",
+                "off_value": "minimal",
+                "on_value": "high",
+                "default_on": _default_toggle_on(resolved_provider, model_name, configured_effort),
+            }
 
     if resolved_provider == "gemini" or "gemini" in model_name:
         if "gemini-3" in model_name or "gemini-2.5-pro" in model_name:
@@ -361,10 +416,7 @@ def resolve_reasoning_control(
             return {"mode": "levels", "levels": ["none", "low", "medium", "high"]}
         return {"mode": "levels", "levels": ["low", "medium", "high"]}
 
-    if (
-        resolved_provider in {"anthropic", "custom_anthropic"}
-        or "claude" in model_name
-    ):
+    if resolved_provider in {"anthropic", "custom_anthropic"} or "claude" in model_name:
         if any(
             token in model_name
             for token in ("opus-4-7", "opus-4-8", "opus-5", "sonnet-5", "fable-5", "mythos-5")
@@ -403,7 +455,12 @@ def resolve_reasoning_control(
         if any(token in model_name for token in ("o1", "o3", "o4")):
             return {"mode": "levels", "levels": ["low", "medium", "high"]}
         if declared_reasoning is True:
-            return {"mode": "toggle", "off_value": "none", "on_value": "high"}
+            return {
+                "mode": "toggle",
+                "off_value": "none",
+                "on_value": "high",
+                "default_on": _default_toggle_on(resolved_provider, model_name, configured_effort),
+            }
         return {"mode": "none"}
 
     # 3. Binary thinking vendors and general/custom endpoints default to a simple toggle.
@@ -416,6 +473,7 @@ def resolve_reasoning_control(
             resolved_provider == "custom"
             or declared_reasoning is True
             or resolved_provider == "minimax"
+            or _R1_TOKEN_RE.search(model_name) is not None
             or any(
                 token in model_name
                 for token in (
@@ -427,7 +485,6 @@ def resolve_reasoning_control(
                     "doubao",
                     "thinking",
                     "reasoner",
-                    "r1",
                     "glm-4",
                     "glm-5",
                     "kimi",
@@ -435,10 +492,13 @@ def resolve_reasoning_control(
             )
         )
         if is_binary_model:
-            off_value = (
-                "minimal" if resolved_provider in _BINARY_MINIMAL_OFF_PROVIDERS else "none"
-            )
-            return {"mode": "toggle", "off_value": off_value, "on_value": "high"}
+            off_value = "minimal" if resolved_provider in _BINARY_MINIMAL_OFF_PROVIDERS else "none"
+            return {
+                "mode": "toggle",
+                "off_value": off_value,
+                "on_value": "high",
+                "default_on": _default_toggle_on(resolved_provider, model_name, configured_effort),
+            }
 
     return {"mode": "none"}
 
@@ -467,9 +527,7 @@ def strip_reasoning_kwargs(request_kwargs: dict[str, Any]) -> dict[str, Any]:
     cleaned.pop("reasoning", None)
     extra_body = cleaned.get("extra_body")
     if isinstance(extra_body, dict):
-        next_extra = {
-            k: v for k, v in extra_body.items() if k not in _REASONING_EXTRA_BODY_KEYS
-        }
+        next_extra = {k: v for k, v in extra_body.items() if k not in _REASONING_EXTRA_BODY_KEYS}
         if next_extra:
             cleaned["extra_body"] = next_extra
         else:

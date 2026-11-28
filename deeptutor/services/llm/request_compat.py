@@ -137,8 +137,22 @@ def is_reasoning_param_unsupported(exc: Exception) -> bool:
             "enable_thinking",
             "reasoning_split",
             "extra_body.thinking",
+            "extra_body.reasoning",
             "'thinking'",
             '"thinking"',
+            "'reasoning'",
+            '"reasoning"',
+            "parameter: reasoning",
+            "parameter reasoning",
+            "argument: reasoning",
+            "argument reasoning",
+            "field: reasoning",
+            "field reasoning",
+            "reasoning is not supported",
+            "reasoning is unsupported",
+            "does not support reasoning",
+            "thinking is not supported",
+            "does not support thinking",
         )
     )
     if not mentions_reasoning:
@@ -312,6 +326,7 @@ def is_transient_transport_error(exc: Exception) -> bool:
 __all__ = [
     "error_text",
     "is_image_input_unsupported",
+    "is_reasoning_param_unsupported",
     "is_response_format_unsupported",
     "is_stream_options_unsupported",
     "is_transient_transport_error",

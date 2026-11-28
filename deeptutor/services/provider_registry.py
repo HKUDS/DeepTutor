@@ -277,6 +277,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="siliconflow",
         default_api_base="https://api.siliconflow.cn/v1",
+        thinking_style="enable_thinking",
     ),
     ProviderSpec(
         name="novita",
@@ -559,6 +560,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         env_extras=(("ZHIPUAI_API_KEY", "{api_key}"),),
         default_api_base="https://open.bigmodel.cn/api/paas/v4",
+        thinking_style="thinking_type",
     ),
     ProviderSpec(
         name="dashscope",
@@ -591,6 +593,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
             ("^k3", {"temperature": None}),
         ),
         model_id_families=("k3",),
+        thinking_style="thinking_type",
     ),
     # MiniMax runs two separate platforms: global (platform.minimax.io /
     # api.minimax.io) and mainland China (platform.minimaxi.com /

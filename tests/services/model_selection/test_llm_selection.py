@@ -177,7 +177,14 @@ def test_list_llm_options_includes_reasoning_control():
                         "name": "DeepSeek",
                         "binding": "deepseek",
                         "models": [
-                            {"id": "m1", "name": "deepseek-flash", "model": "deepseek-flash"}
+                            {"id": "m1", "name": "deepseek-flash", "model": "deepseek-flash"},
+                            {"id": "m3", "name": "deepseek-reasoner", "model": "deepseek-reasoner"},
+                            {
+                                "id": "m4",
+                                "name": "deepseek-chat",
+                                "model": "deepseek-chat",
+                                "reasoning_effort": "high",
+                            },
                         ],
                     },
                     {
@@ -196,5 +203,18 @@ def test_list_llm_options_includes_reasoning_control():
         "mode": "toggle",
         "off_value": "minimal",
         "on_value": "high",
+        "default_on": False,
+    }
+    assert by_id["m3"]["reasoning_control"] == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+        "default_on": True,
+    }
+    assert by_id["m4"]["reasoning_control"] == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+        "default_on": True,
     }
     assert by_id["m2"]["reasoning_control"]["mode"] == "levels"

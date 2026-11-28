@@ -161,6 +161,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
                 model_value,
                 supported_reasoning_efforts=option.get("supported_reasoning_efforts"),
                 declared_reasoning=option.get("declared_reasoning"),
+                configured_effort=option.get("reasoning_effort"),
             )
             options.append(option)
 

@@ -51,10 +51,11 @@ export default function ReasoningEffortSelector({
   if (control.kind === "toggle") {
     const normalized = (value ?? "").trim().toLowerCase();
     const isThinkingOn =
-      normalized !== "" &&
-      normalized !== "none" &&
-      normalized !== "minimal" &&
-      normalized !== "minimum";
+      normalized === ""
+        ? control.defaultOn
+        : normalized !== "none" &&
+          normalized !== "minimal" &&
+          normalized !== "minimum";
 
     return (
       <Tooltip

@@ -387,11 +387,27 @@ test("deepseek-flash and deepseek-v4-flash expose binary thinking controls in se
 
   assert.deepEqual(
     resolveReasoningControl({ provider: "deepseek", model: "deepseek-flash" }),
-    { kind: "toggle", offValue: "minimal", onValue: "high" },
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: false },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "deepseek", model: "deepseek-reasoner" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "dashscope", model: "qwen3-max" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "deepseek",
+      model: "deepseek-chat",
+      reasoning_effort: "high",
+    }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
   );
   assert.deepEqual(
     resolveReasoningControl({ provider: "custom", model: "gateway/unknown-model" }),
-    { kind: "toggle", offValue: "none", onValue: "high" },
+    { kind: "toggle", offValue: "none", onValue: "high", defaultOn: false },
   );
   assert.equal(
     resolveReasoningControl({ provider: "openai", model: "gpt-5.2" }).kind,
@@ -426,8 +442,86 @@ test("deepseek-flash and deepseek-v4-flash expose binary thinking controls in se
     resolveReasoningControl({
       provider: "openai",
       model: "gpt-5.2",
-      reasoning_control: { mode: "toggle", off_value: "none", on_value: "high" },
+      reasoning_control: {
+        mode: "toggle",
+        off_value: "none",
+        on_value: "high",
+        default_on: true,
+      },
     }),
-    { kind: "toggle", offValue: "none", onValue: "high" },
+    { kind: "toggle", offValue: "none", onValue: "high", defaultOn: true },
+  );
+});
+
+test("supportedReasoningEffortValues and dropUnvalidatedReasoningEffort align with reasoning_control for domestic toggle vendors", () => {
+  const cases = [
+    { provider: "volcengine", model: "doubao-seed-1-6-250615" },
+    { provider: "siliconflow", model: "deepseek-ai/DeepSeek-R1" },
+    { provider: "zhipu", model: "glm-4-plus" },
+    { provider: "zhipu", model: "glm-5" },
+    { provider: "moonshot", model: "kimi-k2-0711-preview" },
+    { provider: "deepseek", model: "deepseek-chat" },
+  ];
+
+  for (const base of cases) {
+    // Both client fallback (without reasoning_control) and backend SSOT (with reasoning_control)
+    // must validate "high" and "minimal" so ChatComposer does not reset and ChatStateAdapter does not strip them.
+    for (const option of [
+      base,
+      {
+        ...base,
+        supported_reasoning_efforts: null,
+        reasoning_control: {
+          mode: "toggle" as const,
+          off_value: "minimal",
+          on_value: "high",
+          default_on: false,
+        },
+      },
+    ]) {
+      const supported = supportedReasoningEffortValues(option);
+      assert.ok(supported.includes("high"), `${base.provider}/${base.model} should support high`);
+      assert.ok(
+        supported.includes("minimal"),
+        `${base.provider}/${base.model} should support minimal`,
+      );
+      assert.equal(effectiveReasoningEffort(option, "high"), "high");
+      assert.equal(effectiveReasoningEffort(option, "minimal"), "minimal");
+      const selection = { profile_id: "p1", model_id: "m1", reasoning_effort: "high" };
+      assert.equal(dropUnvalidatedReasoningEffort(selection, option)?.reasoning_effort, "high");
+    }
+  }
+
+  // Non-admin null supported_reasoning_efforts must not crash resolveReasoningControl (#2732).
+  assert.equal(
+    resolveReasoningControl({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+      supported_reasoning_efforts: null,
+    }).kind,
+    "levels",
+  );
+
+  // Qwen Instruct variants and non-boundary "r1" substrings expose no toggle.
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "dashscope",
+      model: "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    }),
+    { kind: "none" },
+  );
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "dashscope",
+      model: "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "siliconflow",
+      model: "tier1-chat",
+    }),
+    { kind: "none" },
   );
 });
