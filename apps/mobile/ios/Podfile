@@ -1,3 +1,6 @@
+# Mirrors the Expo Router plugin for this checked-in native project.
+ENV['RNS_GAMMA_ENABLED'] ||= '1'
+
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), 'scripts/autolinking')
 
 # Resolve react_native_pods.rb with node to allow for hoisting
