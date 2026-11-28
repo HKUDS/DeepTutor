@@ -161,3 +161,13 @@ opens the actual Electron window with a fresh data path containing spaces and
 Chinese characters, checks UI/API readiness and service shutdown on window
 close, then verifies uninstall preserves learning data and unrelated files.
 `OPEN_DEEPTUTOR_TEST_HOME` selects a disposable desktop home for UI checks.
+
+On Windows, `npm test` also launches real Electron windows for the content-zoom
+regression check (no bundled core or Python services required). It measures the
+rendered viewport and device pixel ratio after zoom commands, Ctrl+Shift+Plus,
+and reload, then starts a second Electron process with a fresh Chromium profile
+to verify the saved factor on a new loopback origin. The private shell, native
+window bounds and a same-origin companion view must stay unscaled. This native
+check is skipped on other platforms; the controller unit tests still run there.
+To run only the native check, use `node --test test/content-zoom-native.test.mjs`
+from `apps/desktop` on an interactive Windows desktop.
