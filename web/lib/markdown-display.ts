@@ -188,6 +188,17 @@ const HTML_UNSAFE_URL_ATTR_REGEX =
 const SAFE_MARKDOWN_PROTOCOL_REGEX = /^(https?|ircs?|mailto|xmpp|attachment)$/i;
 const SAFE_RASTER_DATA_IMAGE_REGEX =
   /^data:image\/(?:png|jpe?g|gif|webp|bmp|tiff?|avif);base64,[a-z0-9+/=\s]+$/i;
+// Notebook document ids are 12 lowercase hex characters. Models occasionally
+// shorten a note tool's `/co-writer/<id>` URL to the bare id (and older notes
+// already contain such links), which used to land on a 404. A root-level path
+// of exactly that shape can only be a note link, so normalise it.
+const BARE_NOTE_HREF_REGEX = /^\/?([0-9a-f]{12})(?=$|[?#])/i;
+
+export function normalizeNoteHref(value: string): string {
+  const match = BARE_NOTE_HREF_REGEX.exec(value);
+  if (!match) return value;
+  return `/co-writer/${match[1].toLowerCase()}${value.slice(match[0].length)}`;
+}
 
 function isMarkdownImageSrc(key?: string, node?: unknown): boolean {
   const tagName =
@@ -212,6 +223,10 @@ export function markdownUrlTransform(
     SAFE_RASTER_DATA_IMAGE_REGEX.test(value)
   ) {
     return value;
+  }
+
+  if (key === "href") {
+    value = normalizeNoteHref(value);
   }
 
   const colon = value.indexOf(":");

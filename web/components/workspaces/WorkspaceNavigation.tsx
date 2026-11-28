@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { listWorkspaces } from '@/lib/workspaces-api'
+import { normalizeNoteHref } from '@/lib/markdown-display'
 import {
   activeWorkspaceId,
   registerWorkspaceNavigator,
@@ -56,16 +57,27 @@ export function WorkspaceNavigation() {
           event.button !== 0 || anchor.target === '_blank' || anchor.hasAttribute('download')) return
       const url = new URL(anchor.href)
       if (url.origin !== window.location.origin) return
-      const target = workspaceIdOf(url.searchParams)
+      // Note pages saved by older answers may link to the bare document id
+      // instead of /co-writer/<id>. Follow them where they meant to go.
+      const href = `${url.pathname}${url.search}${url.hash}`
+      const noteHref = normalizeNoteHref(href)
+      const destination = new URL(noteHref, window.location.origin)
+      const target = workspaceIdOf(destination.searchParams)
       if (target !== null && target !== activeWorkspaceId()) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        void selectWorkspace(target, url.toString())
+        void selectWorkspace(target, destination.toString())
+        return
+      }
+      if (noteHref !== href) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        router.push(noteHref)
       }
     }
     document.addEventListener('click', follow, true)
     return () => document.removeEventListener('click', follow, true)
-  }, [])
+  }, [router])
   return (
     <Suspense>
       <ScopeCanonicalizer />

@@ -32,6 +32,15 @@ it('waits for draft persistence and uses client navigation for cross-workspace l
   window.removeEventListener('deeptutor:before-workspace-switch', save)
 })
 
+it('follows note links saved as bare document ids', () => {
+  window.history.replaceState(null, '', '/chat?dt_workspace=first')
+  fixture.query = new URLSearchParams('dt_workspace=first')
+  fixture.push.mockClear()
+  render(<><WorkspaceNavigation /><a href="/506b85121232?tab=notes">Saved note</a></>)
+  fireEvent.click(screen.getByText('Saved note'))
+  expect(fixture.push).toHaveBeenCalledWith('/co-writer/506b85121232?tab=notes')
+})
+
 it('keeps links that name no workspace in the current one', () => {
   window.history.replaceState(null, '', '/chat?dt_workspace=first')
   fixture.query = new URLSearchParams('dt_workspace=first')

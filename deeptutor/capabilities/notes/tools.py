@@ -142,7 +142,13 @@ class WriteNoteTool(BaseTool):
     def get_definition(self):
         return ToolDefinition(
             name="write_note",
-            description="Create an authored notebook page. To preserve an original conversation use save_favorite. Existing pages are edited through reviewable note_suggest in their editor.",
+            description=(
+                "Create an authored notebook page. To preserve an original conversation use "
+                "save_favorite. Existing pages are edited through reviewable note_suggest in "
+                "their editor. When you link the saved page in your reply, copy the `url` field "
+                "returned here verbatim (it starts with `/co-writer/`); never shorten it to the "
+                "bare document id."
+            ),
             parameters=[
                 ToolParameter(name="title", type="string", description="Page title"),
                 ToolParameter(
@@ -173,7 +179,12 @@ class SearchNotesTool(BaseTool):
     def get_definition(self):
         return ToolDefinition(
             name="search_notes",
-            description="Find authored notebook pages by title or full text; returns excerpts and page links. Empty query lists recent pages. Read a whole page with page_id.",
+            description=(
+                "Find authored notebook pages by title or full text; returns excerpts and page "
+                "links. Empty query lists recent pages. Read a whole page with page_id. To link a "
+                "page in your reply, copy its `url` field verbatim (it starts with `/co-writer/`); "
+                "never use the bare document id."
+            ),
             parameters=[
                 ToolParameter(
                     name="query", type="string", description="Text to find", required=False
