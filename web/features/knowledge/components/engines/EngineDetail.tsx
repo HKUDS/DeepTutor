@@ -1184,7 +1184,7 @@ export function LightRagModelsForm({
   const catalog = useLLMOptions(getLightRagModelOptions);
   const auth = useAuthStatus();
   const canEdit = auth.statusAvailable && (!auth.enabled || auth.isAdmin);
-  const { form, setLoaded, setForm, saving, setSaving, dirty, patch } =
+  const { loaded, form, setLoaded, setForm, saving, setSaving, dirty, patch } =
     useEngineForm<LightRagConfig>(
       () => getLightRagConfig({ force: true }),
       onError,
@@ -1210,19 +1210,27 @@ export function LightRagModelsForm({
           form.llm_model_max_async,
         )
       : null);
-  const validationError = roleModelsValidationError(
-    roleModels,
-    catalog.options,
-  );
+  const rerankerChanged = form.reranker_model !== loaded?.reranker_model;
+  // A reranker-only edit preserves saved roles and legacy chat-model inheritance.
+  const keepSavedRoles =
+    rerankerChanged &&
+    form.role_models === loaded?.role_models &&
+    (form.version === 1 || !!form.role_models);
+  const validationError = keepSavedRoles
+    ? null
+    : roleModelsValidationError(roleModels, catalog.options);
 
   const save = async () => {
-    if (!roleModels) {
-      onError(t("Choose a LightRAG base model before saving."));
+    if (validationError) {
+      onError(t(validationError));
       return;
     }
     setSaving(true);
     try {
-      const next = await updateLightRagConfig({ role_models: roleModels });
+      const updates: Partial<LightRagConfig> = {};
+      if (rerankerChanged) updates.reranker_model = form.reranker_model;
+      if (!keepSavedRoles && roleModels) updates.role_models = roleModels;
+      const next = await updateLightRagConfig(updates);
       setLoaded(next);
       setForm(next);
       onChanged();
@@ -1251,6 +1259,15 @@ export function LightRagModelsForm({
         error={catalog.error}
         disabled={saving}
         onChange={(role_models) => patch({ role_models })}
+      />
+      <TextField
+        label={t("Reranker model")}
+        hint={t(
+          "Leave empty to disable. Example: BAAI/bge-reranker-base. Requires the optional rag-rerank extra.",
+        )}
+        value={form.reranker_model ?? ""}
+        maxLength={200}
+        onChange={(reranker_model) => patch({ reranker_model })}
       />
       <p className="text-xs text-[var(--muted-foreground)]">
         {t(

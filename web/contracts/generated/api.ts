@@ -3603,9 +3603,8 @@ export interface paths {
      * Update Lightrag Pipeline Config
      * @description Persist LightRAG's knobs.
      *
-     *     Query knobs (``top_k``, ``response_type``) take effect on the next query;
-     *     the indexing knobs shape how a KB is built, so they apply to the next
-     *     build or rebuild.
+     *     The next query uses the saved ``top_k``, ``response_type`` and ``reranker_model``.
+     *     Indexing settings apply to the next build or rebuild.
      */
     readonly put: operations["update_lightrag_pipeline_config_api_knowledge_bases_rag_pipelines_lightrag_config_put"];
     readonly post?: never;
@@ -14888,6 +14887,8 @@ export interface components {
       readonly llm_timeout?: number | null;
       /** Max Concurrent Files */
       readonly max_concurrent_files?: number | null;
+      /** Reranker Model */
+      readonly reranker_model?: string | null;
       /** Response Type */
       readonly response_type?: string | null;
       readonly role_models?: components["schemas"]["LightRagRoleModels"] | null;

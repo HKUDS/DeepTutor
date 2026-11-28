@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from functools import partial
 import hashlib
 from importlib.metadata import PackageNotFoundError, version
 import inspect
@@ -241,23 +242,32 @@ def build_rag(
     from .roles import resolve_query_roles
 
     role_configs: dict[str, Any] = {}
+    reranker_model = ""
     if indexing_snapshot is None:
+        from deeptutor.services.config import load_lightrag_settings
+
+        reranker_model = load_lightrag_settings().get("reranker_model", "")
         calls = query_roles if query_roles is not None else resolve_query_roles()
         for role, call in calls.items():
+            identity = cache_identity_for_config(call.config)
+            if role == "query" and reranker_model:
+                # The SDK's answer cache includes this identity and a reranking flag.
+                # Partition it by model as well when the same question is reranked.
+                identity = hashlib.sha256(f"{identity}\0{reranker_model}".encode()).hexdigest()
             role_configs[role] = RoleLLMConfig(
                 func=build_llm_model_func(
                     **llm_adapter_kwargs, llm_config=call.config, owner=call.owner
                 ),
                 metadata={
                     "binding": call.config.binding,
-                    "model": cache_identity_for_config(call.config),
+                    "model": identity,
                 },
                 max_async=call.max_async,
                 timeout=call.timeout,
             )
         base = calls["query"]
         base_config, base_owner = base.config, base.owner
-        base_identity = cache_identity_for_config(base_config)
+        base_identity = role_configs["query"].metadata["model"]
     else:
         base = indexing_snapshot.extract
         base_config, base_owner = base.config, base.owner
@@ -289,6 +299,10 @@ def build_rag(
         **constructor_kwargs_from_settings(),
         "role_llm_configs": role_configs,
     }
+    if reranker_model:
+        from .rerank import rerank_documents
+
+        constructor["rerank_model_func"] = partial(rerank_documents, reranker_model)
     return _controlled_class()(**constructor)
 
 

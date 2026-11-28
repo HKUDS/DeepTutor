@@ -409,6 +409,7 @@ DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "version": 2,
     "top_k": 60,
     "response_type": "Multiple Paragraphs",
+    "reranker_model": "",
     "max_concurrent_files": 1,
     "llm_model_max_async": 4,
     "entity_extract_max_gleaning": 1,
@@ -1199,6 +1200,7 @@ class RuntimeSettingsService:
             "version": 2 if roles is not None or settings.get("version") == 2 else 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
+            "reranker_model": _string(settings.get("reranker_model"))[:200],
             "max_concurrent_files": _coerce_clamped_int(
                 settings.get("max_concurrent_files"), 1, 1, 16
             ),

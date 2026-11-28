@@ -1724,6 +1724,7 @@ class LightRagConfigUpdate(BaseModel):
     """Partial update for LightRAG query + indexing knobs (omitted fields kept)."""
 
     role_models: LightRagRoleModels | None = None
+    reranker_model: str | None = None
     top_k: int | None = None
     response_type: str | None = None
     max_concurrent_files: int | None = None
@@ -1780,9 +1781,8 @@ async def get_lightrag_model_options() -> dict[str, Any]:
 async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
     """Persist LightRAG's knobs.
 
-    Query knobs (``top_k``, ``response_type``) take effect on the next query;
-    the indexing knobs shape how a KB is built, so they apply to the next
-    build or rebuild.
+    The next query uses the saved ``top_k``, ``response_type`` and ``reranker_model``.
+    Indexing settings apply to the next build or rebuild.
     """
     try:
         from deeptutor.services.config import get_runtime_settings_service
