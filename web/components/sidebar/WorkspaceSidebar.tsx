@@ -32,13 +32,34 @@ import { readingWorkspaceIdOf, sessionRoute } from "@/lib/mastery-session";
 import { readingCollectionRoute } from "@/lib/learning-routes";
 import { subscribeSessionChanges } from "@/lib/session-events";
 
+function isViewingSession(session: SessionSummary | undefined): boolean {
+  if (!session) return false;
+  // The persistent runtime retains its selection on Resources. Read the URL
+  // after the mutation resolves, since navigation can also happen in flight.
+  const current = new URL(window.location.href);
+  if (activeWorkspaceId() !== sessionWorkspaceId(session)) return false;
+  const target = new URL(sessionRoute(session), current.origin);
+  const normalizePath = (pathname: string) => pathname.replace(/\/$/, "")
+    .split("/").map(segment => encodeURIComponent(decodeURIComponent(segment))).join("/");
+  try {
+    const pathname = normalizePath(current.pathname);
+    // Learning conversations can also be opened through the generic chat route.
+    if (pathname === `/chat/${encodeURIComponent(session.session_id)}`) return true;
+    return pathname === normalizePath(target.pathname) &&
+      (!target.searchParams.has("chat") ||
+        current.searchParams.get("chat") === target.searchParams.get("chat"));
+  } catch {
+    return false;
+  }
+}
+
 export default function WorkspaceSidebar() {
   const { t } = useTranslation();
   const router = useRouter();
   const {
     newSession,
     configureSession,
-    cancelStreamingTurn,
+    forgetSession,
     selectedSessionId,
     sessionStatuses,
     sidebarRefreshToken,
@@ -184,9 +205,8 @@ export default function WorkspaceSidebar() {
       setSessions((prev) =>
         prev.filter((session) => session.session_id !== sessionId),
       );
-      if (selectedSessionId === sessionId) {
-        cancelStreamingTurn();
-        newSession({ workspaceId: activeWorkspaceId() || null });
+      forgetSession(sessionId);
+      if (isViewingSession(deleted)) {
         // A reading conversation was open beside its material; deleting it
         // should leave the reader on that material, not throw them to /chat.
         const readingId = deleted ? readingWorkspaceIdOf(deleted) : "";
@@ -198,22 +218,24 @@ export default function WorkspaceSidebar() {
         );
       }
     },
-    [cancelStreamingTurn, newSession, router, selectedSessionId, t, sessions],
+    [forgetSession, router, t, sessions],
   );
 
   const handleOrganizeSession = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
-      const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      const source = sessions.find(item => item.session_id === sessionId);
+      const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(source));
+      const movedAway = "workspace_id" in patch &&
+        (updated.preferences?.workspace_id || "") !== sessionWorkspaceId(source);
       if ("workspace_id" in patch) {
-        configureSession({ workspaceId: updated.preferences?.workspace_id ?? null }, sessionId);
-        if (selectedSessionId === sessionId) {
-          navigateTask(sessionRoute({ ...sessions.find(row => row.session_id === sessionId)!,
+        if (movedAway) forgetSession(sessionId);
+        else configureSession({ workspaceId: updated.preferences?.workspace_id ?? null }, sessionId);
+        if (source && isViewingSession(source)) {
+          navigateTask(sessionRoute({ ...source,
             preferences: updated.preferences, content_workspace_id: updated.preferences?.workspace_id || "" }), router.push);
         }
       }
       // A conversation moved to another workspace has left this list.
-      const movedAway = "workspace_id" in patch &&
-        (updated.preferences?.workspace_id || "") !== activeWorkspaceId();
       setSessions((previous) =>
         movedAway
           ? previous.filter((session) => session.session_id !== sessionId)
@@ -224,7 +246,7 @@ export default function WorkspaceSidebar() {
             ),
       );
     },
-    [configureSession, sessions, selectedSessionId, router],
+    [configureSession, forgetSession, sessions, router],
   );
 
   return (

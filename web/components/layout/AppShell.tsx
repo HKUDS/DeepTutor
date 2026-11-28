@@ -17,8 +17,8 @@ import { useTranslation } from "react-i18next";
 import { useDevice } from "@/hooks/useDevice";
 import type { ReactNode } from "react";
 
-/* Lets the sidebar dismiss the drawer after a nav click without every layout
-   threading a callback down through WorkspaceSidebar/UtilitySidebar. Null on
+/* Lets the sidebar dismiss the drawer after a nav click without threading
+   a callback through every sidebar component. Null on
    desktop and anywhere outside AppShell, so `drawer?.close()` is a no-op there
    rather than a crash. */
 const SidebarDrawerContext = createContext<{ close: () => void } | null>(null);
@@ -28,7 +28,7 @@ export function useSidebarDrawer() {
 }
 
 interface AppShellProps {
-  /** The route group's sidebar (workspace or utility). */
+  /** The persistent sidebar shared by workspace and utility routes. */
   sidebar: ReactNode;
   /** Bar above the page (the layout variant decides what, if anything). */
   pageBar?: ReactNode;

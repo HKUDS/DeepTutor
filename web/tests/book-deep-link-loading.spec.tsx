@@ -60,40 +60,40 @@ vi.mock("@/lib/use-book-stream", () => ({
   bookEventPageId: () => null,
 }));
 
-vi.mock("@/app/(workspace)/learning/books/components/BookLibrary", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookLibrary", () => ({
   default: () => <div data-testid="book-library" />,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookCreator", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookCreator", () => ({
   default: () => <div data-testid="book-creator" />,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/SpineEditor", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/SpineEditor", () => ({
   default: () => <div data-testid="spine-editor" />,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookSidebar", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookSidebar", () => ({
   default: () => <div data-testid="book-sidebar" />,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookGenerationActivity", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookGenerationActivity", () => ({
   default: () => <div data-testid="book-generation" />,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookPausedBanner", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookPausedBanner", () => ({
   default: () => null,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookHealthBanner", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookHealthBanner", () => ({
   default: () => null,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/BookChatPanel", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/BookChatPanel", () => ({
   default: () => null,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/LearningCapturePanel", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/LearningCapturePanel", () => ({
   default: () => null,
 }));
-vi.mock("@/app/(workspace)/learning/books/components/PageReader", () => ({
+vi.mock("@/app/(shell)/(workspace)/learning/books/components/PageReader", () => ({
   default: ({ page, bookId }: { page?: { id: string } | null; bookId?: string }) => (
     <div data-testid="page-reader" data-book-id={bookId}>{page?.id || "no-page"}</div>
   ),
 }));
 
-import BookPage from "@/app/(workspace)/learning/books/BooksRoute";
+import BookPage from "@/app/(shell)/(workspace)/learning/books/BooksRoute";
 
 function readyDetail() {
   const progress = {

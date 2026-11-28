@@ -81,8 +81,8 @@ test("the workspace shell stays a view, with its network work in one hook", () =
 
 test("reading is reachable only through its own workspace", () => {
   const chat = [
-    source("app/(workspace)/chat/page.tsx"),
-    source("app/(workspace)/chat/[sessionId]/page.tsx"),
+    source("app/(shell)/(workspace)/chat/page.tsx"),
+    source("app/(shell)/(workspace)/chat/[sessionId]/page.tsx"),
   ].join("\n");
   const css = source("app/globals.css");
 
@@ -94,7 +94,7 @@ test("reading is reachable only through its own workspace", () => {
 });
 
 test("reading reuses the workspace runtime without nesting another provider", () => {
-  const layout = source("app/(workspace)/learning/reading/layout.tsx");
+  const layout = source("app/(shell)/(workspace)/learning/reading/layout.tsx");
 
   assert.doesNotMatch(layout, /UnifiedChatProvider|ChatRuntimeProvider/);
   assert.match(layout, /QuizFollowupProvider/);

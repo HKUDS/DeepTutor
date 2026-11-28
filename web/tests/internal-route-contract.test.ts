@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -14,11 +14,14 @@ function walk(directory: string): string[] {
   });
 }
 
-function pagePattern(pageFile: string): RegExp {
-  const relative = path.relative(APP_ROOT, path.dirname(pageFile));
-  const segments = relative
+function routeSegments(pageFile: string): string[] {
+  return path.relative(APP_ROOT, path.dirname(pageFile))
     .split(path.sep)
     .filter((segment) => segment && !/^\(.+\)$/.test(segment) && !segment.startsWith("@"));
+}
+
+function pagePattern(pageFile: string): RegExp {
+  const segments = routeSegments(pageFile);
   let expression = "";
   for (const segment of segments) {
     if (/^\[\[\.\.\..+\]\]$/.test(segment)) {
@@ -34,9 +37,9 @@ function pagePattern(pageFile: string): RegExp {
   return new RegExp(`^${expression || "/"}/?$`);
 }
 
-const pagePatterns = walk(APP_ROOT)
-  .filter((file) => /^page\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)))
-  .map(pagePattern);
+const pageFiles = walk(APP_ROOT)
+  .filter((file) => /^page\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)));
+const pagePatterns = pageFiles.map(pagePattern);
 
 function isPagePath(value: string): boolean {
   const pathname = value.split(/[?#]/, 1)[0] || "/";
@@ -105,10 +108,10 @@ test("session URLs accept zero or one session id, never extra segments", () => {
 });
 
 test("retired bookmark compatibility routes stay removed", () => {
-  assert.equal(
-    existsSync(path.join(APP_ROOT, "(workspace)/partners/groups/page.tsx")),
-    false,
-  );
+  // Group folders do not affect the public path. A dynamic partner page can
+  // match this URL too, but must not mask the return of the retired index.
+  assert.equal(pageFiles.some((file) => routeSegments(file).join("/") === "partners/groups"), false);
+  assert.equal(isPagePath("/partners/groups/group-1"), true);
   const config = readFileSync(path.join(ROOT, "next.config.js"), "utf8");
   assert.doesNotMatch(config, /\/space\/learning/);
 

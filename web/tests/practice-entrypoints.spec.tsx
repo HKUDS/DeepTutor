@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import SpaceQuestionsPage from "@/app/(utility)/space/questions/page";
-import PracticeRoutePage from "@/app/(workspace)/learning/practice/page";
+import SpaceQuestionsPage from "@/app/(shell)/(utility)/space/questions/page";
+import PracticeRoutePage from "@/app/(shell)/(workspace)/learning/practice/page";
 import { initI18n } from "@/i18n/init";
 import * as api from "@/lib/practice-api";
 

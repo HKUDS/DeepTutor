@@ -536,6 +536,7 @@ type Action =
     }
   | { type: "DELETE_TURN"; key: string; messageId: number }
   | { type: "DISCARD_FAILED_SUBMISSION"; key: string; messageId: number; submissionId: string }
+  | { type: "FORGET_SESSION"; key: string; draftKey: string }
   | {
       type: "NEW_SESSION";
       key: string;
@@ -1678,6 +1679,15 @@ function reduce(state: ProviderState, action: Action): ProviderState {
         ...state,
         sidebarRefreshToken: state.sidebarRefreshToken + 1,
       };
+    case "FORGET_SESSION": {
+      if (!state.sessions[action.key]) return state;
+      const sessions = { ...state.sessions };
+      delete sessions[action.key];
+      const next = { ...state, sessions };
+      return state.selectedKey === action.key
+        ? selectFreshDraft(next, action.draftKey)
+        : next;
+    }
     case "NEW_SESSION":
       return selectFreshDraft(state, action.key, action.configuration);
     case "CONFIGURE_SESSION": {
@@ -1839,6 +1849,8 @@ interface ChatContextValue {
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
   newSession: (configuration?: SessionConfiguration) => string;
+  /** Evict a deleted or moved session without cancelling another session's turn. */
+  forgetSession: (sessionId: string) => void;
   /** Apply route-owned preferences to an explicit loaded session (or the
    * selected draft). Dispatching by key keeps this safe immediately after
    * LOAD_SESSION, before React has committed a new context render. */
@@ -2109,11 +2121,13 @@ export function ChatStateAdapterProvider({
   const [state, dispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(initialState);
   const runtimeGeneration = useRef(0);
+  const sessionEpochsRef = useRef(new Map<string, number>());
   const runnersRef = useRef<
     Map<
       string,
       {
         key: string;
+        epoch: number | undefined;
         client: UnifiedTurnClient;
         replyCommand?: { fingerprint: string; commandId: string };
       }
@@ -2156,6 +2170,7 @@ export function ChatStateAdapterProvider({
       if (principal !== null) principalResolvedRef.current = true;
       if (!firstResolution) {
         runtimeGeneration.current += 1;
+        sessionEpochsRef.current.clear();
         runnersRef.current.forEach(({ client }) => client.disconnect());
         runnersRef.current.clear();
         retryTimersRef.current.forEach(clearTimeout);
@@ -2281,6 +2296,7 @@ export function ChatStateAdapterProvider({
     if (!runner) return;
     runnersRef.current.delete(oldKey);
     runner.key = newKey;
+    runner.epoch = sessionEpochsRef.current.get(newKey);
     runnersRef.current.set(newKey, runner);
   }, []);
 
@@ -2561,16 +2577,21 @@ export function ChatStateAdapterProvider({
       const generation = runtimeGeneration.current;
       const record: {
         key: string;
+        epoch: number | undefined;
         client: UnifiedTurnClient;
         replyCommand?: { fingerprint: string; commandId: string };
       } = {
         key,
+        epoch: sessionEpochsRef.current.get(key),
         client: new UnifiedTurnClient(
           (event) => {
-            if (generation === runtimeGeneration.current) handleRunnerEvent(record.key, event);
+            // Normal DONE keeps accepting title updates; only eviction invalidates them.
+            if (generation === runtimeGeneration.current && sessionEpochsRef.current.get(record.key) === record.epoch) {
+              handleRunnerEvent(record.key, event);
+            }
           },
           () => {
-            if (generation !== runtimeGeneration.current) return;
+            if (generation !== runtimeGeneration.current || runnersRef.current.get(record.key) !== record) return;
             const session = stateRef.current.sessions[record.key];
             if (session?.isStreaming) {
               if (
@@ -2800,8 +2821,10 @@ export function ChatStateAdapterProvider({
       options?: { signal?: AbortSignal; revalidate?: boolean },
     ) => {
       const generation = runtimeGeneration.current;
+      const epoch = sessionEpochsRef.current.get(sessionId);
       const session = await getSession(sessionId, options?.signal);
-      if (options?.signal?.aborted || generation !== runtimeGeneration.current) return;
+      if (options?.signal?.aborted || generation !== runtimeGeneration.current ||
+          epoch !== sessionEpochsRef.current.get(sessionId)) return;
       const key = session.session_id || session.id;
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
@@ -4037,6 +4060,30 @@ export function ChatStateAdapterProvider({
     [makeDraftKey],
   );
 
+  const forgetSession = useCallback((sessionId: string) => {
+    // A response already in flight must not restore the removed transcript.
+    sessionEpochsRef.current.set(sessionId, (sessionEpochsRef.current.get(sessionId) ?? 0) + 1);
+    const runner = runnersRef.current.get(sessionId);
+    runnersRef.current.delete(sessionId);
+    runner?.client.disconnect();
+    pendingSubmissionIdsRef.current.delete(sessionId);
+    pendingRegenerateRef.current.delete(sessionId);
+    pendingResendRef.current.delete(sessionId);
+    resolvingResendRef.current.delete(sessionId);
+    for (const key of resumedParkedTurnsRef.current) {
+      if (key.startsWith(`${sessionId}:`)) resumedParkedTurnsRef.current.delete(key);
+    }
+    for (const [key, controller] of traceRequestsRef.current) {
+      if (!key.startsWith(`${sessionId}:`)) continue;
+      controller.abort();
+      traceRequestsRef.current.delete(key);
+    }
+    for (const message of stateRef.current.sessions[sessionId]?.messages ?? []) {
+      traceCacheRef.current.release(`${sessionId}:${message.id}`);
+    }
+    dispatch({ type: "FORGET_SESSION", key: sessionId, draftKey: makeDraftKey() });
+  }, [makeDraftKey]);
+
   const configureSession = useCallback(
     (configuration: SessionConfiguration, sessionKey?: string) => {
       dispatch({
@@ -4401,6 +4448,7 @@ export function ChatStateAdapterProvider({
       switchBranch,
       renameSessionTitle,
       newSession,
+      forgetSession,
       configureSession,
       loadSession,
       showCachedSession,
@@ -4439,6 +4487,7 @@ export function ChatStateAdapterProvider({
       switchBranch,
       renameSessionTitle,
       newSession,
+      forgetSession,
       configureSession,
       loadSession,
       showCachedSession,

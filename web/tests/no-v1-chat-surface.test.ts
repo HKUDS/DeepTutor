@@ -56,11 +56,11 @@ test("the frontend has no retired transport, URL, or compatibility surface", () 
     "lib/capabilities-api.ts",
     "lib/settings-nav.ts",
     "app/api/v1",
-    "app/(workspace)/home",
-    "app/(workspace)/book",
-    "app/(utility)/knowledge",
-    "app/(utility)/notebook",
-    "app/(utility)/space/notebooks/page.tsx",
+    "app/(shell)/(workspace)/home",
+    "app/(shell)/(workspace)/book",
+    "app/(shell)/(utility)/knowledge",
+    "app/(shell)/(utility)/notebook",
+    "app/(shell)/(utility)/space/notebooks/page.tsx",
   ]) {
     assert.equal(
       fs.existsSync(path.resolve(cwd, relative)),

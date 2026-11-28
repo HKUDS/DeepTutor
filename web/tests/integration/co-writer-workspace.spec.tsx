@@ -7,7 +7,7 @@ const source = (relative: string) =>
 
 describe("co-writer workspace boundaries", () => {
   it("keeps the dynamic route as composition only", () => {
-    const route = source("app/(workspace)/co-writer/[docId]/page.tsx");
+    const route = source("app/(shell)/(workspace)/co-writer/[docId]/page.tsx");
     expect(route).toMatch(/<NoteWorkspace[^>]*docId=/);
     expect(route).not.toMatch(/apiFetch|localStorage|useState|useEffect/);
     expect(route.split("\n").length).toBeLessThan(20);
