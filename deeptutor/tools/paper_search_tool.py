@@ -8,7 +8,6 @@ tool usage in chat flows.
 import asyncio
 from datetime import datetime
 import logging
-import re
 
 import arxiv
 
@@ -157,21 +156,6 @@ class ArxivSearchTool:
         if len(paper["authors"]) > 1:
             return f"({first_author} et al., {paper['year']})"
         return f"({first_author}, {paper['year']})"
-
-    def extract_arxiv_id_from_url(self, url: str) -> str | None:
-        """
-        Extract ArXiv ID from URL
-
-        Args:
-            url: ArXiv URL
-
-        Returns:
-            ArXiv ID or None
-        """
-        match = re.search(r"arxiv\.org/(?:abs|pdf)/(\d+\.\d+)", url)
-        if match:
-            return match.group(1)
-        return None
 
 
 # ========== Usage Example ==========

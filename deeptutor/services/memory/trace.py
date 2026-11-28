@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from deeptutor.services.memory.ids import new_trace_id
-from deeptutor.services.memory.paths import SURFACES, Surface, trace_dir, trace_file
+from deeptutor.services.memory.paths import Surface, trace_dir, trace_file
 
 logger = logging.getLogger(__name__)
 
@@ -112,42 +112,5 @@ def iter_since(surface: Surface, since: datetime | None = None) -> Iterator[Trac
             continue
 
 
-def iter_by_ids(ids: list[str]) -> Iterator[TraceEvent]:
-    """Resolve trace ids back to their events. Cross-surface walk."""
-    wanted_by_surface: dict[str, set[str]] = {}
-    for tid in ids:
-        if ":" not in tid:
-            continue
-        surface, _ = tid.split(":", 1)
-        if surface in SURFACES:
-            wanted_by_surface.setdefault(surface, set()).add(tid)
-
-    for surface, wanted in wanted_by_surface.items():
-        for event in iter_since(surface):  # type: ignore[arg-type]
-            if event.id in wanted:
-                yield event
-
-
 def count_since(surface: Surface, since: datetime | None = None) -> int:
     return sum(1 for _ in iter_since(surface, since))
-
-
-def latest_ts(surface: Surface) -> str | None:
-    """Most recent event timestamp for ``surface``, or None."""
-    files = sorted(trace_dir(surface).glob("*.jsonl"), reverse=True)
-    for path in files:
-        try:
-            last = ""
-            with path.open("r", encoding="utf-8") as fh:
-                for raw in fh:
-                    raw = raw.strip()
-                    if raw:
-                        last = raw
-            if last:
-                obj = json.loads(last)
-                ts = obj.get("ts")
-                if isinstance(ts, str):
-                    return ts
-        except (OSError, json.JSONDecodeError):
-            continue
-    return None
