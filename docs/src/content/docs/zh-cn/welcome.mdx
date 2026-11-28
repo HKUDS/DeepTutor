@@ -1,12 +1,12 @@
 ---
 title: 欢迎
-description: DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学习、练习、做研究，并把每个主题留在各自的工作区里。
+description: DeepTutor 是运行在你电脑上的 AI 学习工作台。接上自己的 AI 模型，带着材料学习、练习、做研究，并把每个学科留在各自的工作区里。
 quadrant: explanation
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学习、练习、做研究，并把每个主题留在各自的工作区里。
+DeepTutor 是运行在你电脑上的 AI 学习工作台。接上你自己的 AI 模型后，你可以带着讲义、论文和笔记一起学习、练习与研究，并把每个学科留在各自的工作区里。
 
 <img class="dt-welcome-shot" src="/screenshots/dev/overview.png" alt="DeepTutor 工作区：对话旁边是学习相关的入口。" />
 
@@ -14,9 +14,9 @@ DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学�
 
 <div class="dt-welcome-grid">
   <CardGrid>
-    <LinkCard title="桌面端" description="安装应用，接上一个模型，发出第一条消息。" href="/zh-cn/get-started/desktop/" />
-    <LinkCard title="提供方与模型" description="接上一个语言模型，先测试，再应用设置。" href="/zh-cn/get-started/providers/" />
-    <LinkCard title="更新日志" description="看看最近几个版本改了什么。" href="/zh-cn/get-started/changelog/" />
+    <LinkCard title="快速入门" description="安装桌面应用，接上第一个语言模型，完成你的第一次学习对话。" href="/zh-cn/get-started/desktop/" />
+    <LinkCard title="模型配置指南" description="看懂提供方、API Key 与七类模型的区别，明确第一天该配哪一个。" href="/zh-cn/get-started/models/" />
+    <LinkCard title="提供方与参数参考" description="速查各平台默认地址、Binding 名称与本地模型配置。" href="/zh-cn/get-started/providers/" />
   </CardGrid>
 </div>
 
@@ -39,6 +39,7 @@ DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学�
   <CardGrid>
     <LinkCard title="其他安装方式" description="PyPI、Docker、源码，以及纯 CLI。" href="/zh-cn/get-started/" />
     <LinkCard title="伙伴" description="把一个伙伴接到即时通讯渠道。" href="/zh-cn/channels/" />
+    <LinkCard title="更新日志" description="看看最近几个版本改了什么。" href="/zh-cn/get-started/changelog/" />
     <LinkCard title="故障排查" description="安装或启动没有完成时从这里看。" href="/zh-cn/self-hosting/troubleshooting/" />
   </CardGrid>
 </div>

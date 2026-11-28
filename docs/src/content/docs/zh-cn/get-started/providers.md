@@ -1,9 +1,10 @@
 ---
-title: Provider 配置
-description: 配置 DeepTutor 的语言模型、任务模型、嵌入模型、搜索、语音与多模态提供方。
-quadrant: how-to
+title: 提供方与参数参考
+description: DeepTutor 语言模型、任务模型、嵌入模型、搜索、语音、多模态与本地模型提供方的完整参数参考。
+quadrant: reference
 ---
 
+第一次接触模型配置？先看[模型配置指南](/zh-cn/get-started/models/)了解提供方、API Key 与七类模型的分工，再回到本页速查具体地址与参数。
 
 DeepTutor 的模型 catalog 覆盖 LLM、Task Models、Embedding、Search、语音合成、语音识别、文生图与文生视频。请通过 **设置 → 模型与服务**、`deeptutor init` 或 `data/user/settings/model_catalog.json` 配置 provider profiles。模型 profiles 和选择从该 catalog 解析；旧的 `LLM_*`、`EMBEDDING_*`、`SEARCH_*` 环境变量写法已不能配置它们。项目根目录的 `.env` 文件不会自动加载。
 

@@ -1,17 +1,20 @@
 ---
-title: Get Started
-description: DeepTutor ships four install paths — PyPI, From Source, Docker, and CLI-Only. Pick the one that fits.
+title: Install choices
+description: Compare Desktop, Docker, PyPI, From Source, and CLI-Only installation paths for DeepTutor.
 quadrant: explanation
 ---
 
-DeepTutor ships **four installation paths**. They share one runtime-home layout: settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). Knowledge bases, memory, Partner runtime state, multi-user accounts, and audit logs also live under the same `data/` tree, so persist that tree and any separately configured content-workspace directories. The runtime home is the deployment storage root; it is distinct from the workspaces selected inside the app.
+For most learners on macOS or Windows, start with the [Quickstart (Desktop app)](/get-started/desktop/)—it bundles Python and Node.js so you do not need a terminal.
 
-For the full app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
+If you prefer a terminal or server deployment, DeepTutor ships **four additional installation paths** that share one runtime-home layout: settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). Knowledge bases, memory, Partner runtime state, multi-user accounts, and audit logs also live under the same `data/` tree, so persist that tree and any separately configured content-workspace directories. The runtime home is the deployment storage root; it is distinct from the workspaces selected inside the app.
+
+For the full terminal-based app, the recommended flow is **pick a runtime-home directory → install → `deeptutor init` → `deeptutor start`**.
 
 ## Pick a path
 
 | Option | When to use | Page |
 |--------|-------------|------|
+| **Desktop** | Default for macOS & Windows; no Python or Node.js setup | [**Quickstart**](/get-started/desktop/) |
 | **PyPI** | Published packages; full app uses [full] in 1.7.x | [**Install from PyPI**](/self-hosting/pypi/) |
 | **From Source** | Current dev, local development, optional hot reload | [**Install from Source**](/self-hosting/source/) |
 | **Docker** | Production deployments, hosted hosts, persistent volumes | [**Docker**](/get-started/docker/) |

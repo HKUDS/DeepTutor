@@ -372,6 +372,50 @@ dialog[aria-label="Search"] .dialog-frame {
   }
 }
 
+/* Brand-unified asides — match the DeepTutor wordmark's Deep Blue (note/tip)
+   and Tutor Orange (caution), keeping a restrained brick-red for danger. */
+.starlight-aside {
+  border-radius: 0.5rem;
+}
+
+.starlight-aside--note,
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: #2d6b97;
+  --sl-color-asides-border: var(--accent);
+  background-color: rgba(77, 143, 191, 0.08);
+}
+
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: #9a5418;
+  --sl-color-asides-border: #e08e45;
+  background-color: rgba(224, 142, 69, 0.09);
+}
+
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: #8f2b26;
+  --sl-color-asides-border: #c2413b;
+  background-color: rgba(194, 65, 59, 0.08);
+}
+
+[data-theme="dark"] .starlight-aside--note,
+[data-theme="dark"] .starlight-aside--tip {
+  --sl-color-asides-text-accent: #9fd0f2;
+  --sl-color-asides-border: var(--accent);
+  background-color: rgba(123, 190, 234, 0.1);
+}
+
+[data-theme="dark"] .starlight-aside--caution {
+  --sl-color-asides-text-accent: #f6be8e;
+  --sl-color-asides-border: #f3a86b;
+  background-color: rgba(243, 168, 107, 0.11);
+}
+
+[data-theme="dark"] .starlight-aside--danger {
+  --sl-color-asides-text-accent: #f0a39d;
+  --sl-color-asides-border: #e07068;
+  background-color: rgba(224, 112, 104, 0.11);
+}
+
 /* Learn-lesson prerequisites. A plain aside, not Starlight's note, so the
    default blue background never paints before this stylesheet. Welcome link
    cards are transparent over --sl-color-bg, with a gray-5 border, 0.5rem
