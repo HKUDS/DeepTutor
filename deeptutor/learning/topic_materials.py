@@ -437,6 +437,8 @@ def build_topic_materials(sources: Iterable[Any]) -> TopicMaterials:
     """
     result = TopicMaterials()
     budget = MAX_TOTAL_CHARS
+    from deeptutor.services.workspace.knowledge import knowledge_base_ref_available
+
     for source in sorted(sources, key=lambda item: getattr(item, "position", 0)):
         kind = getattr(getattr(source, "kind", None), "value", None) or str(
             getattr(source, "kind", "")
@@ -460,6 +462,17 @@ def build_topic_materials(sources: Iterable[Any]) -> TopicMaterials:
             )
             continue
         if kind == "knowledge_base":
+            if not knowledge_base_ref_available(source_id):
+                result.materials.append(
+                    TopicMaterial(
+                        sid="",
+                        kind=kind,
+                        name=label,
+                        available=False,
+                        note="the knowledge base for this source was removed",
+                    )
+                )
+                continue
             result.materials.append(
                 TopicMaterial(
                     sid="", kind=kind, name=label, note=f"search with rag: kb_name={source_id!r}"
@@ -474,6 +487,17 @@ def build_topic_materials(sources: Iterable[Any]) -> TopicMaterials:
             # point: before this row existed, hand-picking a file produced a
             # material the tutor was told it could never read.
             kb_name = str((getattr(source, "metadata", None) or {}).get("kb_name") or "").strip()
+            if kb_name and not knowledge_base_ref_available(kb_name):
+                result.materials.append(
+                    TopicMaterial(
+                        sid="",
+                        kind=kind,
+                        name=label,
+                        available=False,
+                        note="the knowledge base holding this document was removed",
+                    )
+                )
+                continue
             where = f"kb_name={kb_name!r}" if kb_name else "the attached knowledge base"
             result.materials.append(
                 TopicMaterial(

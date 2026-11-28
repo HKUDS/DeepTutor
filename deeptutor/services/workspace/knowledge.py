@@ -239,3 +239,27 @@ def learning_source_access(refs):
         yield
     finally:
         learning_source_kbs.reset(token)
+
+
+def knowledge_base_ref_available(ref: str) -> bool:
+    """Whether a learning source's knowledge-base reference still resolves.
+
+    Saved sources keep the row the learner chose, so a base deleted afterwards
+    must not stay mounted on every later read. Liveness is derived here instead
+    of stored: a base restored under the same identity becomes usable again
+    without a migration. The check runs as the explicit learning source the
+    turn already grants, so a workspace whose selection no longer lists the
+    base does not turn a live source dead.
+    """
+    from deeptutor.multi_user.knowledge_access import resolve_kb
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    ref = str(ref or "").strip()
+    if not ref:
+        return False
+    with learning_source_access([ref]):
+        try:
+            resolve_kb(ref)
+        except (AccessError, WorkspaceError, FileNotFoundError, ValueError):
+            return False
+    return True

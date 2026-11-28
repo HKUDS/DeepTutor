@@ -118,8 +118,16 @@ def test_goal_source_is_not_offered_as_readable_material() -> None:
     assert render_topic_manifest(materials) == ("", {})
 
 
-def test_knowledge_base_is_listed_as_searchable_but_never_readable() -> None:
+def test_knowledge_base_is_listed_as_searchable_but_never_readable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     """A KB is searched with rag; listing it stops the tutor inventing it."""
+    # Liveness is derived from the access resolver at read time, so the base has
+    # to actually exist for this test to be about a live one.
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb",
+        lambda ref: SimpleNamespace(base_dir=tmp_path, name="mechanics-kb"),
+    )
     materials = build_topic_materials(
         [_source(TopicSourceKind.KNOWLEDGE_BASE, "mechanics-kb", "Mechanics KB")]
     )
@@ -211,10 +219,14 @@ def test_notebook_becomes_one_source_carrying_its_records(
 # ── the working-history sources added with the mastery goal rework ──────────
 
 
-def test_a_hand_picked_knowledge_base_file_is_searchable_not_a_dead_end(monkeypatch):
+def test_a_hand_picked_knowledge_base_file_is_searchable_not_a_dead_end(monkeypatch, tmp_path):
     """Picking one document out of a library used to produce a material the
     tutor was told it could never read — so the careful selection was silently
     worse than selecting the whole base."""
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb",
+        lambda ref: SimpleNamespace(base_dir=tmp_path, name="ml-papers"),
+    )
     materials = build_topic_materials(
         [
             _source(
