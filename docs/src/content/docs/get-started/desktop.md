@@ -1,124 +1,122 @@
 ---
-title: Desktop quickstart
-description: Install Open DeepTutor, connect one language model, and send a first message.
+title: Quickstart
+description: Learn what DeepTutor is, install Open DeepTutor, connect one language model, and finish your first study exchange.
 quadrant: tutorial
 ---
 
-Open DeepTutor is the desktop app. The first time you open it, the app unpacks the Python and Node runtime that came with it, starts those services on this computer, and shows the workspace. You do not install Python, Node, or the source tree yourself.
+## What is DeepTutor?
 
-## 1. Download the app for this computer
+DeepTutor is an **AI learning workspace** that runs on your computer.
 
-| This computer | Download |
-| --- | --- |
-| Mac with Apple silicon | [Open DeepTutor for macOS (Apple silicon)](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg) |
-| Mac with Intel | [Open DeepTutor for macOS (Intel)](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg) |
-| Windows | [Open DeepTutor for Windows](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe) |
+If a standard AI web chat is a blank Q&A box, DeepTutor is a **personal study desk**:
 
-Open the file you downloaded. On a Mac, drag the app into Applications. On Windows, finish the installer. Windows SmartScreen asks you to confirm because the installer is unsigned; choose to run it. After that, **Open DeepTutor** is in your applications list.
+- **Study with your own materials**: Attach lecture notes, PDFs, papers, or web pages. Replies point back to the exact passage so you can verify what you read.
+- **Separate subjects into workspaces**: Keep calculus, English, and research projects in separate workspaces so chats, notes, practice questions, and knowledge bases stay organized.
+- **More than chat**: Alongside conversation, you get photo problem-solving, practice quizzes, guided Mastery Paths, Immersive Reading, and a Learning Notebook.
+- **Your data stays local**: Notes, chats, and settings live on your computer. Switching AI models does not erase your study history.
 
-The Windows portable ZIP is on the [same release](https://github.com/HKUDS/DeepTutor/releases/latest). This tutorial uses the installer above.
+:::note[Why can DeepTutor not reply right after install?]
+DeepTutor provides the learning workspace and tools, while an external **AI model** acts as the brain that writes replies. You do not need to configure every model up front—**connecting one language model is enough to start chatting and studying**.
+:::
 
-## 2. Wait until the workspace opens
+## 1. Download and install Open DeepTutor
 
-Launch **Open DeepTutor**. The first start unpacks the bundled runtime, then opens the DeepTutor window. You can continue when the workspace is on screen and Home is in the sidebar. If the window is still on the startup screen after a few minutes, quit and open the app again.
+**Open DeepTutor** is the desktop app. It bundles Python and Node.js inside the installer, so you do not install developer runtimes or open a terminal.
 
-## 3. Connect an AI account or enter an API key
+| This computer | Download | Install |
+| --- | --- | --- |
+| Mac with Apple silicon (M1/M2/M3/M4) | [Open DeepTutor for macOS (Apple silicon)](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg) | Open the DMG and drag **Open DeepTutor** into **Applications**. |
+| Mac with Intel | [Open DeepTutor for macOS (Intel)](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg) | Open the DMG and drag **Open DeepTutor** into **Applications**. |
+| Windows (64-bit) | [Open DeepTutor for Windows](https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe) | Run the installer wizard. |
 
-DeepTutor provides the learning interface and tools. It needs an AI model to write replies. Connect an AI-platform account you have permission to use, or enter an **API key**, an access credential issued by that platform.
+:::caution[Windows security prompt]
+Windows builds are currently unsigned, so SmartScreen may ask you to confirm. Choose **More info → Run anyway** to continue. A Windows portable ZIP is available on the [same release](https://github.com/HKUDS/DeepTutor/releases/latest). For Docker, PyPI, source, or CLI-only installs, see [Install choices](/get-started/).
+:::
 
-Without a configured model, you may see:
+Launch **Open DeepTutor**. The first start unpacks the bundled runtime, then opens the workspace window. You can continue when **Home** appears in the sidebar. If the startup screen stays up for several minutes, quit and reopen the app.
+
+<!-- TODO(screenshot): Add a screenshot of the first-launch DeepTutor workspace showing the top-left workspace menu -> Settings entry (save to docs/public/screenshots/dev/quickstart-workspace.png). -->
+
+## 2. Connect your first language model
+
+Before a model is configured, sending a message shows:
 
 > No active LLM model is configured. Please set it in Settings > Language models.
 
-Open the workspace menu in the upper-left corner, such as **General workspace**, and choose **Settings**. On **General**, find **Set up chat first** and choose **1. Connect a provider**. On **Providers**, choose **Add provider**.
+Follow the built-in three-step checklist in Settings:
 
-A **provider** is where you get access to AI. For interaction in the chat box, look for options labelled **Language models**.
+1. Click the workspace name in the upper-left corner (for example, **General workspace**) and choose **Settings**.
+2. On **General**, find **Set up chat first** and complete the three steps in order.
 
-### Option A: Enter an API key
+<!-- TODO(screenshot): Add a screenshot of Settings -> General highlighting the "Set up chat first" 3-step checklist (save to docs/public/screenshots/dev/quickstart-setup-checklist.png). -->
 
-| API key issuer | Select |
-| --- | --- |
-| OpenAI Platform | **OpenAI** |
-| DeepSeek Platform | **DeepSeek** |
-| Another supported platform | The matching provider |
+### Step 1: Connect a provider
 
-Create a key in the platform's API-key management page if you do not have one. A chat account or subscription does not necessarily include API access or credit. An API key is a program's access credential, not your account password.
+A **provider** is the platform or local server that supplies your AI model. Click **1. Connect a provider** → **Add provider**, then choose the option that matches what you have:
 
-Select the issuer and choose **Continue**. Configure:
+- **Option A: Sign in with an existing account (no API key needed)**
+  If you have an eligible ChatGPT account with Codex access, a GitHub Copilot account, or a CodeBuddy account, select **OpenAI Codex**, **GitHub Copilot**, or **CodeBuddy/WorkBuddy** and complete browser sign-in. Return to DeepTutor when you see **Authentication received. You can return to DeepTutor.** and confirm the page shows a connected status with available models.
+- **Option B: Enter an API key (works with DeepSeek, OpenAI, Qwen, and more)**
+  1. Select the platform that issued your key (such as **OpenAI**, **DeepSeek**, **DashScope (Qwen)**, or **SiliconFlow**) and click **Continue**.
+  2. Leave **Provider URL** blank when using the official platform default; enter a custom API address only for gateways or private deployments.
+  3. Paste your **API key** (an access credential for programs, not your account password; never share it in screenshots or chats).
+  4. Keep **Language-model API protocol** on **Auto** if shown, and confirm **Language models** is listed under available service types.
+  5. Scroll to **Provider connection** and click **Test provider**. Once you see **Model list retrieved**, click **Language models →** at the bottom.
 
-| Field | What to enter |
-| --- | --- |
-| **Provider URL** | Leave blank as directed for the official default; enter the API address supplied by your gateway or private deployment otherwise |
-| **API key** | The selected provider's key |
-| **Language-model API protocol** | Keep **Auto** if shown |
-| **Available service types** | Confirm **Language models** is supported |
-| **Advanced connection settings** | Keep defaults unless the provider requires changes |
+:::tip[No API key yet, or unsure which platform to pick?]
+Read [Model setup guide](/get-started/models/) first—it explains the three ways to get a model and clears up common beginner pitfalls such as web subscriptions vs. API credits.
+:::
 
-`https://api.example.com/v1` is a placeholder, not a working address. The API address is not the vendor's homepage; use its integration instructions. Do not expose keys in screenshots, chats, or issue reports.
+<!-- TODO(screenshot): Add a screenshot of Settings -> Providers -> Add provider showing API key input and the "Test provider" button with synthetic/redacted values (save to docs/public/screenshots/dev/quickstart-add-provider.png). -->
 
-Scroll to **Provider connection** and choose **Test provider**. **Model list retrieved** means the model list was fetched, not that a model can answer. Choose **Language models →** at the bottom to add, select, and test a model.
+### Step 2: Choose a model and test it
 
-If credentials are rejected, check the provider, key, and account permissions. For timeouts, check the address and network. If connected without a model list, enter the exact model ID from the provider's instructions.
+Open **Settings → Models & services → Language models** (or return to **General** and click **2. Choose a chat model**):
 
-### Option B: Sign in with an existing account
+1. Pick a specific model from your connected provider (or enter the exact **Model ID** from your provider's docs).
+2. Click **Test model** to verify that your account can actually call this model.
+3. If **Reasoning effort** appears, leave the default or select **low** for your first trial.
+4. Click **Set as default**.
 
-| Account | Select |
-| --- | --- |
-| ChatGPT account with Codex access | **OpenAI Codex** |
-| CodeBuddy account | **CodeBuddy/WorkBuddy** |
-| GitHub account with Copilot access | **GitHub Copilot** |
+### Step 3: Apply changes
 
-This example uses a ChatGPT account. See [Provider configuration](/get-started/providers/) for other account requirements.
+Click **Apply changes** on the bottom bar.
 
-1. Select **OpenAI Codex** in **Add provider**, then **Continue**.
-2. Choose **Sign in with Codex**.
-3. Select your ChatGPT account in the browser and complete sign-in and authorization.
-4. When you see **Authentication received. You can return to DeepTutor.**, return to the app. Confirm that it shows a connected state and available models.
+Confirm that the model shows **Default model** and the status changes to **Applied**. **Save draft** stores edits without activating them; **Apply changes** makes them live.
 
-You do not need to have installed or used Codex, or register another account. The account needs eligible access and available allowance. **OpenAI Codex** is the account-sign-in option; **OpenAI** is the API-key option.
+<!-- TODO(screenshot): Add a screenshot of Settings -> Language models showing "Test model", "Default model" badge, and the bottom "Apply changes" bar (save to docs/public/screenshots/dev/quickstart-apply-model.png). -->
 
-If authorization stays pending, finish the browser steps. Cancel a failed or expired attempt before starting another.
+## 3. Finish your first study exchange
 
-## 4. Choose a model and apply settings
+Return to **Home → Chat** and check that your model name appears beside the composer. Existing conversations can keep an earlier selection; use the model selector if you need to switch.
 
-An account or platform can offer several models. Open **Language models** in Settings, or return to **General** and choose **2. Choose a chat model**.
-
-1. Select a specific model, such as **GPT-5.6-Sol** or **GPT-6-Astra**. Use the models actually listed for your account.
-2. For API-key connections without a configured model, add one from the connected provider; use the platform's exact **Model ID** for manual entry. For Codex, choose an account-provided model.
-3. Choose **Test model** to verify that model. A connected provider does not imply permission to use every model.
-4. If **Reasoning effort** is available, choose **low** for a first trial or keep the default.
-5. Choose **Set as default**, then **Apply changes**.
-
-The selected model should show **Default model**, and the page should show **Applied**. **Save draft** stores edits without activating them; **Apply changes** puts them into effect.
-
-## 5. Complete your first learning exchange
-
-Return to **Home → Chat** and check the model name beside the composer. Existing conversations can retain a previous selection; use the model selector to change it if needed.
-
-Send:
+Send this prompt:
 
 > Help me practice English writing. Give me a familiar topic and ask me to write four to six sentences. Wait for my answer, then explain the two most important problems and give me hints so I can revise it myself.
 
-Write and send your answer. Revise it using the feedback, then ask:
+Write your short answer and send it. Revise it using the hints, then reply:
 
 > Here is my revised answer. Did I fix those two problems?
 
-You have completed a first learning exchange when DeepTutor responds to your answer: **receive a task → answer → get feedback → revise**.
+When DeepTutor responds to your revision, you have completed your first study loop: **receive a task → answer → get feedback → revise**.
 
-If the model-not-configured message remains, check the account connection, default model, **Apply changes**, and conversation model, then choose **Retry**. For failed requests, check the network, authorization, allowance, and model test result. See [Troubleshooting](/self-hosting/troubleshooting/) for more help.
-
-Basic chat does not require embedding, voice, image, or video setup. Add those services when needed.
+If you still see the unconfigured-model message, verify that your model is marked **Default model**, click **Apply changes**, check the composer's model selector, and click **Retry**.
 
 ## Where your data lives
 
-Your notes, chats, and settings stay in the app’s workspace folder. Installing a newer copy of the app leaves this folder where it is.
+Your notes, chats, and settings stay inside the app's local workspace folder. Installing a newer version of Open DeepTutor preserves this folder:
 
 | System | Workspace data |
 | --- | --- |
 | macOS | `~/Library/Application Support/Open DeepTutor/workspace/data` |
 | Windows | `%LOCALAPPDATA%\Open DeepTutor\workspace\data` |
 
-## Next
+## Next steps
 
-- [A first study session](/learning-workspace/) — one topic, one source, one question.
-- [Changelog](/get-started/changelog/) — read this before you replace an older desktop app. v1.7.4 changes the runtime signing key, so install that app itself rather than importing an update into an older build.
+You do not need embedding, voice, image, or video models for normal chat. Add them later when you need those features.
+
+- [Model setup guide](/get-started/models/) — Understand all seven model categories and choose models for your study workflow.
+- [Study with your materials](/learn/ask-with-a-source/) — Attach a PDF or note and get answers with clickable citations.
+- [Solve from a photo](/learn/solve-a-photo/) — Photograph a problem on paper and walk through the solution.
+- [A first study session](/learning-workspace/) — Connect one topic, one source, and one question across the workspace.
+- [Changelog](/get-started/changelog/) — Check before upgrading an older desktop build. v1.7.4 replaced the runtime signing key, so install the new app rather than importing an update into an older build.

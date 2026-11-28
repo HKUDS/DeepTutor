@@ -1,9 +1,10 @@
 ---
-title: Provider Configuration
-description: Configure LLM, task, embedding, search, voice, and multimodal provider profiles in DeepTutor.
-quadrant: how-to
+title: Provider Reference
+description: Reference catalog of DeepTutor's LLM, task, embedding, search, voice, multimodal, and local model providers.
+quadrant: reference
 ---
 
+New to model setup? Start with the [Model setup guide](/get-started/models/) to learn what providers, API keys, and the seven model categories do before looking up endpoints here.
 
 DeepTutor's model catalog covers LLM, Task Models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, and Video Generation. Configure provider profiles through **Settings → Models & services**, `deeptutor init`, or `data/user/settings/model_catalog.json`. Model profiles and selections are resolved from that catalog; legacy `LLM_*`, `EMBEDDING_*`, and `SEARCH_*` environment recipes no longer configure them. Project-root `.env` files are not auto-loaded.
 
