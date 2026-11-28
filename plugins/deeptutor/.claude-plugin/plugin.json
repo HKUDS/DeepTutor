@@ -1,0 +1,22 @@
+{
+  "name": "deeptutor",
+  "version": "1.0.0",
+  "description": "Agent skills for DeepTutor: the existing deeptutor-cli skill plus guided setup and troubleshooting, and building and evaluating knowledge bases for RAG.",
+  "author": {
+    "name": "HKUDS",
+    "url": "https://deeptutor.info"
+  },
+  "homepage": "https://deeptutor.info",
+  "repository": "https://github.com/HKUDS/DeepTutor",
+  "license": "Apache-2.0",
+  "keywords": [
+    "deeptutor",
+    "education",
+    "tutoring",
+    "rag",
+    "knowledge-base",
+    "cli",
+    "agent-skills"
+  ],
+  "skills": "./skills/"
+}

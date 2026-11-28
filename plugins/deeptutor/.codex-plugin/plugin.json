@@ -1,0 +1,43 @@
+{
+  "name": "deeptutor",
+  "version": "1.0.0",
+  "description": "Agent skills for DeepTutor: the existing deeptutor-cli skill plus guided setup and troubleshooting, and building and evaluating knowledge bases for RAG.",
+  "author": {
+    "name": "HKUDS",
+    "url": "https://deeptutor.info"
+  },
+  "homepage": "https://deeptutor.info",
+  "repository": "https://github.com/HKUDS/DeepTutor",
+  "license": "Apache-2.0",
+  "keywords": [
+    "deeptutor",
+    "education",
+    "tutoring",
+    "rag",
+    "knowledge-base",
+    "cli",
+    "agent-skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "DeepTutor",
+    "shortDescription": "Personalized AI tutoring from the CLI",
+    "longDescription": "Skills for DeepTutor, the agent-native personalized tutoring platform. Reuses the repository's deeptutor-cli skill for capabilities, sessions, partners, notebooks and the Web app, and adds a setup skill (install, DEEPTUTOR_HOME, non-interactive init, config apply with credential env references, doctor checks, startup, upgrades and troubleshooting, following AGENT_SETUP.md) and a knowledge-base skill (embedding configuration, creating and extending KBs, hybrid search, retrieval evaluation and using KBs with deep_solve and deep_research).",
+    "developerName": "HKUDS",
+    "category": "Education",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://deeptutor.info",
+    "defaultPrompt": [
+      "Install DeepTutor and configure it with my OpenAI key from OPENAI_API_KEY",
+      "Build a DeepTutor knowledge base from my lecture PDFs",
+      "Quiz me on thermodynamics from my physics knowledge base"
+    ],
+    "brandColor": "#60A0D0",
+    "composerIcon": "./assets/logo.png",
+    "logo": "./assets/logo.png"
+  }
+}
