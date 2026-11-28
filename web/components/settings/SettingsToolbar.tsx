@@ -31,9 +31,23 @@ export function SettingsToolbar() {
   return (
     <div
       data-tour="tour-actions"
-      className="shrink-0 border-t border-[var(--border)] bg-[var(--background)]"
+      // The scroller above reserves `scrollbar-gutter: stable`, which narrows
+      // its content box by the scrollbar width. The toolbar is its sibling, so
+      // it has to reserve the same gutter or its column centers half a
+      // scrollbar off the content it pins under. `overflow-y-auto` with no
+      // overflowing content only makes the box a scroll container so the
+      // gutter applies — it never actually scrolls.
+      className="shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--background)] [scrollbar-gutter:stable]"
     >
-      <PageContainer spacing="toolbar" className="flex flex-wrap items-center justify-between gap-3">
+      {/* Same column as the page it pins under: the toolbar used to span the
+          whole pane while the content was capped and centered, so its status
+          text and Apply button sat ~30-40px outside the content column. */}
+      <PageContainer
+        spacing="toolbar"
+        maxWidth="max-w-[780px]"
+        gutter="px-6 md:px-8"
+        className="flex flex-wrap items-center justify-between gap-3"
+      >
         <div className="min-w-0" role="status">
           <p className="text-[13px] font-medium">
             {draftState === "saved"
@@ -73,7 +87,7 @@ export function SettingsToolbar() {
             type="button"
             onClick={applyCatalog}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] transition-transform duration-150 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100"
           >
             {applying ? (
               <Loader2 size={14} className="animate-spin" />

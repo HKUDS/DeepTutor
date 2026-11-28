@@ -278,7 +278,7 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-popover {
   position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
   padding: 6px; border-radius: var(--dt-radius-lg); background: var(--popover); color: var(--popover-foreground);
-  box-shadow: var(--dt-shadow-md); transform-origin: top left; animation: dt-pop-in 140ms var(--dt-ease);
+  box-shadow: var(--dt-shadow-md); transform-origin: top left; animation: dt-popover-in 140ms var(--dt-ease);
 }
 .dt-workspace-panel { width: max(100%, 260px); }
 .dt-menu-label { padding: 6px 8px 4px; font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); }
@@ -292,7 +292,11 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-menu-slot :is(a, button) { color: var(--foreground) !important; background: transparent; }
 .dt-menu-divider { height: 1px; margin: 6px 4px; background: var(--border); }
 .dt-menu-footer { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 0 8px; font-size: 11.5px; color: var(--muted-foreground); }
-@keyframes dt-pop-in { from { opacity: 0; transform: scale(.97) translateY(-2px); } to { opacity: 1; transform: none; } }
+/* Menus and palettes rise from their trigger, so they scale up a touch from a
+   nudged-up position. Named separately from globals' `dt-pop-in` (the card lift
+   used by `.animate-pop-in`): a duplicate `@keyframes` is last-one-wins, which
+   silently made every card entrance use this popover curve. */
+@keyframes dt-popover-in { from { opacity: 0; transform: scale(.97) translateY(-2px); } to { opacity: 1; transform: none; } }
 
 /* ---- Sidebar footer: one generous new-conversation button ------------ */
 .dt-sidebar-footer { flex-shrink: 0; padding: 8px 10px 12px; }
@@ -312,7 +316,7 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-palette {
   display: flex; flex-direction: column; width: min(640px, 100%); max-height: min(560px, 76vh); overflow: hidden;
   border-radius: 14px; background: var(--popover); color: var(--popover-foreground); box-shadow: var(--dt-shadow-md);
-  animation: dt-pop-in 160ms var(--dt-ease);
+  animation: dt-popover-in 160ms var(--dt-ease);
 }
 .dt-palette-field { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .dt-palette-field input { flex: 1; min-width: 0; background: transparent; font-size: 15px; outline: none; color: var(--foreground); }

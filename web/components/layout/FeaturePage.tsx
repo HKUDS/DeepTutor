@@ -18,13 +18,26 @@ export function PageContainer({
   children,
   className = '',
   spacing = 'page',
+  maxWidth = 'max-w-[1180px]',
+  gutter = 'px-6 md:px-9',
   ...props
-}: ComponentPropsWithRef<'div'> & { spacing?: 'page' | 'toolbar' }) {
+}: ComponentPropsWithRef<'div'> & {
+  spacing?: 'page' | 'toolbar' | 'none'
+  /** Width cap as a class. Callers that need a narrower column set it here
+   *  rather than appending a conflicting `max-w-*` to `className`: Tailwind
+   *  orders its own output, not the class attribute, so the appended class
+   *  silently loses (and flips winners when the value sorts differently). */
+  maxWidth?: string
+  /** Horizontal padding as classes, for the same reason. */
+  gutter?: string
+}) {
   return (
     <div
       {...props}
       data-page-container
-      className={`dt-page-container mx-auto w-full min-w-0 max-w-[1180px] px-6 md:px-9 ${spacing === 'page' ? 'py-7 lg:py-9' : 'py-3'} ${className}`}
+      className={`dt-page-container mx-auto w-full min-w-0 ${maxWidth} ${gutter} ${
+        spacing === 'page' ? 'py-7 lg:py-9' : spacing === 'toolbar' ? 'py-3' : ''
+      } ${className}`}
     >
       {children}
     </div>
