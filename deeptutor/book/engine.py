@@ -67,6 +67,7 @@ from .models import (
     BookDepth,
     BookInputs,
     BookProposal,
+    BookSourceSummary,
     BookStatus,
     Chapter,
     ContentType,
@@ -270,6 +271,59 @@ def _coerce_depth(value: str | BookDepth | None) -> BookDepth:
         return BookDepth.STANDARD
 
 
+def source_summaries(inputs: BookInputs) -> list[BookSourceSummary]:
+    """Project a book's captured inputs into display-ready source labels.
+
+    The inputs snapshot is the durable record of what a book was built from, but
+    it is internal and never sent to the reader. Without this projection a book
+    created from notes looked sourceless: the proposal form only knew about
+    knowledge bases, so it claimed the book would rely on general knowledge
+    while the notes had in fact been captured (#2762).
+
+    Knowledge bases keep their own field (``Book.knowledge_bases``) because they
+    drive drift detection, so they are skipped here to avoid listing them twice.
+    """
+    summaries: list[BookSourceSummary] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, label: str, source_id: str, available: bool) -> None:
+        clean = " ".join(str(label or "").split())
+        if not clean:
+            return
+        key = (kind, clean)
+        if key in seen:
+            return
+        seen.add(key)
+        summaries.append(
+            BookSourceSummary(
+                kind=kind,
+                label=clean,
+                source_id=str(source_id or ""),
+                available=bool(available),
+            )
+        )
+
+    for row in inputs.source_refs or []:
+        if not isinstance(row, dict):
+            continue
+        add(
+            str(row.get("kind") or ""),
+            str(row.get("label") or ""),
+            str(row.get("source_id") or ""),
+            row.get("available", True) is not False,
+        )
+
+    # Notes passed through the legacy ``notebook_refs`` channel carry only ids
+    # (``NotebookRef`` has no title), so they are reported by their notebook id.
+    # Their per-record labels live in the resolved source material, not here.
+    for ref in inputs.notebook_refs or []:
+        notebook_id = str(getattr(ref, "notebook_id", "") or "")
+        if notebook_id:
+            add("notebook", notebook_id, notebook_id, True)
+
+    return summaries
+
+
 @dataclass
 class _BookRuntime:
     """In-process per-book **scheduling** state.
@@ -332,6 +386,12 @@ class BookEngine:
         )
         self._runtimes: dict[str, _BookRuntime] = {}
         self._global_lock = asyncio.Lock()
+        # Books whose current COMPILING run this process started. A run's
+        # ``compile_started_at`` is only its own run's clock while the process
+        # that stamped it is still around; after a restart the stamp belongs to
+        # a run that no longer exists, and a reopened book needs a fresh one.
+        # Membership here is the "same run" test ``resume_book`` uses.
+        self._run_owners: set[str] = set()
 
     # ── Discovery / lifecycle ────────────────────────────────────────────
 
@@ -398,6 +458,9 @@ class BookEngine:
 
     def delete_book(self, book_id: str) -> bool:
         runtime = self._runtimes.pop(book_id, None)
+        run_owners = getattr(self, "_run_owners", None)
+        if run_owners is not None:
+            run_owners.discard(book_id)
         if runtime is not None:
             if runtime.worker and not runtime.worker.done():
                 runtime.worker.cancel()
@@ -517,6 +580,7 @@ class BookEngine:
                 status=BookStatus.DRAFT,
                 proposal=proposal,
                 knowledge_bases=book_inputs.knowledge_bases,
+                sources=source_summaries(book_inputs),
                 language=language,
                 depth=_coerce_depth(depth),
                 chapter_count=proposal.estimated_chapters,
@@ -988,6 +1052,9 @@ class BookEngine:
         metadata["compile_started_at"] = time.time()
         book.metadata = metadata
         self.storage.save_book(book)
+        run_owners = getattr(self, "_run_owners", None)
+        if run_owners is not None:
+            run_owners.add(book_id)
         self.storage.append_log(
             book_id,
             f"spine confirmed ({len(pages)} page shells, auto_compile={auto_compile})",
@@ -1002,6 +1069,10 @@ class BookEngine:
         """Stop this book's worker and drain its queue, leaving disk untouched."""
         runtime = self._runtimes.get(book_id)
         if runtime is None:
+            # No runtime to stop, but any run this book had is still over.
+            run_owners = getattr(self, "_run_owners", None)
+            if run_owners is not None:
+                run_owners.discard(book_id)
             return
         current = asyncio.current_task()
         cancelled: list[asyncio.Task[Any]] = []
@@ -1028,6 +1099,10 @@ class BookEngine:
                     break
         if cancelled:
             await asyncio.gather(*cancelled, return_exceptions=True)
+        # Whatever run this book had is over; the next one starts its own clock.
+        run_owners = getattr(self, "_run_owners", None)
+        if run_owners is not None:
+            run_owners.discard(book_id)
         async with self._global_lock:
             if self._runtimes.get(book_id) is runtime:
                 self._runtimes.pop(book_id, None)
@@ -1116,15 +1191,37 @@ class BookEngine:
             await self._maybe_finalize_book(book_id)
             return pages
 
+        # Resuming starts a new run, but only when it really is a new run.
+        # ``maybe_resume_on_open`` calls this on *every* book open, and the
+        # worker loop retires an idle runtime after two seconds
+        # (``_worker_loop``), so a book whose chapters were queued but not yet
+        # started looked "abandoned" every time the reader navigated back to it.
+        # Re-stamping here made the reader's elapsed-time readout — which counts
+        # from ``compile_started_at`` — restart at zero on every visit, while the
+        # same run kept going.
+        #
+        # ``_run_owners`` separates the two cases honestly: a book this process
+        # is already driving keeps the clock its run started with, while a book
+        # stamped by a process that has since exited (or that never started a
+        # run at all) gets a fresh one.
+        run_owners = getattr(self, "_run_owners", None)
+        same_run = (
+            run_owners is not None
+            and book_id in run_owners
+            and bool((book.metadata or {}).get("compile_started_at"))
+        )
         book.status = BookStatus.COMPILING
         book.metadata = {
             k: v
             for k, v in (book.metadata or {}).items()
             if k not in {"pause_reason", "pause_kind"}
         }
-        # Resuming starts a new run: the clock counts this stretch of work,
-        # not the wall time since the book was first confirmed.
-        book.metadata["compile_started_at"] = time.time()
+        if not same_run:
+            # The clock counts this stretch of work, not the wall time since the
+            # book was first confirmed.
+            book.metadata["compile_started_at"] = time.time()
+        if run_owners is not None:
+            run_owners.add(book_id)
         book.updated_at = time.time()
         self.storage.save_book(book)
         self.storage.append_log(
@@ -1570,6 +1667,10 @@ class BookEngine:
             f"compilation paused after {failure_count} consecutive provider failures: {reason}",
             op="paused",
         )
+        # A paused run is finished; resuming it later starts a new clock.
+        run_owners = getattr(self, "_run_owners", None)
+        if run_owners is not None:
+            run_owners.discard(book_id)
         await BookStream(get_book_bus(book_id)).book_event(
             "compilation_paused",
             {"book_id": book_id, "reason": reason},
@@ -1594,6 +1695,10 @@ class BookEngine:
                     if k not in {"pause_reason", "pause_kind"}
                 }
                 self.storage.save_book(book)
+                # The run is over: a later open must not inherit its clock.
+                run_owners = getattr(self, "_run_owners", None)
+                if run_owners is not None:
+                    run_owners.discard(book_id)
                 self.storage.append_log(book_id, "all pages ready → status=READY", op="finalize")
                 # Without this the reader never learns the book finished:
                 # the last page event fires while the book is still COMPILING.
