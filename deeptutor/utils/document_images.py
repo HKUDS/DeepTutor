@@ -869,6 +869,12 @@ def extract_pdf_images(data: bytes, *, budget: ImageBudget | None = None) -> Pdf
                     if xref in rejected_xrefs:
                         continue
                     rejected_xrefs.add(xref)
+                    # Once full, count new figures from page metadata without
+                    # decoding them. Previously kept xrefs still map to this page.
+                    if budget.count >= budget.max_images:
+                        if info[2] >= 64 and info[3] >= 64:
+                            budget.skipped_budget += 1
+                        continue
                     try:
                         extracted = doc.extract_image(xref)
                     except Exception:

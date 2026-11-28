@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,38 @@ from deeptutor.services.config.runtime_settings import ChatAttachmentLimits
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.session.attachment_parsing import parse_chat_pdf_attachments
 from deeptutor.services.storage.attachment_store import LocalDiskAttachmentStore
+
+
+@pytest.mark.asyncio
+async def test_pdf_fallback_extraction_in_worker_preserves_batch_and_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pymupdf
+
+    from deeptutor.utils import document_extractor
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((40, 60), "PDF attachment text")
+        pdf_bytes = pdf.tobytes()
+    monkeypatch.setattr(
+        document_extractor, "_current_limits", lambda: (len(pdf_bytes), len(pdf_bytes), 1000, 1000)
+    )
+
+    def fail_in_parent(*args: object, **kwargs: object) -> None:
+        pytest.fail("PDF fallback extraction ran in the API process")
+
+    monkeypatch.setattr(document_extractor, "extract_documents_from_records", fail_in_parent)
+    records = [
+        {"id": "pdf", "filename": "notes.PDF", "base64": base64.b64encode(pdf_bytes).decode()},
+        {"id": "text", "filename": "notes.txt", "base64": base64.b64encode(b"over quota").decode()},
+    ]
+
+    texts, updated = await document_extractor.extract_chat_documents(records)
+
+    assert "PDF attachment text" in texts[0]
+    assert "total attachment quota exceeded" in texts[1]
+    assert [record["id"] for record in updated] == ["pdf", "text"]
+    assert all(record["base64"] == "" for record in updated)
 
 
 @pytest.mark.asyncio
@@ -27,6 +60,65 @@ async def test_non_pdf_batch_does_not_read_parser_settings(
 
     assert records[0]["extracted_text"] == "hello"
     assert contexts == ["[File: notes.txt]\nhello"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "engine, unchanged, native_complete, reuse",
+    [
+        ("text_only", True, True, True),
+        ("text_only", False, True, False),
+        ("text_only", True, False, False),
+        ("mineru", True, True, False),
+    ],
+)
+async def test_chat_pdf_reuses_native_markdown_only_for_matching_text_only_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    engine: str,
+    unchanged: bool,
+    native_complete: bool,
+    reuse: bool,
+) -> None:
+    import pymupdf
+
+    from deeptutor.utils import document_extractor
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((40, 60), "Original PDF text")
+        data = pdf.tobytes()
+    store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    await store.put(
+        session_id="session",
+        attachment_id="pdf",
+        filename="notes.pdf",
+        data=data if unchanged else b"other bytes",
+    )
+    if not native_complete:
+        monkeypatch.setattr(document_extractor, "_current_limits", lambda: (10000, 10000, 30, 1000))
+    native_contexts, native_records = await document_extractor.extract_chat_documents(
+        [{"id": "pdf", "filename": "notes.pdf", "base64": base64.b64encode(data).decode()}]
+    )
+    calls = []
+
+    class Parser:
+        def active_engine(self) -> str:
+            return engine
+
+        def parse(self, path: Path, **_: object) -> ParsedDocument:
+            calls.append(path)
+            return ParsedDocument(markdown="# Configured parser output")
+
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
+    records, contexts = await parse_chat_pdf_attachments(
+        native_records, attachment_store=store, session_id="session", document_texts=native_contexts
+    )
+
+    expected = "--- Page 1 ---\nOriginal PDF text" if reuse else "# Configured parser output"
+    assert len(calls) == (0 if reuse else 1)
+    assert records[0]["extracted_text"] == expected
+    assert contexts == [f"[File: notes.pdf]\n{expected}"]
+    assert "_native_pdf_markdown" not in records[0]
 
 
 @pytest.mark.asyncio
