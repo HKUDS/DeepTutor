@@ -73,7 +73,8 @@ def _quiz(data: Any, context: ReadingContext) -> _Quiz:
         raise ValueError("Reading quiz model returned an invalid shape.") from exc
 
     context_key = evidence_key(context.visible_text)
-    if any(evidence_key(question.evidence) not in context_key for question in quiz.questions):
+    evidence_keys = [evidence_key(question.evidence) for question in quiz.questions]
+    if any(not key or key not in context_key for key in evidence_keys):
         raise ValueError("Reading quiz evidence must come from the reading context.")
     return quiz
 
