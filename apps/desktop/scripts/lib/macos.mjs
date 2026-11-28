@@ -2,8 +2,29 @@ import { packager } from '@electron/packager';
 import { cp, mkdir, rm, symlink } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import { appRoot } from './target.mjs';
 import { PACKAGER, stageApp } from './stage.mjs';
+
+export async function createDmg(source, output, { run = execFileSync, sleep = setTimeout } = {}) {
+  await rm(output, { force: true });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      run('/usr/bin/hdiutil', ['create', '-volname', 'Open DeepTutor', '-srcfolder', source, '-fs', 'APFS', '-format', 'ULFO', output], {
+        stdio: ['ignore', 'inherit', 'pipe'], env: { ...process.env, LC_ALL: 'C' },
+      });
+      return;
+    } catch (error) {
+      if (error.stderr) process.stderr.write(error.stderr);
+      await rm(output, { force: true });
+      const busy = error.status === 1 && !error.signal && /^hdiutil: create failed - Resource busy\s*$/m.test(error.stderr?.toString() ?? '');
+      if (!busy || attempt === 3) throw error;
+      const delay = attempt * 2000;
+      console.warn(`DMG creation hit a busy resource; retrying in ${delay / 1000}s (${attempt + 1}/3).`);
+      await sleep(delay);
+    }
+  }
+}
 
 /** Shared by platforms/macos-arm64 and platforms/macos-x64: a signed .app inside a DMG. */
 export async function packageMac(target) {
@@ -36,8 +57,7 @@ export async function packageMac(target) {
   await cp(bundle, path.join(dmgStage, 'Open DeepTutor.app'), { recursive: true, verbatimSymlinks: true });
   await cp(path.join(built, 'LICENSES.chromium.html'), path.join(dmgStage, 'LICENSES.chromium.html'));
   await symlink('/Applications', path.join(dmgStage, 'Applications'));
-  await rm(dmg, { force: true });
-  execFileSync('/usr/bin/hdiutil', ['create', '-volname', 'Open DeepTutor', '-srcfolder', dmgStage, '-fs', 'APFS', '-format', 'ULFO', dmg], { stdio: 'inherit' });
+  await createDmg(dmgStage, dmg);
   await rm(dmgStage, { recursive: true, force: true });
   return [bundle, dmg];
 }

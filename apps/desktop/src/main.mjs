@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme, screen } from 'electron';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
@@ -8,6 +8,7 @@ import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
+import { minWindowSize, restoreWindowBounds } from './window-bounds.mjs';
 import { killTree, withinTime } from './processes.mjs';
 
 app.setName('Open DeepTutor');
@@ -22,6 +23,7 @@ app.setPath('userData', userRoot);
 const runtimeHome = path.join(userRoot, 'workspace');
 const logPath = path.join(userRoot, 'logs/runtime.log');
 const activeFile = path.join(userRoot, 'active.json');
+const windowStateFile = path.join(userRoot, 'window-state.json');
 const transactionFile = path.join(userRoot, 'upgrade.json');
 // DeepTutor's own Settings page writes the interface language and theme here.
 const interfaceFile = path.join(runtimeHome, 'data/user/settings/interface.json');
@@ -39,6 +41,9 @@ let state = { phase: 'starting', step: 'opening' };
 let ui = { language: 'en', theme: 'light' };
 let interfaceWatcher;
 let interfaceTimer;
+let windowStateTimer;
+let windowStateWrite = Promise.resolve();
+let layoutTimer;
 let busy = false;
 let quitting = false;
 let exitAllowed = false;
@@ -59,6 +64,46 @@ async function readJSON(file) {
 
 function coreVersion() {
   return active?.manifest.coreVersion ?? app.getVersion();
+}
+
+function defaultWindowBounds() {
+  const { workArea } = screen.getPrimaryDisplay();
+  const { minWidth, minHeight } = minWindowSize(workArea);
+  const width = Math.min(1360, Math.max(minWidth, Math.round(workArea.width * 0.86)), workArea.width);
+  const height = Math.min(900, Math.max(minHeight, Math.round(workArea.height * 0.86)), workArea.height);
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+    maximized: false,
+  };
+}
+
+function resolveWindowBounds(saved) {
+  if (!saved || ![saved.x, saved.y, saved.width, saved.height].every(Number.isFinite)) {
+    return defaultWindowBounds();
+  }
+  const restored = restoreWindowBounds(saved, screen.getAllDisplays());
+  if (!restored) return defaultWindowBounds();
+  return { ...restored, maximized: Boolean(saved.maximized) };
+}
+
+function persistWindowState(immediate = false) {
+  if (!WINDOWS || !window || window.isDestroyed()) return windowStateWrite;
+  // Never overwrite maximized/normal bounds while minimized or in fullscreen.
+  if (window.isMinimized() || window.isFullScreen()) return windowStateWrite;
+  clearTimeout(windowStateTimer);
+  const payload = {
+    ...window.getNormalBounds(),
+    maximized: window.isMaximized(),
+  };
+  const write = () => {
+    windowStateWrite = windowStateWrite.then(() => writeJSON(windowStateFile, payload)).catch(console.error);
+  };
+  if (immediate) write();
+  else windowStateTimer = setTimeout(write, 300);
+  return windowStateWrite;
 }
 
 /** What the shell page shows, already in the user's language. */
@@ -127,9 +172,42 @@ function hideContent() {
 }
 
 function layout() {
-  if (!view || !window) return;
+  if (!view || !window || window.isDestroyed() || window.isMinimized()) return;
   const bounds = window.getContentBounds();
-  view.setBounds({ x: 0, y: HEADER_HEIGHT, width: bounds.width, height: Math.max(1, bounds.height - HEADER_HEIGHT) });
+  if (bounds.width <= 0 || bounds.height <= HEADER_HEIGHT) return;
+  view.setBounds({
+    x: 0,
+    y: HEADER_HEIGHT,
+    width: bounds.width,
+    height: bounds.height - HEADER_HEIGHT,
+  });
+}
+
+function scheduleLayout() {
+  layout();
+  clearTimeout(layoutTimer);
+  // Catch post-animation / post-DPI-change final bounds on Windows.
+  layoutTimer = setTimeout(layout, 60);
+}
+
+function syncDisplayConstraints({ clampPosition = false } = {}) {
+  if (!window || window.isDestroyed() || window.isMinimized()) return;
+  const currentBounds = window.getBounds();
+  const display = screen.getDisplayMatching(currentBounds);
+  const { workArea } = display;
+  const { minWidth, minHeight } = minWindowSize(workArea);
+  window.setMinimumSize(minWidth, minHeight);
+
+  if (clampPosition && !window.isMaximized() && !window.isFullScreen()) {
+    const width = Math.min(workArea.width, Math.max(minWidth, currentBounds.width));
+    const height = Math.min(workArea.height, Math.max(minHeight, currentBounds.height));
+    const x = Math.min(Math.max(currentBounds.x, workArea.x), workArea.x + workArea.width - width);
+    const y = Math.min(Math.max(currentBounds.y, workArea.y), workArea.y + workArea.height - height);
+    if (x !== currentBounds.x || y !== currentBounds.y || width !== currentBounds.width || height !== currentBounds.height) {
+      window.setBounds({ x, y, width, height });
+    }
+  }
+  scheduleLayout();
 }
 
 async function openContent(ready) {
@@ -407,7 +485,7 @@ else {
     if (quitting) return;
     quitting = true;
     status({ phase: 'stopping', step: 'stopping' });
-    void stopWorker().finally(() => { exitAllowed = true; app.quit(); });
+    void Promise.all([persistWindowState(true), stopWorker()]).finally(() => { exitAllowed = true; app.quit(); });
   });
   app.on('window-all-closed', () => app.quit());
   // Electron waits for ESM evaluation before emitting ready; do not await ready
@@ -425,15 +503,57 @@ else {
     const result = await dialog.showMessageBox(window, { type: 'question', message: t('mediaPrompt'), buttons: [t('deny'), t('allow')], defaultId: 0, cancelId: 0 });
     callback(result.response === 1);
   });
+  const initialBounds = WINDOWS ? resolveWindowBounds(await readJSON(windowStateFile).catch(() => null)) : null;
+  const size = initialBounds
+    ? { x: initialBounds.x, y: initialBounds.y, width: initialBounds.width, height: initialBounds.height,
+        ...minWindowSize(screen.getDisplayMatching(initialBounds).workArea) }
+    : { width: 1360, height: 920, minWidth: 900, minHeight: 620 };
   window = new BrowserWindow({
-    title: 'Open DeepTutor', width: 1360, height: 920, minWidth: 900, minHeight: 620,
+    title: 'Open DeepTutor', ...size,
     backgroundColor: BACKGROUND[ui.theme],
     ...(WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
     webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.on('resize', layout);
+  if (WINDOWS) {
+    // Apply outer bounds after creation: Win32 adjusts constructor dimensions
+    // for native frame metrics on fractional-DPI displays.
+    const bounds = { x: size.x, y: size.y, width: size.width, height: size.height };
+    window.setBounds(bounds);
+    const measured = window.getNormalBounds();
+    if (measured.width !== size.width || measured.height !== size.height) {
+      // Avoid accumulating a pixel of fractional-DPI rounding on every relaunch.
+      window.setBounds({ ...bounds,
+        width: Math.max(size.minWidth, size.width + size.width - measured.width),
+        height: Math.max(size.minHeight, size.height + size.height - measured.height),
+      });
+    }
+    if (initialBounds.maximized) window.maximize();
+    const syncLayoutAndState = () => {
+      scheduleLayout();
+      persistWindowState();
+    };
+    window.on('resize', syncLayoutAndState);
+    window.on('move', () => persistWindowState());
+    window.on('moved', () => syncDisplayConstraints());
+    window.on('maximize', syncLayoutAndState);
+    window.on('unmaximize', syncLayoutAndState);
+    window.on('restore', () => syncDisplayConstraints());
+    window.on('enter-full-screen', scheduleLayout);
+    window.on('leave-full-screen', scheduleLayout);
+
+    const onDisplayChanged = () => syncDisplayConstraints({ clampPosition: true });
+    screen.on('display-metrics-changed', onDisplayChanged);
+    screen.on('display-removed', onDisplayChanged);
+    window.once('closed', () => {
+      clearTimeout(layoutTimer);
+      screen.off('display-metrics-changed', onDisplayChanged);
+      screen.off('display-removed', onDisplayChanged);
+    });
+  } else {
+    window.on('resize', layout);
+  }
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
   ipcMain.on('desktop:status-sync', event => {
     trustedShell(event);
