@@ -61,7 +61,12 @@ writeFileSync(checkEntry, `
 import ${JSON.stringify(fileURLToPath(new URL("./render-platform.ts", import.meta.url)))};
 import {renderToReadableStream} from "react-dom/server.edge";
 import {Thumbnail} from "@remotion/player";
-import {Lesson, LESSON} from ${JSON.stringify(lesson)};
+import * as lessonModule from ${JSON.stringify(lesson)};
+import {createFixedScenes} from ${JSON.stringify(join(dirname(lesson), "kit.tsx"))};
+const LESSON = lessonModule.LESSON;
+const fixed = LESSON?.sceneContract === "fixed-v1" && LESSON?.fps === 30
+  ? createFixedScenes(lessonModule.VIDEO_LESSON_SCENES, LESSON.durationInFrames) : null;
+const Lesson = fixed?.Lesson ?? lessonModule.Lesson;
 // Streamed rendering reports errors thrown below a Suspense boundary through onError;
 // renderToString would silently render the fallback instead.
 const render = async (element) => {
@@ -98,7 +103,7 @@ if (!errors.length) {
     for (const l of logged) if (!/Warning: Each child|useLayoutEffect|The above error occurred/.test(l)) errors.push("frame " + f + " console.error: " + l);
   }
 }
-return JSON.stringify({errors: [...new Set(errors)].slice(0, 20), frames});
+return JSON.stringify({errors: [...new Set(errors)].slice(0, 20), frames, sceneLengths: fixed?.lengths ?? null});
 }
 `);
 try {
@@ -131,11 +136,18 @@ const entry = join(dirname(resolve(outArg)), "_entry.tsx");
 writeFileSync(entry, `
 import {createRoot} from "react-dom/client";
 import {Player} from "@remotion/player";
-import {Lesson, LESSON} from ${JSON.stringify(lesson)};
+import * as lessonModule from ${JSON.stringify(lesson)};
+import {createFixedScenes} from "./kit";
+const LESSON = lessonModule.LESSON;
+const fixed = LESSON?.sceneContract === "fixed-v1" && LESSON?.fps === 30
+  ? createFixedScenes(lessonModule.VIDEO_LESSON_SCENES, LESSON.durationInFrames) : null;
+const Lesson = fixed?.Lesson ?? lessonModule.Lesson;
+(window as any).__videoLessonSceneLengths = fixed?.lengths ?? null;
 const query = new URLSearchParams(location.search);
 const still = query.has("frame") ? Math.max(0, Math.min(LESSON.durationInFrames - 1, Number(query.get("frame")) || 0)) : null;
 createRoot(document.getElementById("player")).render(
-  <Player component={Lesson} durationInFrames={LESSON.durationInFrames} fps={LESSON.fps}
+  <Player ref={(instance) => { (window as any).__videoLessonGetFrame = instance ? () => instance.getCurrentFrame() : undefined; }}
+    component={Lesson} durationInFrames={LESSON.durationInFrames} fps={LESSON.fps}
     compositionWidth={LESSON.width} compositionHeight={LESSON.height} initialFrame={still ?? 0}
     controls autoPlay={false} loop clickToPlay showVolumeControls allowFullscreen
     style={{width: "100%", aspectRatio: LESSON.width + " / " + LESSON.height}} />);
@@ -148,4 +160,4 @@ try {
 } finally {
   rmSync(entry, {force: true});
 }
-report({ok: true, stage: "done", errors: [], frames: checked.frames});
+report({ok: true, stage: "done", errors: [], frames: checked.frames, sceneLengths: checked.sceneLengths});
