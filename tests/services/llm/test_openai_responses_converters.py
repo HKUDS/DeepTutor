@@ -107,6 +107,109 @@ class TestAdaptChatKwargsToResponses:
 
 
 class TestConvertMessages:
+    @pytest.mark.parametrize("async_value", [None, False, True])
+    def test_replays_legacy_function_call_alias_without_mutating_history(self, async_value):
+        native_items = [
+            {
+                "type": "reasoning",
+                "id": "rs_fixture",
+                "summary": [],
+                "encrypted_content": "opaque",
+                "status": None,
+            },
+            {
+                "type": "function_call",
+                "id": "fc_fixture",
+                "call_id": "call_fixture",
+                "name": "fixture_read",
+                "arguments": '{"async_":true}',
+                "async_": async_value,
+                "caller": None,
+                "namespace": None,
+                "status": None,
+            },
+        ]
+        before = deepcopy(native_items)
+        _, items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "_provider_response_state": {"responses_output_items": native_items},
+                }
+            ]
+        )
+        assert native_items == before
+        assert items[0]["encrypted_content"] == "opaque"
+        assert items[1]["id"] == "fc_fixture"
+        assert items[1]["call_id"] == "call_fixture"
+        assert items[1]["arguments"] == '{"async_":true}'
+        assert "async_" not in items[1]
+        assert "namespace" not in items[1]
+        assert "caller" not in items[1]
+        if async_value is None:
+            assert "async" not in items[1]
+        else:
+            assert items[1]["async"] is async_value
+
+    def test_canonical_async_field_wins_over_legacy_alias(self):
+        item = {
+            "type": "function_call",
+            "id": "fc",
+            "call_id": "call",
+            "name": "fixture_read",
+            "arguments": "{}",
+            "async": False,
+            "async_": True,
+        }
+        _, items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "_provider_response_state": {"responses_output_items": [item]},
+                }
+            ]
+        )
+        assert items[0]["async"] is False
+        assert "async_" not in items[0]
+
+    @pytest.mark.parametrize("async_value", [None, False, True])
+    def test_sdk_response_round_trip_uses_wire_aliases(self, async_value):
+        responses = pytest.importorskip("openai.types.responses")
+        call = responses.ResponseFunctionToolCall(
+            id="fc_fixture",
+            call_id="call_fixture",
+            name="fixture_read",
+            arguments="{}",
+            type="function_call",
+            **{"async": async_value},
+        )
+        reasoning = responses.ResponseReasoningItem(
+            id="rs_fixture", type="reasoning", summary=[], encrypted_content="opaque"
+        )
+        response = responses.Response.model_construct(
+            id="resp_fixture", object="response", status="completed", output=[reasoning, call]
+        )
+        parsed = parse_response_output(response)
+        native = parsed.provider_specific_fields["native_output_items"]
+        assert "async_" not in native[1]
+        assert "namespace" not in native[1]
+        _, items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "_provider_response_state": {"responses_output_items": native},
+                }
+            ]
+        )
+        assert items[0]["encrypted_content"] == "opaque"
+        if async_value is None:
+            assert "async" not in items[1]
+        else:
+            assert items[1]["async"] is async_value
+
     def test_replays_persisted_native_output_items(self) -> None:
         native_items = [
             {
@@ -351,3 +454,146 @@ async def test_json_format_reaches_responses_sdk(
     assert len(requests) == 1
     assert requests[0]["text"]["format"] == {"type": "json_object"}
     assert "response_format" not in requests[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["chat", "chat_stream"])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("async_value", [None, False, True])
+async def test_tool_continuation_reaches_the_wire_without_python_aliases(
+    monkeypatch, method, legacy, async_value
+):
+    requests = []
+    reasoning = {
+        "id": "rs_fixture",
+        "type": "reasoning",
+        "summary": [],
+        "encrypted_content": "opaque",
+    }
+    call = {
+        "id": "fc_fixture",
+        "type": "function_call",
+        "call_id": "call_fixture",
+        "name": "fixture_read",
+        "arguments": '{"async_":true}',
+    }
+    if async_value is not None:
+        call["async"] = async_value
+    message = {
+        "id": "msg_fixture",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": "Fixture summary", "annotations": []}],
+    }
+
+    def handle(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        first = len(requests) == 1
+        if not first:
+            replayed = next(item for item in body["input"] if item.get("type") == "function_call")
+            if "async_" in replayed:
+                return httpx.Response(
+                    400,
+                    json={
+                        "error": {
+                            "message": "Unknown parameter: input.async_",
+                            "type": "invalid_request_error",
+                            "code": "unknown_parameter",
+                        }
+                    },
+                )
+        output = [reasoning, call] if first else [message]
+        response = {
+            "id": "resp_fixture",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "fixture-model",
+            "output": output,
+        }
+        if not body.get("stream"):
+            return httpx.Response(200, json=response)
+        events = (
+            [
+                {"type": "response.output_item.done", "item": item, "output_index": index}
+                for index, item in enumerate(output)
+            ]
+            if first
+            else [
+                {
+                    "type": "response.output_text.delta",
+                    "delta": "Fixture summary",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "item_id": "msg_fixture",
+                }
+            ]
+        )
+        events.append({"type": "response.completed", "response": response})
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="".join(
+                f"event: {event['type']}\ndata: {json.dumps(event)}\n\n" for event in events
+            ),
+        )
+
+    async with AsyncOpenAI(
+        api_key="fixture",
+        base_url="https://gateway.example/v1",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle)),
+        max_retries=0,
+    ) as client:
+        monkeypatch.setattr(openai_compat_provider, "AsyncOpenAI", lambda **_: client)
+        provider = openai_compat_provider.OpenAICompatProvider(
+            api_key="fixture",
+            api_base="https://gateway.example/v1",
+            provider_name="custom",
+            spec=find_by_name("custom"),
+            wire_api="responses",
+            configure_env=False,
+        )
+        messages = [{"role": "user", "content": "Read fixture"}]
+        result = await getattr(provider, method)(messages=messages, model="fixture-model")
+        assert len(result.tool_calls) == 1
+        native = deepcopy(result.provider_specific_fields["native_output_items"])
+        if legacy:
+            native[1].pop("async", None)
+            native[1].update({"async_": async_value, "namespace": None, "caller": None})
+        before = deepcopy(native)
+        messages.extend(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "_provider_response_state": {"responses_output_items": native},
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": result.tool_calls[0].id,
+                    "content": "Fixture page",
+                },
+            ]
+        )
+        final = await getattr(provider, method)(messages=messages, model="fixture-model")
+    assert native == before
+    assert final.content == "Fixture summary"
+    assert len(requests) == 2
+    replayed = next(item for item in requests[1]["input"] if item.get("type") == "function_call")
+    assert replayed["call_id"] == "call_fixture"
+    assert replayed["id"] == "fc_fixture"
+    assert replayed["arguments"] == '{"async_":true}'
+    assert "async_" not in replayed
+    assert "namespace" not in replayed
+    if async_value is None:
+        assert "async" not in replayed
+    else:
+        assert replayed["async"] is async_value
+    assert (
+        next(item for item in requests[1]["input"] if item.get("type") == "reasoning")[
+            "encrypted_content"
+        ]
+        == "opaque"
+    )

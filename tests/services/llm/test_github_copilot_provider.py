@@ -382,8 +382,11 @@ async def test_four_turn_sqlite_history_replays_sdk_reasoning_without_status(
             items = result.provider_specific_fields.get("native_output_items", [])
             if turn >= 2:
                 assert items[0]["type"] == "reasoning"
-                assert "status" in items[0] and items[0]["status"] is None
+                assert "status" not in items[0]
                 assert items[0]["encrypted_content"] == f"opaque-test-reasoning-{turn}"
+                # Keep exercising older SQLite histories even though new SDK
+                # results now omit unset fields before they are persisted.
+                items[0]["status"] = None
             state = normalize_provider_response_state({"responses_output_items": items})
             await store.add_message(
                 session["id"],
