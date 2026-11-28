@@ -1383,6 +1383,7 @@ def resolve_tts_runtime_config(
 
     options = voice_model_options(provider, "tts", resolved_model)
     voice = _as_str((model or {}).get("voice"))
+    expert_voice = _as_str((model or {}).get("expert_voice"))
     response_format = _as_str((model or {}).get("response_format")) or options["formats"][0]
     raw_speed = (model or {}).get("speed")
     speed = _coerce_optional_float(raw_speed)
@@ -1404,6 +1405,7 @@ def resolve_tts_runtime_config(
         api_version=_as_str((profile or {}).get("api_version")) or None,
         extra_headers=_to_headers((profile or {}).get("extra_headers")),
         voice=voice,
+        expert_voice=expert_voice,
         response_format=response_format,
         speed=speed,
         language=_as_str((model or {}).get("language")) or None,

@@ -16,6 +16,8 @@ from deeptutor.capabilities.audio_overview.capability import AudioOverviewCapabi
 from deeptutor.capabilities.audio_overview.pipeline import (
     AudioOverviewError,
     AudioOverviewPipeline,
+    AudioOverviewScript,
+    SourceCitation,
     _render_audio,
     normalize_rag_result,
     parse_script,
@@ -241,6 +243,131 @@ async def test_pipeline_generates_two_voices_and_publishes_workspace_items(
         "wsi_0",
         "wsi_1",
     ]
+
+
+def _two_speaker_pipeline(tmp_path: Path) -> AudioOverviewPipeline:
+    # No injected speech_func: exercises the runtime path that resolves
+    # voices from the catalog, like the real server does.
+    return AudioOverviewPipeline(
+        language="en",
+        system_prompt="Return JSON.",
+        instruction_prompt="Create the overview.",
+        workspace_output_dir=tmp_path,
+    )
+
+
+async def _silent_speech(text: str, **kwargs: Any) -> tuple[bytes, str]:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(24000)
+        output.writeframes(b"\x00\x00" * 2400)
+    return buffer.getvalue(), "audio/wav"
+
+
+def _two_speaker_inputs() -> tuple[Any, Any]:
+    script = AudioOverviewScript(
+        title="Voices",
+        segments=[
+            {"speaker": "host", "text": "Let's begin.", "source_ids": []},
+            {"speaker": "expert", "text": "Backoff controls retries.", "source_ids": []},
+        ],
+    )
+    context = SimpleNamespace(citations=[])
+    return script, context
+
+
+@pytest.mark.asyncio
+async def test_publish_falls_back_to_configured_voices_without_voice_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OpenAI-compatible providers report no voices, so the catalog decides."""
+
+    import deeptutor.services.config.provider_runtime as provider_runtime
+    import deeptutor.services.voice.options as voice_options
+
+    monkeypatch.setattr(
+        provider_runtime,
+        "resolve_tts_runtime_config",
+        lambda: SimpleNamespace(
+            provider_name="openai",
+            model="some-tts",
+            voice="female",
+            expert_voice="male",
+        ),
+    )
+    monkeypatch.setattr(
+        voice_options,
+        "voice_model_options",
+        lambda provider, service, model: {"voices": []},
+    )
+
+    used_voices: list[str] = []
+
+    async def fake_speech(text: str, **kwargs: Any) -> tuple[bytes, str]:
+        used_voices.append(str(kwargs.get("voice")))
+        return await _silent_speech(text, **kwargs)
+
+    import deeptutor.services.voice as voice_module
+
+    monkeypatch.setattr(voice_module, "synthesize_speech", fake_speech)
+
+    script, context = _two_speaker_inputs()
+    pipeline = _two_speaker_pipeline(tmp_path)
+
+    await pipeline.publish(
+        turn_id="turn-voices",
+        script=script,
+        context=context,
+        request_config=AudioOverviewRequestConfig(),
+    )
+
+    assert used_voices == ["female", "male"]
+
+
+@pytest.mark.asyncio
+async def test_publish_names_the_two_voice_requirement_when_nothing_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import deeptutor.services.config.provider_runtime as provider_runtime
+    import deeptutor.services.voice.options as voice_options
+
+    monkeypatch.setattr(
+        provider_runtime,
+        "resolve_tts_runtime_config",
+        lambda: SimpleNamespace(
+            provider_name="openai",
+            model="some-tts",
+            voice="female",
+            expert_voice="",
+        ),
+    )
+    monkeypatch.setattr(
+        voice_options,
+        "voice_model_options",
+        lambda provider, service, model: {"voices": []},
+    )
+
+    async def unused_speech(text: str, **kwargs: Any) -> tuple[bytes, str]:
+        raise AssertionError("no audio should be requested without two voices")
+
+    import deeptutor.services.voice as voice_module
+
+    monkeypatch.setattr(voice_module, "synthesize_speech", unused_speech)
+
+    script, context = _two_speaker_inputs()
+    pipeline = _two_speaker_pipeline(tmp_path)
+
+    with pytest.raises(AudioOverviewError, match="distinct host and expert voices"):
+        await pipeline.publish(
+            turn_id="turn-voices",
+            script=script,
+            context=context,
+            request_config=AudioOverviewRequestConfig(),
+        )
 
 
 @pytest.mark.asyncio

@@ -6196,6 +6196,7 @@
   "Accept": "Accetta",
   "Host voice": "Voce dell'ospite",
   "Expert voice": "Voce esperta",
+  "Second speaker for audio overviews when your provider lists no voices.": "Seconda voce delle panoramiche audio quando il provider non elenca voci.",
   "Duration (minutes)": "Durata (minuti)",
   "Voice ID from your speech provider": "ID vocale dal tuo fornitore di servizi vocali",
   "Configure distinct host and expert voices for the active TTS model.": "Configura voci host ed esperte distinte per il modello TTS attivo.",

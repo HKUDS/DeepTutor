@@ -6477,6 +6477,7 @@
   "Accept": "Accepter",
   "Host voice": "Voix de l’animateur",
   "Expert voice": "Voix de l’expert",
+  "Second speaker for audio overviews when your provider lists no voices.": "Deuxième intervenant des aperçus audio lorsque votre fournisseur ne propose pas de liste de voix.",
   "Duration (minutes)": "Durée (minutes)",
   "Voice ID from your speech provider": "Identifiant vocal de votre fournisseur",
   "Configure distinct host and expert voices for the active TTS model.": "Configurez deux voix distinctes pour l’animateur et l’expert.",

@@ -6203,6 +6203,7 @@
   "Accept": "接受",
   "Host voice": "主持人声线",
   "Expert voice": "专家声线",
+  "Second speaker for audio overviews when your provider lists no voices.": "音频概览中的第二说话人，适用于语音服务未提供声线列表时。",
   "Duration (minutes)": "时长（分钟）",
   "Voice ID from your speech provider": "填写语音服务支持的声线 ID",
   "Configure distinct host and expert voices for the active TTS model.": "请为当前语音模型配置两个不同的主持人和专家声线。",

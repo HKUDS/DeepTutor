@@ -6106,6 +6106,7 @@
   "Accept": "Прийняти",
   "Host voice": "Голос ведучого",
   "Expert voice": "Голос експерта",
+  "Second speaker for audio overviews when your provider lists no voices.": "Другий голос в аудіооглядах, якщо ваш провайдер не надає списку голосів.",
   "Duration (minutes)": "Тривалість (хвилини)",
   "Voice ID from your speech provider": "Ідентифікатор голосу вашого постачальника",
   "Configure distinct host and expert voices for the active TTS model.": "Налаштуйте різні голоси ведучого та експерта для поточної моделі.",
