@@ -173,6 +173,15 @@ export function learningRecordKeyOf(session: SessionSummary): string | null {
   return null
 }
 
+/** Classify standalone conversations by the same context that owns their route. */
+export function learningSessionKind(session: SessionSummary): LearningKind | null {
+  if (masteryPathIdOf(session)) return 'mastery'
+  if (readingWorkspaceIdOf(session)) return 'reading'
+  if (bookPageOf(session)) return 'books'
+  if (isWatchingSession(session)) return 'watching'
+  return null
+}
+
 /**
  * Learning conversations filed under the records they belong to. A
  * conversation whose record is not listed (an archived path, a deleted
