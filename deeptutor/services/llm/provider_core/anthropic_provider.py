@@ -342,7 +342,10 @@ class AnthropicProvider(LLMProvider):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
     ) -> tuple[str | list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]] | None]:
-        marker = {"type": "ephemeral"}
+        # CoCo fork: TTL is switchable (data/user/settings/coco.json); default 5m.
+        from .coco_cache_ttl import anthropic_cache_marker
+
+        marker = anthropic_cache_marker()
         # Anthropic rejects a request with more than 4 cache_control breakpoints.
         # Budget them across system + message + tools instead of marking each
         # section independently, which could reach 5+ once enough tools are

@@ -60,6 +60,12 @@ const GeogebraOpenCTA = dynamic(
   { ssr: false, loading: () => null },
 );
 
+// CoCo fork: ```coco-bars step-by-step bar diagrams (web/components/coco/).
+const LazyCocoBarsCard = dynamic(
+  () => import("@/components/coco/bars/CocoBarsCard"),
+  { ssr: false, loading: () => null },
+);
+
 type PluginBundle = {
   remarkMath?: unknown;
   rehypeKatex?: unknown;
@@ -430,6 +436,14 @@ export default function RichMarkdownRenderer({
       const lang = langMatch?.[1]?.toLowerCase() || "";
       const isMultiline = raw.includes("\n");
       const lineProps = isMultiline ? lineAttr(node) : {};
+
+      if (lang === "coco-bars") {
+        return (
+          <div className="learning-text-excluded" {...lineProps}>
+            <LazyCocoBarsCard raw={raw} className={gap} />
+          </div>
+        );
+      }
 
       if (lang === "mermaid" && enableMermaid) {
         return (
