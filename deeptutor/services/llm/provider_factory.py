@@ -23,6 +23,7 @@ _PROVIDER_POOL_MAXSIZE = 2
 @dataclass
 class _ProviderEntry:
     provider: LLMProvider
+    loop: asyncio.AbstractEventLoop
     users: int = 0
     retired: bool = False
 
@@ -177,11 +178,27 @@ def build_isolated_provider(config: LLMConfig) -> LLMProvider:
 
 
 def _schedule_close(provider: LLMProvider, loop: asyncio.AbstractEventLoop) -> None:
+    """Close *provider* on *loop*, the loop whose tasks and sockets it owns.
+
+    A worker thread running its own loop (``asyncio.run``) shares this pool, so
+    the closing caller may be on another thread. A closed loop has nothing left
+    to await on; its client is simply dropped. The close coroutine is created
+    on *loop* itself, so a loop that never runs again leaves none unawaited.
+    """
+
     async def _close() -> None:
         with contextlib.suppress(Exception):
             await provider.aclose()
 
-    loop.create_task(_close())
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is loop:
+        loop.create_task(_close())
+        return
+    with contextlib.suppress(RuntimeError):  # the loop is (or just got) closed
+        loop.call_soon_threadsafe(lambda: loop.create_task(_close()))
 
 
 def get_runtime_provider(config: LLMConfig | None = None) -> LLMProvider:
@@ -211,13 +228,18 @@ def _get_runtime_entry(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> _P
         _provider_pool.move_to_end(key)
         return cached
 
-    entry = _ProviderEntry(_build_runtime_provider(config))
+    # Entries of loops that have finished (each ``asyncio.run`` in a worker
+    # thread leaves one) must not push live clients out of the pool.
+    for stale_key in [k for k, item in _provider_pool.items() if item.loop.is_closed()]:
+        _provider_pool.pop(stale_key).retired = True
+
+    entry = _ProviderEntry(_build_runtime_provider(config), loop)
     _provider_pool[key] = entry
     while len(_provider_pool) > _PROVIDER_POOL_MAXSIZE:
         _, evicted = _provider_pool.popitem(last=False)
         evicted.retired = True
         if not evicted.users:
-            _schedule_close(evicted.provider, loop)
+            _schedule_close(evicted.provider, evicted.loop)
     return entry
 
 
@@ -240,40 +262,36 @@ def acquire_runtime_provider(config: LLMConfig | None = None) -> Iterator[LLMPro
         with _provider_pool_lock:
             entry.users -= 1
             if entry.retired and not entry.users:
-                _schedule_close(entry.provider, loop)
+                _schedule_close(entry.provider, entry.loop)
 
 
-def _retire_runtime_provider_pool() -> list[LLMProvider]:
-    """Remove all entries and return only clients safe to close immediately."""
+def _retire_runtime_provider_pool() -> list[_ProviderEntry]:
+    """Remove all entries and return only those safe to close immediately."""
     with _provider_pool_lock:
         entries = list(_provider_pool.values())
         _provider_pool.clear()
         for entry in entries:
             entry.retired = True
-        return [entry.provider for entry in entries if not entry.users]
+        return [entry for entry in entries if not entry.users]
 
 
 async def close_runtime_provider_pool() -> None:
     """Retire pooled clients; active requests close theirs on final release."""
-    providers = _retire_runtime_provider_pool()
-    if providers:
-        await asyncio.gather(*(provider.aclose() for provider in providers), return_exceptions=True)
+    loop = asyncio.get_running_loop()
+    owned = []
+    for entry in _retire_runtime_provider_pool():
+        if entry.loop is loop:
+            owned.append(entry.provider.aclose())
+        else:
+            _schedule_close(entry.provider, entry.loop)
+    if owned:
+        await asyncio.gather(*owned, return_exceptions=True)
 
 
 def reset_runtime_provider_pool() -> None:
     """Clear the pool from synchronous cache-invalidation call sites."""
-    providers = _retire_runtime_provider_pool()
-    if not providers:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        for provider in providers:
-            with contextlib.suppress(Exception):
-                asyncio.run(provider.aclose())
-        return
-    for provider in providers:
-        _schedule_close(provider, loop)
+    for entry in _retire_runtime_provider_pool():
+        _schedule_close(entry.provider, entry.loop)
 
 
 def runtime_provider_pool_size() -> int:

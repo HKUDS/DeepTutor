@@ -270,3 +270,138 @@ async def test_copilot_pool_separates_owners_and_runtime_homes(tmp_path, monkeyp
     assert admin is provider_factory.get_runtime_provider(config)
     monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path / "home-two"))
     assert provider_factory.get_runtime_provider(config) is not admin
+
+
+class _LoopRecordingProvider(_FakeProvider):
+    """Remembers the event loop each ``aclose`` ran on."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed_on: list[asyncio.AbstractEventLoop] = []
+
+    async def aclose(self) -> None:
+        self.closed_on.append(asyncio.get_running_loop())
+        await super().aclose()
+
+
+def _lease_on_private_loop(config: LLMConfig) -> None:
+    """Use the pool the way synchronous worker-thread callers do (``asyncio.run``)."""
+
+    async def _lease() -> None:
+        with provider_factory.acquire_runtime_provider(config):
+            await asyncio.sleep(0)
+
+    asyncio.run(_lease())
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_eviction_closes_provider_on_its_own_loop(monkeypatch) -> None:
+    built: list[_LoopRecordingProvider] = []
+
+    def _build(_config: LLMConfig) -> _LoopRecordingProvider:
+        built.append(_LoopRecordingProvider())
+        return built[-1]
+
+    monkeypatch.setattr(provider_factory, "_build_runtime_provider", _build)
+    server_loop = asyncio.get_running_loop()
+    for index in range(provider_factory._PROVIDER_POOL_MAXSIZE):
+        provider_factory.get_runtime_provider(_config(model=f"server-{index}"))
+
+    # A worker thread with its own loop evicts the oldest server-loop client.
+    await asyncio.wait_for(
+        asyncio.to_thread(_lease_on_private_loop, _config(model="worker")), timeout=5
+    )
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    evicted = built[0]
+    assert evicted.closed_on == [server_loop]
+
+
+@pytest.mark.asyncio
+async def test_finished_worker_loop_does_not_push_server_clients_out(monkeypatch) -> None:
+    built: list[_LoopRecordingProvider] = []
+
+    def _build(_config: LLMConfig) -> _LoopRecordingProvider:
+        built.append(_LoopRecordingProvider())
+        return built[-1]
+
+    monkeypatch.setattr(provider_factory, "_build_runtime_provider", _build)
+    server_client = provider_factory.get_runtime_provider(_config())
+    await asyncio.wait_for(asyncio.to_thread(_lease_on_private_loop, _config()), timeout=5)
+    other_server_client = provider_factory.get_runtime_provider(_config(model="other"))
+    await asyncio.sleep(0)
+
+    # The worker's loop is closed, so its entry is dropped instead of evicting
+    # the server loop's live client (which may hold warm CLI sessions).
+    assert provider_factory.get_runtime_provider(_config()) is server_client
+    assert provider_factory.get_runtime_provider(_config(model="other")) is other_server_client
+    assert server_client.closed == 0
+    assert provider_factory.runtime_provider_pool_size() == 2
+
+
+@contextlib.contextmanager
+def _loop_in_thread():
+    """A long-lived loop on its own thread, like the LightRAG worker loop."""
+    import threading
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        yield loop
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+async def _wait_closed(provider: _LoopRecordingProvider) -> None:
+    for _ in range(500):
+        if provider.closed_on:
+            return
+        await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["close", "reset", "reset_off_loop"])
+async def test_bulk_close_runs_each_provider_on_its_own_loop(monkeypatch, how) -> None:
+    monkeypatch.setattr(
+        provider_factory, "_build_runtime_provider", lambda _config: _LoopRecordingProvider()
+    )
+    server_loop = asyncio.get_running_loop()
+    server_client = provider_factory.get_runtime_provider(_config())
+
+    async def _lookup_on_worker() -> _LoopRecordingProvider:
+        return provider_factory.get_runtime_provider(_config(model="worker"))
+
+    with _loop_in_thread() as worker_loop:
+        worker_client = asyncio.run_coroutine_threadsafe(_lookup_on_worker(), worker_loop).result(
+            timeout=5
+        )
+        if how == "close":
+            await provider_factory.close_runtime_provider_pool()
+        elif how == "reset":
+            provider_factory.reset_runtime_provider_pool()
+        else:  # a synchronous settings reload from a plain thread
+            await asyncio.to_thread(provider_factory.reset_runtime_provider_pool)
+        await asyncio.wait_for(_wait_closed(server_client), timeout=5)
+        await asyncio.wait_for(_wait_closed(worker_client), timeout=5)
+
+    assert server_client.closed_on == [server_loop]
+    assert worker_client.closed_on == [worker_loop]
+    assert provider_factory.runtime_provider_pool_size() == 0
+
+
+def test_close_scheduled_on_a_loop_that_never_runs_again_leaves_no_coroutine() -> None:
+    import gc
+    import warnings
+
+    loop = asyncio.new_event_loop()  # created but not running, like a stopped loop
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        provider_factory._schedule_close(_FakeProvider(), loop)
+        loop.close()
+        gc.collect()
+
+    assert not [w for w in caught if "was never awaited" in str(w.message)]
