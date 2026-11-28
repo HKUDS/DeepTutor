@@ -271,6 +271,16 @@ interface KnowledgeBase {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Capabilities whose config card must be confirmed before sending. */
+const CONFIG_REQUIRED_CAPABILITIES = new Set([
+  "deep_question",
+  "visualize",
+  "deep_research",
+]);
+
+function capabilityRequiresConfig(value: string | null | undefined): boolean {
+  return CONFIG_REQUIRED_CAPABILITIES.has(value || "");
+}
 
 /* ------------------------------------------------------------------ */
 /*  Chat page                                                         */
@@ -468,8 +478,8 @@ export default function ChatWorkspace() {
    * Force the panel open on its Activity home. Used by the send-gate when the
    * user tries to send while the active capability still needs its config
    * confirmed — the config card lives on the Activity home, so we open the
-   * panel and switch to it. Also used by the capability-switch auto-open
-   * effect below.
+   * panel and switch to it. Also used when the user picks a capability that
+   * needs configuration (see `handleSelectCapability`).
    */
   const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
   const ensureActivityPanelOpen = useCallback(() => {
@@ -699,7 +709,7 @@ export default function ChatWorkspace() {
       router.replace(watchingRoute(sessionIdParam, state.workspaceId || ""), { scroll: false });
     }
   }, [state.activeCapability, state.sessionId, state.workspaceId, sessionIdParam, router]);
-  const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
+  const capabilityNeedsConfig = capabilityRequiresConfig(activeCap.value);
   const returnedResearchTurnRef = useRef<string | null>(null);
 
   // Deep Research is a one-shot workflow: once its confirmed-outline turn
@@ -764,25 +774,6 @@ export default function ChatWorkspace() {
     setCapabilityConfigConfirmed(true);
   }, []);
 
-  /**
-   * Auto-open the right-side Activity panel when the user switches into a
-   * capability that requires manual configuration (Quiz / Animator /
-   * Visualize / Research). We only fire on the transition from "doesn't
-   * need config" → "needs config" so we don't fight the user if they
-   * close the panel themselves while still in a config-needing mode.
-   *
-   * Tracking via a ref (instead of deps) avoids re-firing whenever the
-   * panel toggles — the open-state flip should be one-shot per cap
-   * transition.
-   */
-  const lastCapabilityNeedsConfigRef = useRef(capabilityNeedsConfig);
-  useEffect(() => {
-    const prev = lastCapabilityNeedsConfigRef.current;
-    lastCapabilityNeedsConfigRef.current = capabilityNeedsConfig;
-    if (!prev && capabilityNeedsConfig) {
-      ensureActivityPanelOpen();
-    }
-  }, [capabilityNeedsConfig, ensureActivityPanelOpen]);
   // Adopt UI preferences the assistant changed mid-conversation: the browser
   // otherwise keeps serving its own cached language/theme and the user is told
   // "done" while nothing visibly changes.
@@ -1583,6 +1574,13 @@ export default function ChatWorkspace() {
         capabilities[0] ??
         getChatCapability("");
       setCapability(cap.value || null);
+      // Picking a capability that needs configuration (Quiz / Visualize /
+      // Research) brings up its config card. Only this explicit switch does
+      // it: a session that loads or reloads already in such a mode keeps the
+      // panel as the user left it instead of covering the conversation.
+      if (capabilityRequiresConfig(cap.value) && !capabilityNeedsConfig) {
+        ensureActivityPanelOpen();
+      }
       // Per-capability tool selection now derives from the user's saved
       // settings (/settings#tools) intersected with the capability's
       // allow-list.
@@ -1602,7 +1600,15 @@ export default function ChatWorkspace() {
       // with `""` — a no-op for this guard.
       if (cap.value) setCreateTarget(null);
     },
-    [capabilities, setCapability, setTools, setCreateTarget, userEnabledTools],
+    [
+      capabilities,
+      capabilityNeedsConfig,
+      ensureActivityPanelOpen,
+      setCapability,
+      setTools,
+      setCreateTarget,
+      userEnabledTools,
+    ],
   );
 
   const fileToAttachment = fileToPendingAttachment;

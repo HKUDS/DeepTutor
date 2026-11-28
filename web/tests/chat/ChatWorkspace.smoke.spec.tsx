@@ -34,6 +34,7 @@ const fixture = vi.hoisted(() => ({
     setPersonaSelection: vi.fn(),
     setAnswerBy: vi.fn(),
     setResourceSelection: vi.fn(),
+    setCreateTarget: vi.fn(),
     setReplyLanguageOverride: vi.fn(() => Promise.resolve()),
     sendMessage: vi.fn(),
     queueMessage: vi.fn(),
@@ -66,6 +67,9 @@ const fixture = vi.hoisted(() => ({
     onDeleteTurn?: (messageId: number) => void | Promise<void>
   } | null,
   setActiveSessionId: vi.fn(),
+  extraCapabilities: [] as Array<Record<string, unknown>>,
+  /** Called with the viewer panel's props on every render. */
+  viewerRender: vi.fn((_props: { open?: boolean; configSection?: unknown }) => {}),
   viewer: {
     openFileTab: vi.fn(),
     openWebTab: vi.fn(),
@@ -111,7 +115,11 @@ vi.mock('next/dynamic', () => ({
 vi.mock('@/components/chat/home/LazySessionViewerPanel', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')
   return {
-    default: forwardRef(function StubViewer(_props: unknown, ref) {
+    default: forwardRef(function StubViewer(
+      props: { open?: boolean; configSection?: unknown },
+      ref
+    ) {
+      fixture.viewerRender(props)
       useImperativeHandle(ref, () => fixture.viewer as never, [])
       return null
     }),
@@ -128,6 +136,7 @@ vi.mock('@/features/capabilities/useCapabilityCatalog', () => ({
         allowedTools: ['web_search', 'reason'],
         defaultTools: [],
       },
+      ...fixture.extraCapabilities,
     ],
     visibleCapabilities: [{ value: '', label: 'Chat', description: '', allowedTools: [] }],
     isLoading: false,
@@ -333,7 +342,9 @@ describe('ChatWorkspace smoke', () => {
     fixture.listKnowledgeBases.mockResolvedValue([])
     fixture.composerProps = null
     fixture.listProps = null
+    fixture.extraCapabilities = []
     fixture.adapter.state = emptyChatState()
+    window.localStorage.clear()
   })
 
   it('initializes an untouched draft from its only ready default KB', async () => {
@@ -635,6 +646,135 @@ describe('ChatWorkspace smoke', () => {
     // The open tab only forgets the deleted message's anchor; a newer pending
     // selection is preserved by the id comparison inside the panel.
     expect(fixture.viewer.clearSideChatSource).toHaveBeenCalledWith('thread-1', 1)
+    view.unmount()
+  })
+})
+
+describe('ChatWorkspace quiz settings sheet', () => {
+  const quizCapability = {
+    value: 'deep_question',
+    label: 'Quiz',
+    description: '',
+    allowedTools: [],
+    defaultTools: [],
+  }
+  const storedQuizTurn: MessageItem[] = [
+    {
+      id: 1,
+      role: 'user',
+      content: 'Practice exam',
+      capability: 'deep_question',
+    } as MessageItem,
+    {
+      id: 2,
+      role: 'assistant',
+      content: 'Quiz ready',
+      capability: 'deep_question',
+      events: [],
+    } as MessageItem,
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    fixture.listKnowledgeBases.mockResolvedValue([])
+    fixture.composerProps = null
+    fixture.listProps = null
+    fixture.extraCapabilities = [quizCapability]
+    fixture.adapter.state = emptyChatState()
+  })
+
+  /** Mount on /chat/<id> and deliver the stored quiz session the way
+   *  LOAD_SESSION does: the capability arrives with the hydrated session. */
+  function openStoredQuizSession(sessionId: string) {
+    fixture.routeSessionId = sessionId
+    const view = renderWorkspace()
+    act(() => {
+      applyState({
+        sessionKey: sessionId,
+        sessionId,
+        activeCapability: 'deep_question',
+        messages: storedQuizTurn,
+      })
+      view.rerender(<ChatWorkspace />)
+    })
+    return view
+  }
+
+  function viewerProps() {
+    return fixture.viewerRender.mock.lastCall?.[0]
+  }
+
+  function configuredQuizMode(): string | undefined {
+    const card = viewerProps()?.configSection as
+      | { props: { children: { props: { value: { mode: string } } } } }
+      | null
+      | undefined
+    return card?.props.children.props.value.mode
+  }
+
+  it('does not open the settings sheet when a stored quiz session loads', async () => {
+    const view = openStoredQuizSession('quiz-1')
+    await waitFor(() => expect(fixture.listProps?.messages).toHaveLength(2))
+    expect(fixture.viewer.focusActivityHome).not.toHaveBeenCalled()
+    expect(viewerProps()?.open).toBe(false)
+    expect(window.localStorage.getItem('dt:chat:viewer-panel')).not.toBe('1')
+    view.unmount()
+  })
+
+  it('keeps the restored quiz settings of a reloaded session', async () => {
+    window.localStorage.setItem(
+      'dt:chat:capability-config:quiz-2',
+      JSON.stringify({
+        quizConfig: {
+          mode: 'mimic',
+          topic: '',
+          num_questions: 3,
+          difficulty: 'auto',
+          question_types: [],
+          per_type_counts: {},
+          paper_path: 'parsed-exam',
+          max_questions: 12,
+        },
+        capabilityConfigConfirmed: true,
+      })
+    )
+    const view = openStoredQuizSession('quiz-2')
+    await waitFor(() => expect(configuredQuizMode()).toBe('mimic'))
+    expect(fixture.viewer.focusActivityHome).not.toHaveBeenCalled()
+    expect(viewerProps()?.open).toBe(false)
+    expect(
+      JSON.parse(window.localStorage.getItem('dt:chat:capability-config:quiz-2') || '{}')
+        .quizConfig.mode
+    ).toBe('mimic')
+    view.unmount()
+  })
+
+  it('opens the settings sheet when the learner picks Quiz in the composer', async () => {
+    const view = renderWorkspace()
+    const onSelectCapability = fixture.composerProps?.onSelectCapability as (value: string) => void
+    act(() => {
+      onSelectCapability('deep_question')
+      applyState({ activeCapability: 'deep_question' })
+      view.rerender(<ChatWorkspace />)
+    })
+    expect(fixture.adapter.setCapability).toHaveBeenCalledWith('deep_question')
+    expect(fixture.viewer.focusActivityHome).toHaveBeenCalledTimes(1)
+    expect(viewerProps()?.open).toBe(true)
+    view.unmount()
+  })
+
+  it('does not reopen the sheet when Quiz is picked again while already selected', async () => {
+    fixture.routeSessionId = null
+    applyState({ activeCapability: 'deep_question' })
+    const view = renderWorkspace()
+    fixture.viewer.focusActivityHome.mockClear()
+    const onSelectCapability = fixture.composerProps?.onSelectCapability as (value: string) => void
+    act(() => {
+      onSelectCapability('deep_question')
+      view.rerender(<ChatWorkspace />)
+    })
+    expect(fixture.viewer.focusActivityHome).not.toHaveBeenCalled()
     view.unmount()
   })
 })

@@ -143,6 +143,20 @@ describe("QuizViewer smoke", () => {
     expect(screen.getByRole("button", { name: /Check Answer/ })).toBeDisabled();
   });
 
+  it("labels the question type and difficulty instead of showing raw ids", () => {
+    renderViewer([
+      {
+        ...shortAnswerQuestion,
+        question_type: "short_answer",
+        difficulty: "hard",
+      },
+    ]);
+    expect(screen.getByText("Short Answer")).toBeInTheDocument();
+    expect(screen.getByText("Hard")).toBeInTheDocument();
+    expect(screen.queryByText("short_answer")).toBeNull();
+    expect(screen.queryByText("hard")).toBeNull();
+  });
+
   it("grades a correct choice answer and shows the explanation (answer → submit → feedback)", async () => {
     const user = userEvent.setup();
     renderViewer([choiceQuestion]);
