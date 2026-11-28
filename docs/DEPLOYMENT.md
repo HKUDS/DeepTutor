@@ -23,7 +23,9 @@ Astro writes the English and Chinese pages and their assets to `docs/dist/`.
 
 ## Wrangler configuration and credentials
 
-The production workflow and Wrangler configuration are proposed. Before the first deployment from this repository, copy the production Worker's current settings to `docs/wrangler.toml`. The file needs the existing Worker's `name` and `compatibility_date`, plus `[assets]` with `directory = "./dist"`. Confirm the current custom domain and routing settings in Cloudflare before the first deploy. Use the same exact Wrangler version locally and in CI.
+Before the first deployment from this repository, copy [the Wrangler example](./wrangler.toml.example) to `docs/wrangler.toml`. Uncomment `name` and `compatibility_date` and set both to the values on the existing production Worker. The example already points Wrangler at the Astro build in `./dist`.
+
+Check the Worker's current custom domain, routes, and bindings in Cloudflare and carry over any settings that Wrangler needs to manage. Commit the verified configuration and use the same exact Wrangler version locally and in CI. The production deployment workflow is still proposed.
 
 | Environment variable | Purpose |
 | --- | --- |
