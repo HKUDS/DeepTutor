@@ -1499,3 +1499,280 @@ def test_preparation_instructions_travel_in_actual_messages(material, monkeypatc
     assert asyncio.run(
         lessons._ask(material.config, "Return only JSON", {"objective": "membrane"})
     ) == {"queries": ["membrane"]}
+
+
+def _make_concept(material):
+    progress = material.store.load("path")
+    progress.modules[0].knowledge_points[0].type = "concept"
+    material.store.save(progress)
+
+
+def test_incomplete_objective_packet_is_reused_after_a_focus_prep(material, monkeypatch):
+    """#2363: an objective request after a focus prep must not rebuild the objective."""
+    calls = _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    objective = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert lessons.covered_scope(objective) == ["Bilayer structure"]
+    asyncio.run(
+        lessons.prepare_lesson(
+            material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+        )
+    )
+    assert material.store.load("path").lesson_evidence["kp"]["coverage"]["scope"] == "focus"
+    paid = len(calls)
+
+    for refresh in (False, True):
+        again = asyncio.run(
+            lessons.prepare_lesson(material.store, "path", "kp", material.config, refresh=refresh)
+        )
+        assert again["id"] == objective["id"]
+    assert len(calls) == paid  # no retrieval, selection or page inspection
+    assert "OBJECTIVE COVERAGE GAP" in lessons.lesson_context(again)
+
+
+def test_changed_objective_still_rebuilds_an_incomplete_packet(material, monkeypatch):
+    calls = _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    first = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    progress = material.store.load("path")
+    progress.modules[0].knowledge_points[0].name = "Membrane bilayer only"
+    material.store.save(progress)
+    paid = len(calls)
+    rebuilt = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert rebuilt["id"] != first["id"] and len(calls) > paid
+
+
+def test_assess_grades_incomplete_objective_packet_against_covered_facets(material, monkeypatch):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    seen = []
+
+    async def judge(_config, items):
+        seen.append(items[0]["expected_answer"])
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.95, feedback="Covered part explained."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    graded, receipt = asyncio.run(
+        LearningService(material.store).assess_qualitative_semantic(
+            "path", "kp", learner_answer="Lipids form a bilayer.", config=material.config
+        )
+    )
+    assert "Bilayer structure" in seen[0] and "later mechanism" in seen[0]
+    assert receipt["assessment_scope"] == lessons.COVERED_SOURCES
+    assert "later mechanism" in receipt["coverage_missing"]
+    assert graded.learning_evidence[-1].assessment_scope == lessons.COVERED_SOURCES
+    assert graded.qualitative_mastery["kp"] is True
+    # The quiz gate is unchanged: a partial packet still cannot key a quiz.
+    with pytest.raises(lessons.LessonUnavailable, match="assessment"):
+        lessons.question_snapshot(material.store, graded, "kp")
+
+
+def test_record_without_covered_verdict_keeps_the_complete_objective_gate(material, monkeypatch):
+    _make_concept(material)
+    _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    with pytest.raises(MasteryInteractionError, match="teaching slice"):
+        LearningService(material.store).record_qualitative_for_path("path", "kp", passed=True)
+
+
+@pytest.mark.asyncio
+async def test_focus_only_packet_returns_structured_coverage_gap(material, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch)
+    await lessons.prepare_lesson(
+        material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+    )
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    outcomes = []
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="path",
+        knowledge_point_id="kp",
+        _learner_message="Lipids form a bilayer.",
+        _assessment_outcome=outcomes.append,
+    )
+    payload = json.loads(result.content)
+    assert not result.success
+    assert payload["status"] == "coverage_gap" and payload["recorded"] is False
+    assert payload["retry_prepare"] is True
+    assert "learner" in payload["instruction"]
+    assert outcomes == ["coverage_gap"]
+    assert not material.store.load("path").learning_evidence
+
+
+@pytest.mark.asyncio
+async def test_incomplete_objective_without_covered_facets_does_not_ask_to_reprepare(
+    material, monkeypatch
+):
+    from deeptutor.capabilities.mastery import tools
+
+    _make_concept(material)
+    ranking = _partial_selection()
+    ranking["selected"][0]["reason"] = ""
+    _install_preparation(material, monkeypatch, rankings=[ranking])
+    await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="path", knowledge_point_id="kp", _learner_message="Lipids."
+    )
+    payload = json.loads(result.content)
+    assert payload["status"] == "coverage_gap" and payload["retry_prepare"] is False
+    assert "Do not call mastery_prepare_lesson again" in payload["instruction"]
+
+
+def test_verdict_missing_is_advisory_and_bounded():
+    from deeptutor.learning.semantic_assessment import Verdict
+
+    partial = Verdict(result="partial", confidence=0.9, feedback="f", missing=" the role ")
+    assert partial.receipt()["missing"] == "the role"
+    assert "missing" not in Verdict(result="correct", confidence=0.9, feedback="f").receipt()
+    assert (
+        Verdict.model_validate(
+            {"result": "partial", "confidence": 0.9, "feedback": "f", "missing": None}
+        ).missing
+        == ""
+    )
+    assert (
+        len(Verdict(result="partial", confidence=0.9, feedback="f", missing="x" * 5000).missing)
+        == 1000
+    )
+
+
+@pytest.mark.asyncio
+async def test_partial_assess_targets_missing_element_and_excludes_sibling_scope(
+    material, monkeypatch
+):
+    """#2364: the judge must not demand a sibling objective; the tutor gets the gap."""
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = material.store.load("path")
+    first = progress.modules[0].knowledge_points[0]
+    first.type = "concept"
+    progress.modules[0].knowledge_points.append(
+        first.model_copy(update={"id": "kp2", "name": "Steering behaviour via incentives"})
+    )
+    material.store.save(progress)
+    _install_preparation(material, monkeypatch)
+    await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+    seen = []
+
+    async def judge(_config, items):
+        seen.append(items[0])
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="partial",
+                confidence=0.95,
+                feedback="The bilayer is right; its role is missing.",
+                missing="why the bilayer forms a barrier",
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="path", knowledge_point_id="kp", _learner_message="Lipids form a bilayer."
+    )
+    payload = json.loads(result.content)
+    assert seen[0]["out_of_scope"] == ["Steering behaviour via incentives"]
+    assert payload["result"] == "partial"
+    assert payload["missing"] == "why the bilayer forms a barrier"
+    assert "exactly this missing element: why the bilayer forms a barrier" in payload["next_step"]
+    # The generic "explain it again" move would pull the tutor off the gap.
+    assert payload["instruction"] == payload["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_focus_only_complete_packet_names_recovery_and_grades_after_it(material, monkeypatch):
+    """#2905: a complete focus packet and no assessment slot must not deadlock the gate.
+
+    Every repeated ``mastery_assess`` used to get the same bare refusal. Each
+    one now says how to get gradable evidence, records nothing and calls no
+    judge; one objective preparation then lets the retained answer be graded.
+    """
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch)
+    focused = await lessons.prepare_lesson(
+        material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+    )
+    assert focused["coverage"]["scope"] == "focus" and focused["coverage"]["complete"] is True
+    assert not material.store.load("path").assessment_evidence
+    judged = []
+
+    async def judge(_config, items):
+        judged.append(items[0]["answer"])
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.95, feedback="Clear explanation."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    turn = {"_mastery_path_id": "path", "_session_id": "s1", "_turn_id": "t1"}
+    for _ in range(2):
+        result = await tools.MasteryAssessTool().execute(
+            **turn, knowledge_point_id="kp", _learner_message="Lipids form a bilayer."
+        )
+        payload = json.loads(result.content)
+        assert not result.success and payload["status"] == "coverage_gap"
+        assert payload["retry_prepare"] is True
+        instruction = payload["instruction"]
+        assert "mastery_prepare_lesson once for this objective without a focus" in instruction
+    assert not judged and not material.store.load("path").learning_evidence
+
+    objective = await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+    assert material.store.load("path").assessment_evidence["kp"]["id"] == objective["id"]
+    result = await tools.MasteryAssessTool().execute(
+        **{**turn, "_turn_id": "t2"},
+        knowledge_point_id="kp",
+        _learner_message="They shield the cell.",
+    )
+    payload = json.loads(result.content)
+    assert payload["result"] == "correct" and payload["mastered"] is True
+    # The explanation refused for lack of evidence is graded with the reply.
+    assert judged == ["Lipids form a bilayer.\n\nThey shield the cell."]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session, outcome", [("s1", "needs_clarification"), ("", "not_recorded")])
+async def test_unclear_explanation_reports_whether_it_is_kept(
+    material, monkeypatch, session, outcome
+):
+    """A non-final verdict keeps the answer in a session; the notice must say so."""
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch)
+    await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+
+    async def judge(_config, items):
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="ungraded", confidence=0.5, feedback="Which layer do you mean?"
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    outcomes = []
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="path",
+        _session_id=session,
+        _turn_id="t1" if session else "",
+        knowledge_point_id="kp",
+        _learner_message="The layer.",
+        _assessment_outcome=outcomes.append,
+    )
+    assert json.loads(result.content)["needs_clarification"] is True
+    assert outcomes == [outcome]
