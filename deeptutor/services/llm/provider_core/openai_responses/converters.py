@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
 import json
 import re
 from typing import Any
@@ -248,6 +249,30 @@ def convert_tool_choice(tool_choice: Any) -> Any:
         return tool_choice
     name = (tool_choice.get("function") or {}).get("name")
     return {"type": "function", "name": name} if name else tool_choice
+
+
+def build_prompt_cache_key(
+    messages: list[dict[str, Any]],
+    session_id: str | None = None,
+) -> str:
+    """Derive a stable hashed cache-routing key for Responses API requests.
+
+    Routing affinity must survive ordinary history growth. A conversation id,
+    when the caller supplies one, scopes the key to that conversation so two
+    chats sharing the same system prompt do not share a cache route; it is
+    hashed so the raw id is not sent upstream. Without one, fall back to the
+    first system message, which identifies the reusable instructions. Later
+    system messages (e.g. a rolling summary) can change between calls and
+    must not move the key.
+    """
+    normalized = str(session_id or "").strip()
+    if normalized:
+        return hashlib.sha256(f"session:{normalized}".encode()).hexdigest()
+    prefix: list[dict[str, Any]] = []
+    if messages and messages[0].get("role") == "system":
+        prefix.append({"role": "system", "content": messages[0].get("content")})
+    raw = json.dumps(prefix, ensure_ascii=True, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def split_tool_call_id(tool_call_id: Any) -> tuple[str, str | None]:

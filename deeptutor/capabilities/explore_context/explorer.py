@@ -414,7 +414,10 @@ class ContextExplorer:
                 reasoning_effort=self.reasoning_effort,
             ),
         }
-        if threads_session_id(self.binding):
+        wire_api = getattr(getattr(self, "_client_config", None), "wire_api", None)
+        if threads_session_id(self.binding, wire_api=wire_api) or getattr(
+            client, "_threads_session_id", False
+        ):
             kwargs["deeptutor_session_id"] = f"{session_id}:explore"
         if tool_schemas:
             kwargs["tools"] = tool_schemas

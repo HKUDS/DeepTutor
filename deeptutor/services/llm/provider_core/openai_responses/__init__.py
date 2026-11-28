@@ -2,6 +2,7 @@
 
 from .converters import (
     adapt_chat_kwargs_to_responses,
+    build_prompt_cache_key,
     convert_messages,
     convert_tool_choice,
     convert_tools,
@@ -22,6 +23,7 @@ from .parsing import (
 
 __all__ = [
     "adapt_chat_kwargs_to_responses",
+    "build_prompt_cache_key",
     "convert_messages",
     "convert_tool_choice",
     "convert_tools",
