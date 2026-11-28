@@ -172,6 +172,7 @@ def _register_builtin_providers() -> None:
     from . import (
         aliyun_iqs,
         bocha,
+        bowmark,
         brave,
         deepseek,
         doubao,
@@ -194,6 +195,7 @@ def _register_builtin_providers() -> None:
     _ = (
         aliyun_iqs,
         bocha,
+        bowmark,
         brave,
         deepseek,
         doubao,
