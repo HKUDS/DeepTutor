@@ -135,6 +135,8 @@ services:
   # the supervisord children's environment, so changing ports/auth/providers
   # means editing JSONs + `podman compose restart`.
   deeptutor:
+    # For Math Animator, see "Math Animator in a read-only container" in
+    # docs-for-dev/CONTAINERIZATION.md for the image build and Compose override.
     image: ghcr.io/hkuds/deeptutor:latest
     container_name: deeptutor
     pull_policy: always

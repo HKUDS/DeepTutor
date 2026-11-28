@@ -115,7 +115,7 @@ services:
       # Extras come from pyproject.toml — preview one with
       # `python scripts/install_extras.py --dry-run "<name>"`.
       # - DEEPTUTOR_EXTRAS=math-animator,partners
-      # - DEEPTUTOR_APT_PACKAGES=ffmpeg
+      # - DEEPTUTOR_APT_PACKAGES=build-essential,pkg-config,libcairo2-dev,libpango1.0-dev
 
       # Unraid / NAS bind mounts: set these to the host owner of ./data
       # instead of chowning the volume or running the app as root.
