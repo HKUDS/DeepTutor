@@ -450,3 +450,36 @@ def test_legacy_display_history_drops_only_completed_thinking():
     replayed = replay_history(source)
     assert replayed[0]["_provider_response_state"] == {"reasoning_content": "portable"}
     assert source == before
+
+
+def test_plain_turn_is_copied_without_a_json_round_trip(monkeypatch):
+    # Stored turns hold the whole request of a long session and are grouped
+    # several times per build; re-encoding them starved the event loop.
+    from deeptutor.services.session import model_history
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("plain JSON turns must not be re-encoded")
+
+    monkeypatch.setattr(model_history.json, "dumps", fail)
+    record = turn_record("x" * 100_000)
+    normalized = normalize_model_turn(record)
+    assert normalized is not None
+    assert normalized["messages"][2]["content"] == "x" * 100_000
+    normalized["messages"][1]["tool_calls"][0]["function"]["name"] = "changed"
+    normalized["tools"][0]["function"]["parameters"]["type"] = "changed"
+    assert record == turn_record("x" * 100_000)
+
+
+def test_non_plain_json_turn_keeps_round_trip_semantics():
+    nan = turn_record()
+    nan["tools"][0]["function"]["parameters"]["default"] = float("nan")
+    assert normalize_model_turn(nan) is None
+    opaque = turn_record()
+    opaque["route"]["extra"] = object()
+    assert normalize_model_turn(opaque) is None
+    cyclic = turn_record()
+    cyclic["tools"][0]["function"]["parameters"]["self"] = cyclic["tools"]
+    assert normalize_model_turn(cyclic) is None
+    tupled = turn_record()
+    tupled["tools"][0]["function"]["parameters"]["required"] = ("key",)
+    assert normalize_model_turn(tupled)["tools"][0]["function"]["parameters"]["required"] == ["key"]
