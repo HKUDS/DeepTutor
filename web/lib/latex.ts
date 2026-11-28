@@ -402,7 +402,12 @@ export function processLatexContent(content: string): string {
   // Convert to string if not already
   const str = String(content);
 
-  return normalizeMathMarkup(str);
+  // remark-math only reads a multi-line display block when each `$$` is on a
+  // line of its own. A stem written as `$$P=\begin{pmatrix} … \end{pmatrix}$$`
+  // is otherwise parsed as inline maths and the `&`/`\\` rows reach KaTeX as
+  // text. `processMarkdownContent` always ran this; the card renderer did not,
+  // so the same matrix rendered in the answer prose and failed on the card.
+  return normalizeMathMarkup(normalizeEditorMdInlineMath(str));
 }
 
 export function processMarkdownContent(content: string): string {
