@@ -263,24 +263,28 @@ def save_user(
     return record
 
 
+def public_user_info(username: str, record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id", ""),
+        "username": username,
+        "role": record.get("role", "user"),
+        "created_at": record.get("created_at", ""),
+        "disabled": bool(record.get("disabled", False)),
+        "avatar": str(record.get("avatar") or ""),
+        "preset": str(record.get("preset") or "standard"),
+        "must_change_password": bool(record.get("must_change_password", False)),
+        "book_permission": public_permission_dict(
+            normalize_book_permission(record.get("book_permission"))
+        ),
+    }
+
+
 def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplied".
     env_username: str = "",
     env_password_hash: str = "",
 ) -> list[dict[str, Any]]:
     return [
-        {
-            "id": record.get("id", ""),
-            "username": username,
-            "role": record.get("role", "user"),
-            "created_at": record.get("created_at", ""),
-            "disabled": bool(record.get("disabled", False)),
-            "avatar": str(record.get("avatar") or ""),
-            "preset": str(record.get("preset") or "standard"),
-            "must_change_password": bool(record.get("must_change_password", False)),
-            "book_permission": public_permission_dict(
-                normalize_book_permission(record.get("book_permission"))
-            ),
-        }
+        public_user_info(username, record)
         for username, record in load_users(env_username, env_password_hash).items()
     ]
 
