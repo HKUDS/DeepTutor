@@ -297,8 +297,8 @@ export default function NewPartnerPage() {
       {/* Step body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <PageContainer key={step} className="animate-fade-in">
-          <PageHeader title={stepTitle[step].title} description={stepTitle[step].subtitle} />
-          <div className="max-w-2xl">
+          <div className="mx-auto w-full max-w-2xl">
+            <PageHeader title={stepTitle[step].title} description={stepTitle[step].subtitle} />
 
           {step === "identity" && (
             <div className="space-y-5">
@@ -487,7 +487,7 @@ export default function NewPartnerPage() {
       {/* Footer actions */}
       <div className="border-t border-[var(--border)]">
         <PageContainer spacing="toolbar">
-        <div className="flex w-full max-w-2xl items-center justify-between">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
           <button
             type="button"
             onClick={goBack}
