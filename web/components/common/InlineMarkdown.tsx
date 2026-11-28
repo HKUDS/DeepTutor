@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { hasMarkdownMath } from "@/lib/latex";
 import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
+import { hasMarkdownTable } from "@/lib/markdown-table";
 
 const RichInlineMarkdown = dynamic(() => import("./RichInlineMarkdown"), {
   ssr: false,
@@ -10,7 +11,9 @@ const RichInlineMarkdown = dynamic(() => import("./RichInlineMarkdown"), {
 
 // Emphasis, inline code and links are the rest of what a tutor writes into a
 // question stem or an option. Matching them here (not just math) is what keeps
-// `**听懂**` from reaching the learner with its asterisks attached.
+// `**听懂**` from reaching the learner with its asterisks attached. A table is
+// the one block construct a stem carries often enough to need the rich path
+// too — its delimiter row is the reliable tell.
 const INLINE_MARKUP_RE = /(\*\*|__|`|~~|\[[^\]]+\]\()/;
 
 /**
@@ -31,7 +34,10 @@ export default function InlineMarkdown({
   className?: string;
 }) {
   const text = decodeEscapedUnicodeForDisplay(content ?? "");
-  const rich = hasMarkdownMath(text) || INLINE_MARKUP_RE.test(text);
+  const rich =
+    hasMarkdownTable(text) ||
+    hasMarkdownMath(text) ||
+    INLINE_MARKUP_RE.test(text);
 
   if (!rich) {
     return className ? <span className={className}>{text}</span> : <>{text}</>;
