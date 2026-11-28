@@ -1,9 +1,20 @@
 import copy
 import json
+import re
 
 from deeptutor.co_writer.storage import get_co_writer_storage
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 from deeptutor.notes.proposals import propose
+
+
+def _page_link(page_id: str, title: str) -> str:
+    """A ready-made Markdown link to a notebook page.
+
+    Handed to the model whole: given only a bare path, some models rewrite it
+    into a made-up host (``https://co-writer/<id>``) that opens nothing.
+    """
+    label = re.sub(r"([\\\[\]])", r"\\\1", " ".join(title.split()))
+    return f"[{label or 'Untitled'}](/co-writer/{page_id})"
 
 
 class NoteReadTool(BaseTool):
@@ -142,7 +153,7 @@ class WriteNoteTool(BaseTool):
     def get_definition(self):
         return ToolDefinition(
             name="write_note",
-            description="Create an authored notebook page. To preserve an original conversation use save_favorite. Existing pages are edited through reviewable note_suggest in their editor.",
+            description="Create an authored notebook page. To preserve an original conversation use save_favorite. Existing pages are edited through reviewable note_suggest in their editor. To point the user at the new page, paste the returned `link` exactly as given.",
             parameters=[
                 ToolParameter(name="title", type="string", description="Page title"),
                 ToolParameter(
@@ -162,7 +173,12 @@ class WriteNoteTool(BaseTool):
         doc = get_co_writer_storage().create_document(title=title[:200], content=content)
         return ToolResult(
             content=json.dumps(
-                {"id": doc.id, "title": doc.title, "url": f"/co-writer/{doc.id}"},
+                {
+                    "id": doc.id,
+                    "title": doc.title,
+                    "url": f"/co-writer/{doc.id}",
+                    "link": _page_link(doc.id, doc.title),
+                },
                 ensure_ascii=False,
             ),
             success=True,
@@ -173,7 +189,7 @@ class SearchNotesTool(BaseTool):
     def get_definition(self):
         return ToolDefinition(
             name="search_notes",
-            description="Find authored notebook pages by title or full text; returns excerpts and page links. Empty query lists recent pages. Read a whole page with page_id.",
+            description="Find authored notebook pages by title or full text; returns excerpts and page links. Empty query lists recent pages. Read a whole page with page_id. To point the user at a page, paste its `link` exactly as given.",
             parameters=[
                 ToolParameter(
                     name="query", type="string", description="Text to find", required=False
@@ -213,6 +229,7 @@ class SearchNotesTool(BaseTool):
                             "title": doc.title,
                             "excerpt": text[max(0, pos - 100) : pos + 600],
                             "url": f"/co-writer/{doc.id}",
+                            "link": _page_link(doc.id, doc.title),
                         }
                     )
                 if len(results) >= 20:

@@ -7,7 +7,12 @@ import pytest
 
 from deeptutor.api.routers import co_writer
 from deeptutor.capabilities.notes.capability import NotesCapability
-from deeptutor.capabilities.notes.tools import NoteReadTool, NoteSuggestTool
+from deeptutor.capabilities.notes.tools import (
+    NoteReadTool,
+    NoteSuggestTool,
+    SearchNotesTool,
+    WriteNoteTool,
+)
 from deeptutor.co_writer.storage import CoWriterStorage
 from deeptutor.notes.review import due_cards, grade_card
 from tests.notes.test_block_pages import Paths, block
@@ -364,3 +369,38 @@ def test_generated_results_file_on_their_block(storage, monkeypatch):
         explanation="",
     )
     assert len(list_proposals(storage, page.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_written_page_comes_with_a_link_the_model_can_paste(storage, monkeypatch):
+    import deeptutor.capabilities.notes.tools as tools
+
+    monkeypatch.setattr(tools, "get_co_writer_storage", lambda: storage)
+    result = await WriteNoteTool().execute(title="Photosynthesis", content="Plants make sugar.")
+    payload = json.loads(result.content)
+    assert payload["url"] == f"/co-writer/{payload['id']}"
+    # Root-relative and ready to paste, so it cannot be turned into a host.
+    assert payload["link"] == f"[Photosynthesis](/co-writer/{payload['id']})"
+    assert storage.load_document(payload["id"]).title == "Photosynthesis"
+
+
+@pytest.mark.asyncio
+async def test_link_label_cannot_break_out_of_the_markdown_link(storage, monkeypatch):
+    import deeptutor.capabilities.notes.tools as tools
+
+    monkeypatch.setattr(tools, "get_co_writer_storage", lambda: storage)
+    result = await WriteNoteTool().execute(title=r"A [b](http://x.test) \ c", content="Body")
+    link = json.loads(result.content)["link"]
+    assert link.startswith(r"[A \[b\](http://x.test) \\ c](/co-writer/")
+    assert link.endswith(")") and link.count("](/co-writer/") == 1
+
+
+@pytest.mark.asyncio
+async def test_search_results_carry_the_same_link(storage, monkeypatch):
+    import deeptutor.capabilities.notes.tools as tools
+
+    monkeypatch.setattr(tools, "get_co_writer_storage", lambda: storage)
+    page = storage.create_document(title="Calvin cycle", content="Fixes carbon dioxide")
+    found = json.loads((await SearchNotesTool().execute(query="carbon")).content)
+    assert found[0]["id"] == page.id
+    assert found[0]["link"] == f"[Calvin cycle](/co-writer/{page.id})"
