@@ -5,9 +5,11 @@ import { RecordGroups, RecordHeader, RecordTime, useRecordView } from './RecordL
 import { useLayoutEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronRight, ClipboardList, LayoutGrid, MessageCircle, Plus } from 'lucide-react'
+import { ChevronRight, ClipboardList, LayoutGrid, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { learningSurface } from '@/components/learning/surfaces'
 import { allLearningActivity, fileLearningSessions, type LearningActivity } from '@/lib/learning-dashboard'
+import { bookApi } from '@/lib/book-api'
+import { bookErrorMessage } from '@/lib/book-errors'
 import { isNavigationTargetActive } from '@/lib/navigation'
 import { useLearningIndex } from '@/hooks/useLearningIndex'
 import { useSidebarDrawer } from '@/components/layout/AppShell'
@@ -94,6 +96,25 @@ export function LearningNavigation({
       browserStorage.writeRaw('local', OPEN_KEY, JSON.stringify(value))
       return value
     })
+  // Deleting belongs where the duplicate was noticed — the books library also
+  // offers it, but only after opening that page. The row keeps the same
+  // two-click confirmation that card uses, and the index is re-read afterwards
+  // so the list reflects what the server actually kept.
+  const removeBook = (record: LearningActivity) => {
+    if (!record.id) return
+    void bookApi
+      .delete(record.id, record.workspaceId ?? '')
+      .then(() => retry())
+      .catch((error: unknown) => {
+        retry()
+        window.alert(
+          t('{{action}} failed: {{reason}}', {
+            action: t('Delete book'),
+            reason: bookErrorMessage(error, t),
+          })
+        )
+      })
+  }
   return (
     <div className="dt-learning-navigation">
       <OverviewRow href="/learning/new" label={t('navigation.createLearning')} icon={Plus} />
@@ -129,6 +150,7 @@ export function LearningNavigation({
                 time={row.time}
                 sessions={row.sessions}
                 render={sessions?.render}
+                onDeleteBook={removeBook}
                 open={
                   (view.query.trim() !== '' &&
                     ((row.record.children ?? []).some(child => matches(child.title, view.query)) ||
@@ -161,6 +183,7 @@ function RecordNode({
   time,
   sessions,
   render,
+  onDeleteBook,
   open,
   onToggle,
 }: {
@@ -168,6 +191,7 @@ function RecordNode({
   time: number
   sessions: SessionSummary[]
   render?: (rows: SessionSummary[]) => ReactNode
+  onDeleteBook?: (record: LearningActivity) => void
   open: boolean
   onToggle: (open: boolean) => void
 }) {
@@ -175,6 +199,7 @@ function RecordNode({
   const drawer = useSidebarDrawer()
   const pathname = usePathname()
   const search = useSearchParams()
+  const [pendingDelete, setPendingDelete] = useState(false)
   const selected = isNavigationTargetActive(record.href, pathname, new URLSearchParams(search.toString()))
   const Icon = learningSurface(record.kind).icon
   const questions = record.children ?? []
@@ -189,7 +214,7 @@ function RecordNode({
       })
   return (
     <div className="dt-record-node">
-      <div className={`dt-record-node-row ${selected ? 'is-active' : ''} ${expanded ? 'is-open' : ''}`}>
+      <div className={`dt-record-node-row group ${selected ? 'is-active' : ''} ${expanded ? 'is-open' : ''}`}>
         {expandable ? (
           <button
             type="button"
@@ -230,6 +255,32 @@ function RecordNode({
           )}
           <RecordTime seconds={time} />
         </Link>
+        {record.kind === 'books' && record.id && onDeleteBook && (
+          <button
+            type="button"
+            // Two clicks, like the library card: the first arms, the second
+            // deletes. Permanent on touch, where there is no hover to reveal it.
+            aria-label={pendingDelete ? t('Click again to confirm') : t('Delete book')}
+            title={pendingDelete ? t('Click again to confirm') : t('Delete book')}
+            onClick={event => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (!pendingDelete) {
+                setPendingDelete(true)
+                return
+              }
+              setPendingDelete(false)
+              onDeleteBook(record)
+            }}
+            className={`ml-1 shrink-0 rounded-md p-1 transition-colors ${
+              pendingDelete
+                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                : 'text-[var(--muted-foreground)]/70 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100'
+            }`}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
       {expanded && (
         <div className="dt-record-children">
