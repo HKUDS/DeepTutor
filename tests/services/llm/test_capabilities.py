@@ -39,6 +39,7 @@ def test_capability_fallback_default() -> None:
 def test_effective_temperature_override() -> None:
     """Forced temperature overrides should be applied for reasoning models."""
     assert get_effective_temperature("openai", "gpt-5") == 1.0
+    assert get_effective_temperature("openai", "gpt-6-luna") == 1.0
     assert get_effective_temperature("openai", "gpt-4o", requested_temp=0.4) == 0.4
 
 
