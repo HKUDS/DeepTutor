@@ -98,10 +98,11 @@ def test_sentence_splitter_ignores_nltk_redos_process_cpu_timeout(monkeypatch) -
     """Issue #3030: NLTK 3.10.4's regex timeout must not abort large-document splitting.
 
     NLTK 3.10.4 routes Punkt's built-in patterns through ``nltk.redos``, whose
-    ``regex`` timeout counts whole-process CPU time. Stock LlamaIndex
-    ``SentenceSplitter`` hits ``TimeoutError`` on a large single-block document
-    when the timeout budget is tight; DeepTutor's splitter must succeed with
-    identical chunks and without mutating global ``nltk.redos.DEFAULT_TIMEOUT``.
+    ``regex`` timeout counts whole-process CPU time. Stock Punkt tokenization
+    hits ``TimeoutError`` on a large single-block document when the timeout
+    budget is tight; DeepTutor's splitter must succeed with identical chunks,
+    without mutating global ``nltk.redos.DEFAULT_TIMEOUT``, and without loading
+    ``corpora/stopwords`` through ``globals_helper.punkt_tokenizer``.
     """
     import pytest
 
@@ -109,31 +110,50 @@ def test_sentence_splitter_ignores_nltk_redos_process_cpu_timeout(monkeypatch) -
     from llama_index.core import Settings
     from llama_index.core.embeddings import MockEmbedding
     from llama_index.core.node_parser import SentenceSplitter
+    from llama_index.core.node_parser.text.utils import split_by_sentence_tokenizer_internal
+    from nltk.tokenize import PunktSentenceTokenizer
 
     from deeptutor.services.rag.pipelines.llamaindex import ingestion
 
     text = "Dr. Smith analyzed the 3.14 benchmark results carefully! Next sentence follows. " * 4000
     doc = Document(text=text)
 
-    # Capture reference chunks from stock LlamaIndex with no timeout limit.
+    # Use stock PunktSentenceTokenizer directly (matching LlamaIndex's default
+    # split_by_sentence_tokenizer) without triggering globals_helper's unrelated
+    # stopwords disk load, which NLTK 3.10.4's pathsec rejects on group-writable
+    # site-packages caches.
+    stock_punkt = PunktSentenceTokenizer()
+    stock_splitter = SentenceSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        chunking_tokenizer_fn=lambda s: split_by_sentence_tokenizer_internal(s, stock_punkt),
+    )
+
+    # Capture reference chunks from stock Punkt with no timeout limit.
     with monkeypatch.context() as ref_ctx:
         ref_ctx.setattr(redos, "DEFAULT_TIMEOUT", None)
-        expected_texts = [
-            node.text
-            for node in SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents(
-                [doc]
-            )
-        ]
+        expected_texts = [node.text for node in stock_splitter.get_nodes_from_documents([doc])]
 
     tight_timeout = 0.005
     monkeypatch.setattr(redos, "DEFAULT_TIMEOUT", tight_timeout)
     monkeypatch.setattr(Settings, "_embed_model", MockEmbedding(embed_dim=4))
     monkeypatch.setattr(Settings, "chunk_size", 512)
     monkeypatch.setattr(Settings, "chunk_overlap", 50)
+    monkeypatch.setattr(ingestion, "_UNTIMED_PUNKT_TOKENIZER", None)
 
-    # Confirm the failure mode reproduces on stock LlamaIndex SentenceSplitter.
+    # Confirm the failure mode reproduces on stock PunktSentenceTokenizer.
     with pytest.raises(TimeoutError, match="time limit"):
-        SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents([doc])
+        stock_splitter.get_nodes_from_documents([doc])
+
+    # Confirm DeepTutor's splitter never touches globals_helper / stopwords disk cache.
+    from llama_index.core import utils as llama_utils
+
+    def _forbid_globals_helper(*_args, **_kwargs):
+        raise AssertionError("build_sentence_splitter must not rely on globals_helper stopwords")
+
+    monkeypatch.setattr(
+        llama_utils.GlobalsHelper, "punkt_tokenizer", property(_forbid_globals_helper)
+    )
 
     nodes = ingestion.documents_to_nodes([doc], show_progress=False)
 

@@ -20,7 +20,7 @@ from .config import should_show_progress, vector_index_config_from_settings
 from .embedding_adapter import current_embedding
 
 _PUNKT_LOCK = threading.Lock()
-_UNTIMED_PUNKT_CACHE: tuple[Any, Any] | None = None
+_UNTIMED_PUNKT_TOKENIZER: Any | None = None
 
 
 def _disable_redos_timeout(pattern: Any) -> Any:
@@ -44,39 +44,30 @@ def _disable_redos_timeout(pattern: Any) -> Any:
 
 
 def _untimed_punkt_tokenizer() -> Any:
-    """Return a thread-safe Punkt tokenizer derived from LlamaIndex's singleton
-    whose built-in constant patterns do not inherit ``nltk.redos.DEFAULT_TIMEOUT``.
+    """Return a thread-safe Punkt tokenizer whose built-in constant patterns do
+    not inherit ``nltk.redos.DEFAULT_TIMEOUT``.
+
+    LlamaIndex's ``globals_helper.punkt_tokenizer`` instantiates an untrained
+    ``PunktSentenceTokenizer()`` while also loading ``corpora/stopwords`` from
+    ``llama_index/core/_static/nltk_cache`` as a side effect. Constructing the
+    equivalent ``PunktSentenceTokenizer`` directly avoids both NLTK 3.10.4's
+    process-CPU regex limit and ``nltk.pathsec`` failures when ``nltk_cache``
+    lives in a group-writable ``site-packages`` directory.
     """
-    global _UNTIMED_PUNKT_CACHE
+    global _UNTIMED_PUNKT_TOKENIZER
 
-    from llama_index.core.utils import globals_helper
-
-    base = globals_helper.punkt_tokenizer
-    cached = _UNTIMED_PUNKT_CACHE
-    if cached is not None and cached[0] is base:
-        return cached[1]
+    if _UNTIMED_PUNKT_TOKENIZER is not None:
+        return _UNTIMED_PUNKT_TOKENIZER
 
     with _PUNKT_LOCK:
-        cached = _UNTIMED_PUNKT_CACHE
-        if cached is not None and cached[0] is base:
-            return cached[1]
+        if _UNTIMED_PUNKT_TOKENIZER is not None:
+            return _UNTIMED_PUNKT_TOKENIZER
 
-        try:
-            from nltk import redos  # noqa: F401
-            from nltk.tokenize import punkt
-        except ImportError:
-            _UNTIMED_PUNKT_CACHE = (base, base)
-            return base
+        from nltk.tokenize import punkt
 
-        base_lang_vars = getattr(base, "_lang_vars", None)
-        base_token_cls = getattr(base, "_Token", None)
-        if base_lang_vars is None or base_token_cls is None:
-            _UNTIMED_PUNKT_CACHE = (base, base)
-            return base
+        base_lang_vars = punkt.PunktLanguageVars()
 
-        base_lang_vars_cls = type(base_lang_vars)
-
-        class _UntimedPunktLanguageVars(base_lang_vars_cls):
+        class _UntimedPunktLanguageVars(punkt.PunktLanguageVars):
             __slots__ = ()
             re_boundary_realignment = _disable_redos_timeout(base_lang_vars.re_boundary_realignment)
 
@@ -88,12 +79,12 @@ def _untimed_punkt_tokenizer() -> Any:
 
         untimed_non_punct = _disable_redos_timeout(getattr(punkt, "_re_non_punct", None))
 
-        class _UntimedPunktToken(base_token_cls):
+        class _UntimedPunktToken(punkt.PunktToken):
             __slots__ = ()
-            _RE_ELLIPSIS = _disable_redos_timeout(base_token_cls._RE_ELLIPSIS)
-            _RE_NUMERIC = _disable_redos_timeout(base_token_cls._RE_NUMERIC)
-            _RE_INITIAL = _disable_redos_timeout(base_token_cls._RE_INITIAL)
-            _RE_ALPHA = _disable_redos_timeout(base_token_cls._RE_ALPHA)
+            _RE_ELLIPSIS = _disable_redos_timeout(punkt.PunktToken._RE_ELLIPSIS)
+            _RE_NUMERIC = _disable_redos_timeout(punkt.PunktToken._RE_NUMERIC)
+            _RE_INITIAL = _disable_redos_timeout(punkt.PunktToken._RE_INITIAL)
+            _RE_ALPHA = _disable_redos_timeout(punkt.PunktToken._RE_ALPHA)
 
             if untimed_non_punct is not None:
 
@@ -101,10 +92,11 @@ def _untimed_punkt_tokenizer() -> Any:
                 def is_non_punct(self) -> Any:
                     return untimed_non_punct.search(self.type)
 
-        tokenizer = type(base)(lang_vars=lang_vars, token_cls=_UntimedPunktToken)
-        tokenizer._params = base._params
-        _UNTIMED_PUNKT_CACHE = (base, tokenizer)
-        return tokenizer
+        _UNTIMED_PUNKT_TOKENIZER = punkt.PunktSentenceTokenizer(
+            lang_vars=lang_vars,
+            token_cls=_UntimedPunktToken,
+        )
+        return _UNTIMED_PUNKT_TOKENIZER
 
 
 def _split_by_untimed_sentence_tokenizer() -> Callable[[str], list[str]]:
