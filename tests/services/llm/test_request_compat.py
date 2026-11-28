@@ -128,3 +128,28 @@ def test_response_format_classifier_ignores_unrelated_unsupported_params() -> No
     assert not is_response_format_unsupported(ValueError("stream_options is not supported"))
     assert not is_response_format_unsupported(ValueError("unknown parameter: temperature"))
     assert not is_response_format_unsupported(RuntimeError("rate limit exceeded"))
+
+
+def test_is_reasoning_param_unsupported_matches_only_400_reasoning_rejections():
+    from deeptutor.services.llm.request_compat import is_reasoning_param_unsupported
+
+    class FakeBadRequest(Exception):
+        def __init__(self, msg: str, status_code: int = 400):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Unknown parameter: 'reasoning_effort'", 400)
+    )
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Extra inputs are not permitted: enable_thinking", 422)
+    )
+    assert not is_reasoning_param_unsupported(
+        FakeBadRequest("Incorrect API key provided", 401)
+    )
+    assert not is_reasoning_param_unsupported(
+        FakeBadRequest("Rate limit reached for reasoning_effort requests", 429)
+    )
+    assert not is_reasoning_param_unsupported(
+        FakeBadRequest("Unknown parameter: 'max_tokens'", 400)
+    )

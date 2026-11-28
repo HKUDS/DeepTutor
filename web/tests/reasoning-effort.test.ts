@@ -413,4 +413,21 @@ test("deepseek-flash and deepseek-v4-flash expose binary thinking controls in se
     }),
     { kind: "none" },
   );
+  // Backend single-source-of-truth reasoning_control wins over local heuristics.
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "custom",
+      model: "future-vendor-model",
+      reasoning_control: { mode: "levels", levels: ["low", "high"] },
+    }).kind,
+    "levels",
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "openai",
+      model: "gpt-5.2",
+      reasoning_control: { mode: "toggle", off_value: "none", on_value: "high" },
+    }),
+    { kind: "toggle", offValue: "none", onValue: "high" },
+  );
 });

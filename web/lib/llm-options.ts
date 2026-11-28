@@ -5,6 +5,13 @@ import type { LLMSelection } from "@/features/chat/model/protocol";
 const LLM_OPTIONS_CACHE_KEY = "llm-options:list";
 const DEFAULT_LLM_OPTIONS_TIMEOUT_MS = 30_000;
 
+export interface BackendReasoningControl {
+  mode: "none" | "toggle" | "levels";
+  levels?: string[];
+  off_value?: string;
+  on_value?: string;
+}
+
 export interface LLMOption extends LLMSelection {
   profile_name: string;
   model_name: string;
@@ -15,6 +22,8 @@ export interface LLMOption extends LLMSelection {
   context_window?: number;
   reasoning_effort?: string;
   supported_reasoning_efforts?: string[];
+  /** Server-resolved reasoning control capability (single source of truth). */
+  reasoning_control?: BackendReasoningControl;
   /** The model's own Settings declaration of reasoning support, when present. */
   declared_reasoning?: boolean;
   supports_vision?: boolean;

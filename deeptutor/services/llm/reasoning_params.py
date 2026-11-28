@@ -275,8 +275,213 @@ def build_openai_compatible_reasoning_kwargs(
     return kwargs
 
 
+_REASONING_CONTROL_ALIASES = {
+    "azure": "azure_openai",
+    "azureopenai": "azure_openai",
+    "google": "gemini",
+    "google_genai": "gemini",
+    "claude": "anthropic",
+    "openai_compatible": "custom",
+    "anthropic_compatible": "custom_anthropic",
+}
+_OPENAI_MULTI_LEVEL_PROVIDERS = frozenset(
+    {"openai", "azure_openai", "openai_codex", "github_copilot"}
+)
+_TOGGLE_ONLY_PROVIDERS = frozenset(
+    {
+        "deepseek",
+        "dashscope",
+        "volcengine",
+        "volcengine_coding_plan",
+        "byteplus",
+        "byteplus_coding_plan",
+        "siliconflow",
+        "zhipu",
+        "moonshot",
+        "custom",
+    }
+)
+_BINARY_MINIMAL_OFF_PROVIDERS = frozenset(
+    {
+        "deepseek",
+        "dashscope",
+        "volcengine",
+        "volcengine_coding_plan",
+        "byteplus",
+        "byteplus_coding_plan",
+        "minimax",
+    }
+)
+_VALID_WIRE_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
+
+
+def resolve_reasoning_control(
+    provider: str | None,
+    model: str | None,
+    *,
+    supported_reasoning_efforts: list[str] | tuple[str, ...] | None = None,
+    declared_reasoning: bool | None = None,
+) -> dict[str, Any]:
+    """Single source of truth for how the UI controls reasoning for a model.
+
+    Returns one of:
+      - ``{"mode": "none"}``
+      - ``{"mode": "toggle", "off_value": "minimal"|"none", "on_value": "high"}``
+      - ``{"mode": "levels", "levels": [...]}``
+    """
+    if declared_reasoning is False:
+        return {"mode": "none"}
+
+    # 1. Live provider-advertised levels (e.g. OpenAI Codex OAuth) always win.
+    if supported_reasoning_efforts is not None:
+        levels: list[str] = []
+        for raw in supported_reasoning_efforts:
+            val = str(raw).strip().lower()
+            if val in _VALID_WIRE_EFFORTS and val not in levels:
+                levels.append(val)
+        if not levels:
+            return {"mode": "none"}
+        return {"mode": "levels", "levels": levels}
+
+    canonical = (provider or "").strip().lower().replace("-", "_")
+    resolved_provider = _REASONING_CONTROL_ALIASES.get(canonical, canonical)
+    model_name = (model or "").strip().lower()
+
+    # 2. Known multi-level model families.
+    if resolved_provider in {"minimax", "minimax_anthropic"}:
+        if model_name == "minimax-m3.1-flash":
+            return {"mode": "levels", "levels": ["low", "medium", "high", "xhigh", "max"]}
+        if model_name == "minimax-m3":
+            return {"mode": "toggle", "off_value": "minimal", "on_value": "high"}
+
+    if resolved_provider == "gemini" or "gemini" in model_name:
+        if "gemini-3" in model_name or "gemini-2.5-pro" in model_name:
+            return {"mode": "levels", "levels": ["minimal", "low", "medium", "high"]}
+        if "gemini-2.5" in model_name:
+            return {"mode": "levels", "levels": ["none", "low", "medium", "high"]}
+        return {"mode": "levels", "levels": ["low", "medium", "high"]}
+
+    if (
+        resolved_provider in {"anthropic", "custom_anthropic"}
+        or "claude" in model_name
+    ):
+        if any(
+            token in model_name
+            for token in ("opus-4-7", "opus-4-8", "opus-5", "sonnet-5", "fable-5", "mythos-5")
+        ):
+            return {"mode": "levels", "levels": ["none"]}
+        if any(
+            token in model_name
+            for token in (
+                "claude-3-7",
+                "claude-4",
+                "claude-sonnet-4",
+                "claude-opus-4",
+                "claude-haiku-4",
+            )
+        ):
+            return {"mode": "levels", "levels": ["none", "low", "medium", "high"]}
+        return {"mode": "none"}
+
+    if (
+        resolved_provider in _OPENAI_MULTI_LEVEL_PROVIDERS
+        or resolved_provider in {"custom", "zhipu"}
+    ) and (model_name == "glm-5.3" or model_name.endswith("/glm-5.3")):
+        return {"mode": "levels", "levels": ["low", "high", "max"]}
+
+    if resolved_provider in _OPENAI_MULTI_LEVEL_PROVIDERS:
+        if "gpt-5.6-sol" in model_name:
+            return {
+                "mode": "levels",
+                "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+            }
+        if "gpt-5" in model_name or "codex" in model_name:
+            return {
+                "mode": "levels",
+                "levels": ["minimal", "low", "medium", "high", "xhigh"],
+            }
+        if any(token in model_name for token in ("o1", "o3", "o4")):
+            return {"mode": "levels", "levels": ["low", "medium", "high"]}
+        if declared_reasoning is True:
+            return {"mode": "toggle", "off_value": "none", "on_value": "high"}
+        return {"mode": "none"}
+
+    # 3. Binary thinking vendors and general/custom endpoints default to a simple toggle.
+    if (
+        resolved_provider in _TOGGLE_ONLY_PROVIDERS
+        or resolved_provider == "minimax"
+        or declared_reasoning is True
+    ):
+        is_binary_model = (
+            resolved_provider == "custom"
+            or declared_reasoning is True
+            or resolved_provider == "minimax"
+            or any(
+                token in model_name
+                for token in (
+                    "deepseek",
+                    "qwen3",
+                    "qwen-3",
+                    "qwq",
+                    "qwen-plus",
+                    "doubao",
+                    "thinking",
+                    "reasoner",
+                    "r1",
+                    "glm-4",
+                    "glm-5",
+                    "kimi",
+                )
+            )
+        )
+        if is_binary_model:
+            off_value = (
+                "minimal" if resolved_provider in _BINARY_MINIMAL_OFF_PROVIDERS else "none"
+            )
+            return {"mode": "toggle", "off_value": off_value, "on_value": "high"}
+
+    return {"mode": "none"}
+
+
+_REASONING_EXTRA_BODY_KEYS = frozenset(
+    {"thinking", "enable_thinking", "reasoning_split", "reasoning"}
+)
+
+
+def has_reasoning_kwargs(request_kwargs: dict[str, Any]) -> bool:
+    """Whether *request_kwargs* carries any reasoning/thinking request parameter."""
+    if "reasoning_effort" in request_kwargs or "reasoning" in request_kwargs:
+        return True
+    extra_body = request_kwargs.get("extra_body")
+    if isinstance(extra_body, dict) and any(
+        key in extra_body for key in _REASONING_EXTRA_BODY_KEYS
+    ):
+        return True
+    return False
+
+
+def strip_reasoning_kwargs(request_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of *request_kwargs* without reasoning parameters."""
+    cleaned = dict(request_kwargs)
+    cleaned.pop("reasoning_effort", None)
+    cleaned.pop("reasoning", None)
+    extra_body = cleaned.get("extra_body")
+    if isinstance(extra_body, dict):
+        next_extra = {
+            k: v for k, v in extra_body.items() if k not in _REASONING_EXTRA_BODY_KEYS
+        }
+        if next_extra:
+            cleaned["extra_body"] = next_extra
+        else:
+            cleaned.pop("extra_body", None)
+    return cleaned
+
+
 __all__ = [
     "RETRY_REASONING_EFFORT",
     "build_openai_compatible_reasoning_kwargs",
     "default_reasoning_effort_for",
+    "has_reasoning_kwargs",
+    "resolve_reasoning_control",
+    "strip_reasoning_kwargs",
 ]

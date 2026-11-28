@@ -114,6 +114,52 @@ def is_response_format_unsupported(exc: Exception) -> bool:
     )
 
 
+def is_reasoning_param_unsupported(exc: Exception) -> bool:
+    """Whether a provider rejected reasoning/thinking request parameters (HTTP 400/422).
+
+    Gated strictly behind both a reasoning parameter mention and an
+    unsupported/unknown/invalid parameter marker so auth, quota, or unrelated
+    validation errors are never silently retried without thinking.
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status is not None and status not in {400, 422}:
+        return False
+
+    text = error_text(exc)
+    mentions_reasoning = any(
+        field in text
+        for field in (
+            "reasoning_effort",
+            "reasoning effort",
+            "enable_thinking",
+            "reasoning_split",
+            "extra_body.thinking",
+            "'thinking'",
+            '"thinking"',
+        )
+    )
+    if not mentions_reasoning:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "unknown parameter",
+            "unrecognized request argument",
+            "unsupported parameter",
+            "not supported",
+            "unsupported",
+            "extra inputs are not permitted",
+            "unexpected keyword",
+            "invalid value",
+            "not valid",
+            "does not support",
+        )
+    )
+
+
 def is_forced_tool_choice_unsupported(exc: Exception) -> bool:
     """Whether a provider rejected *naming* the tool it must call.
 

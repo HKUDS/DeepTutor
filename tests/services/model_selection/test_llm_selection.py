@@ -161,3 +161,40 @@ def test_llm_selection_to_dict_round_trips_reasoning_effort():
 def test_llm_selection_to_dict_omits_reasoning_effort_when_unset():
     selection = LLMSelection(profile_id="p1", model_id="m1")
     assert "reasoning_effort" not in selection.to_dict()
+
+
+def test_list_llm_options_includes_reasoning_control():
+    from deeptutor.services.model_selection.llm import list_llm_options
+
+    catalog = {
+        "services": {
+            "llm": {
+                "active_profile_id": "p1",
+                "active_model_id": "m1",
+                "profiles": [
+                    {
+                        "id": "p1",
+                        "name": "DeepSeek",
+                        "binding": "deepseek",
+                        "models": [
+                            {"id": "m1", "name": "deepseek-flash", "model": "deepseek-flash"}
+                        ],
+                    },
+                    {
+                        "id": "p2",
+                        "name": "OpenAI",
+                        "binding": "openai",
+                        "models": [{"id": "m2", "name": "gpt-5.2", "model": "gpt-5.2"}],
+                    },
+                ],
+            }
+        }
+    }
+    payload = list_llm_options(catalog)
+    by_id = {opt["model_id"]: opt for opt in payload["options"]}
+    assert by_id["m1"]["reasoning_control"] == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+    }
+    assert by_id["m2"]["reasoning_control"]["mode"] == "levels"

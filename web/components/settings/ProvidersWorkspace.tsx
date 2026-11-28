@@ -320,28 +320,57 @@ export function ProvidersWorkspace() {
                             {Array.isArray(connection.api_key) ? (
                               connection.api_key.map(
                                 (key: string, index: number) => (
-                                  <RegistryField
-                                    key={index}
-                                    label={t("API key {{number}}", {
-                                      number: index + 1,
-                                    })}
-                                    value={key}
-                                    type="password"
-                                    onChange={(value) => {
-                                      const keys = [...connection.api_key];
-                                      keys[index] = value;
-                                      change("api_key", keys);
-                                    }}
-                                  />
+                                  <div key={index} className="space-y-1.5">
+                                    <RegistryField
+                                      label={t("API key {{number}}", {
+                                        number: index + 1,
+                                      })}
+                                      value={key}
+                                      type="password"
+                                      onChange={(value) => {
+                                        const keys = [...connection.api_key];
+                                        keys[index] = value;
+                                        change("api_key", keys);
+                                      }}
+                                    />
+                                    {Boolean(key) && (
+                                      <button
+                                        type="button"
+                                        disabled={applying || !catalogEditable}
+                                        onClick={() => {
+                                          const keys = [...connection.api_key];
+                                          keys[index] = "";
+                                          change("api_key", keys);
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[12px] text-red-600 transition-opacity hover:underline disabled:opacity-50 dark:text-red-400"
+                                      >
+                                        <Trash2 size={12} />
+                                        {t("settings.provider.clearApiKey")}
+                                      </button>
+                                    )}
+                                  </div>
                                 ),
                               )
                             ) : (
-                              <RegistryField
-                                label={t(source.provider === "volcengine_speech" && connection.app_id ? "Speech access token" : "API key")}
-                                value={connection.api_key}
-                                type="password"
-                                onChange={(value) => change("api_key", value)}
-                              />
+                              <div className="space-y-1.5">
+                                <RegistryField
+                                  label={t(source.provider === "volcengine_speech" && connection.app_id ? "Speech access token" : "API key")}
+                                  value={connection.api_key}
+                                  type="password"
+                                  onChange={(value) => change("api_key", value)}
+                                />
+                                {Boolean(connection.api_key) && (
+                                  <button
+                                    type="button"
+                                    disabled={applying || !catalogEditable}
+                                    onClick={() => change("api_key", "")}
+                                    className="inline-flex items-center gap-1 text-[12px] text-red-600 transition-opacity hover:underline disabled:opacity-50 dark:text-red-400"
+                                  >
+                                    <Trash2 size={12} />
+                                    {t("settings.provider.clearApiKey")}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}

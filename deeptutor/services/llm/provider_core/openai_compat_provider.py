@@ -46,9 +46,12 @@ from deeptutor.services.llm.provider_core.openai_stream import managed_openai_st
 from deeptutor.services.llm.provider_core.response_recovery import guarded_responses
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
+    has_reasoning_kwargs,
+    strip_reasoning_kwargs,
 )
 from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
+    is_reasoning_param_unsupported,
     is_response_format_unsupported,
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
@@ -1251,6 +1254,18 @@ class OpenAICompatProvider(LLMProvider):
                             self._client.chat.completions.create, retry_kwargs
                         )
                     )
+                if has_reasoning_kwargs(request_kwargs) and is_reasoning_param_unsupported(exc):
+                    logger.warning(
+                        "provider rejected reasoning parameters for model={}; retrying without reasoning params. error={}",
+                        request_kwargs.get("model"),
+                        str(exc)[:200],
+                    )
+                    retry_kwargs = strip_reasoning_kwargs(request_kwargs)
+                    return self._parse(
+                        await self._create_with_key_rotation(
+                            self._client.chat.completions.create, retry_kwargs
+                        )
+                    )
                 raise
         except Exception as e:
             if self._note_forced_tool_choice_rejected(e, tool_choice, model):
@@ -1472,6 +1487,16 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
+                    stream = await self._create_with_key_rotation(
+                        self._client.chat.completions.create, retry_kwargs
+                    )
+                elif has_reasoning_kwargs(request_kwargs) and is_reasoning_param_unsupported(exc):
+                    logger.warning(
+                        "provider rejected reasoning parameters for streaming model={}; retrying without reasoning params. error={}",
+                        request_kwargs.get("model"),
+                        str(exc)[:200],
+                    )
+                    retry_kwargs = strip_reasoning_kwargs(request_kwargs)
                     stream = await self._create_with_key_rotation(
                         self._client.chat.completions.create, retry_kwargs
                     )

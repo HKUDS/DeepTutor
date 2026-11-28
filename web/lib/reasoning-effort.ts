@@ -284,10 +284,18 @@ export function setModelReasoningEffort(
  * The catalog fields reasoning-effort validation needs from a model option.
  * Structural so `LLMOption` satisfies it without lib → features imports.
  */
+export interface BackendReasoningControl {
+  mode: "none" | "toggle" | "levels";
+  levels?: string[];
+  off_value?: string;
+  on_value?: string;
+}
+
 export interface ReasoningEffortModelOption {
   provider?: string | null;
   model?: string | null;
   supported_reasoning_efforts?: string[] | null;
+  reasoning_control?: BackendReasoningControl | null;
   declared_reasoning?: boolean | null;
 }
 
@@ -396,6 +404,27 @@ export function resolveReasoningControl(
 ): ReasoningControlMode {
   if (!option || option.declared_reasoning === false) {
     return { kind: "none" };
+  }
+
+  // 0. Server-resolved reasoning_control (single source of truth from /api/settings/llm-options).
+  if (option.reasoning_control) {
+    const ctrl = option.reasoning_control;
+    if (ctrl.mode === "none") return { kind: "none" };
+    if (ctrl.mode === "toggle") {
+      const offValue = normalizeReasoningEffort(ctrl.off_value) ?? "none";
+      const onValue = normalizeReasoningEffort(ctrl.on_value) ?? "high";
+      return { kind: "toggle", offValue, onValue };
+    }
+    if (ctrl.mode === "levels") {
+      const validLevels = (ctrl.levels ?? [])
+        .map((v) => normalizeReasoningEffort(v))
+        .filter((v): v is string => Boolean(v));
+      if (validLevels.length === 0) return { kind: "none" };
+      return {
+        kind: "levels",
+        options: reasoningEffortOptionsFromSupportedLevels(validLevels),
+      };
+    }
   }
 
   // 1. Live provider-advertised levels always take precedence.

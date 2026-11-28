@@ -1,6 +1,7 @@
 "use client";
 import { useTranslation } from "react-i18next";
 import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
+import { ModelSectionGuideBanner } from "@/components/settings/ModelSectionGuideBanner";
 import { SettingsPageHeader } from "@/components/settings/shared";
 import { VoicePlaybackPrefs } from "./VoicePlaybackPrefs";
 export default function VoiceSettingsPage() {
@@ -13,6 +14,7 @@ export default function VoiceSettingsPage() {
           "Manage speech synthesis and transcription models using saved providers.",
         )}
       />
+      <ModelSectionGuideBanner kind="voice" />
       <VoicePlaybackPrefs />
       <ModelsWorkspace page="voice" />
     </div>

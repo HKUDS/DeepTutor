@@ -142,3 +142,41 @@ def test_qwen_thinking_models_keep_native_controls(binding, effort, enabled) -> 
     assert build_openai_compatible_reasoning_kwargs(
         spec=None, binding=binding, model="qwen3-235b-a22b", reasoning_effort=effort
     ) == {"extra_body": {"enable_thinking": enabled}}
+
+
+def test_resolve_reasoning_control_single_source_of_truth():
+    from deeptutor.services.llm.reasoning_params import (
+        has_reasoning_kwargs,
+        resolve_reasoning_control,
+        strip_reasoning_kwargs,
+    )
+
+    assert resolve_reasoning_control("deepseek", "deepseek-flash") == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+    }
+    assert resolve_reasoning_control("custom", "relay/my-model") == {
+        "mode": "toggle",
+        "off_value": "none",
+        "on_value": "high",
+    }
+    assert resolve_reasoning_control("openai", "gpt-5.2")["mode"] == "levels"
+    assert resolve_reasoning_control(
+        "openai_codex",
+        "gpt-5.3-codex",
+        supported_reasoning_efforts=["low", "medium", "high"],
+    ) == {"mode": "levels", "levels": ["low", "medium", "high"]}
+    assert resolve_reasoning_control(
+        "openai", "gpt-4o", declared_reasoning=False
+    ) == {"mode": "none"}
+
+    raw = {
+        "model": "deepseek-flash",
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}, "custom_flag": 1},
+    }
+    assert has_reasoning_kwargs(raw) is True
+    stripped = strip_reasoning_kwargs(raw)
+    assert has_reasoning_kwargs(stripped) is False
+    assert stripped == {"model": "deepseek-flash", "extra_body": {"custom_flag": 1}}
