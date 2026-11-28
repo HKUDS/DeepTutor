@@ -1038,7 +1038,7 @@ class OpenAICompatProvider(LLMProvider):
 
         choice = response.choices[0]
         msg = choice.message
-        content = msg.content
+        content = self._extract_text_content(msg.content)
         finish_reason = choice.finish_reason
 
         raw_tool_calls: list[Any] = []
@@ -1049,7 +1049,7 @@ class OpenAICompatProvider(LLMProvider):
                 if ch.finish_reason in ("tool_calls", "stop"):
                     finish_reason = ch.finish_reason
             if not content and m.content:
-                content = m.content
+                content = self._extract_text_content(m.content)
 
         tool_calls = []
         for tc in raw_tool_calls:
@@ -1120,7 +1120,9 @@ class OpenAICompatProvider(LLMProvider):
                 finish_reason = choice.finish_reason
             delta = choice.delta
             if delta and delta.content:
-                content_parts.append(delta.content)
+                text = cls._extract_text_content(delta.content)
+                if text:
+                    content_parts.append(text)
             if delta:
                 reasoning = getattr(delta, "reasoning_content", None)
                 if not reasoning:
@@ -1503,7 +1505,7 @@ class OpenAICompatProvider(LLMProvider):
                             if reasoning_text:
                                 await on_reasoning_delta(reasoning_text)
                         if on_content_delta and delta is not None:
-                            text = getattr(delta, "content", None)
+                            text = self._extract_text_content(getattr(delta, "content", None))
                             if text:
                                 await on_content_delta(text)
                         if on_tool_args_delta and delta is not None:
