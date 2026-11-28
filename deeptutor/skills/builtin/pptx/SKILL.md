@@ -96,6 +96,25 @@ r.font.bold = True
 s.shapes.add_picture("logo.png", Inches(0.5), Inches(0.5), height=Inches(1))  # omit w to keep ratio
 ```
 
+For editable Chinese text, set an East Asian typeface on each Chinese run.
+Use `Microsoft JhengHei` as the preferred family for Traditional Chinese.
+The `exec` Python runtime supplies `deeptutor_pptx_fonts` to resolve the family
+against the system fonts available to that script.
+
+```python
+from deeptutor_pptx_fonts import chinese_font_substitutions
+from pptx.oxml.xmlchemy import OxmlElement
+
+preferred = "Microsoft YaHei"
+chinese_font = chinese_font_substitutions().get(preferred.casefold(), preferred)
+
+r.text = "今天讲五件事 · Agenda"
+r.font.name = "Arial"
+east_asian = OxmlElement("a:ea")
+east_asian.set("typeface", chinese_font)
+r._r.get_or_add_rPr().append(east_asian)
+```
+
 ## Edit existing
 Edit at the **run** level to preserve a run's formatting; rewriting
 `text_frame.text` collapses to one run and drops inline formatting.
@@ -164,30 +183,57 @@ s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(1), Inches(
 ## Export to PDF / images (optional, needs LibreOffice)
 Do the availability check and conversion through Python source sent to `exec`;
 this works with pip, source, Docker, and Windows deployments without
-assuming POSIX shell syntax or printing a physical working directory:
+assuming POSIX shell syntax or printing a physical working directory. Use the
+bundled `deeptutor_pptx_fonts` module to substitute missing Chinese typefaces
+in a temporary rendering copy. Set an explicit DrawingML `<a:ea>` typeface
+in new Chinese runs as shown above. Setting `run.font.name` alone only writes
+`<a:latin>`.
+
 ```python
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 
-deck = Path("out.pptx")
+from deeptutor_pptx_fonts import pptx_for_rendering, pptx_render_environment
+
+deck = Path("out.pptx").resolve()
 soffice = shutil.which("soffice")
 if not soffice:
     print("soffice not available — cannot export")
 else:
-    subprocess.run([soffice, "--headless", "--convert-to", "pdf", str(deck)], check=True)
+    with tempfile.TemporaryDirectory(dir=deck.parent) as directory:
+        work = Path(directory)
+        source = pptx_for_rendering(deck, work / deck.name)
+        subprocess.run(
+            [
+                soffice,
+                f"-env:UserInstallation={(work / 'profile').as_uri()}",
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(work),
+                str(source),
+            ],
+            env=pptx_render_environment(work),
+            check=True,
+        )
+        (work / deck.with_suffix(".pdf").name).replace(deck.with_suffix(".pdf"))
     pdftoppm = shutil.which("pdftoppm")
     if pdftoppm:
         subprocess.run([pdftoppm, "-jpeg", "-r", "150", "out.pdf", "slide"], check=True)
         print(*sorted(str(path) for path in Path(".").glob("slide-*.jpg")), sep="\n")
 ```
 If an image-reading tool is actually mounted, use it to inspect every rendered
-slide. `workspace_present` only presents a file to the user; it does not let you
-see the rendered pixels. If no image-reading tool is available, perform the
-structural checks below and say that visual inspection was unavailable rather
-than claiming you inspected the slides. Re-run conversion after every edit — the
-PDF won't reflect a changed `.pptx` otherwise. If `soffice` (or `pdftoppm`) is
-absent, say so and skip export; do not install it during the task.
+slide. Check that Chinese characters are visible, including in titles and mixed
+Chinese/Latin text. Extraction can recover Chinese text even when the PDF
+displays blank or square glyphs. `workspace_present` only presents a file to the user
+and does not let you see the rendered pixels. If no image-reading tool is available,
+perform the structural checks below and say that visual inspection was unavailable.
+Re-run conversion after every edit so the PDF reflects the changed `.pptx`.
+If `soffice` (or `pdftoppm`) is absent, say so and skip export. Use the
+converter already available in the execution environment.
 
 ## .ppt → .pptx
 Legacy `.ppt` is a different binary format — python-pptx cannot open it. Convert

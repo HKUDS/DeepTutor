@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path, PureWindowsPath
 import re
 import shlex
@@ -257,6 +258,10 @@ class ExecTool(BaseTool):
             command_dir = call_relative.as_posix()
         call_dir.mkdir(parents=True, exist_ok=True)
         (call_dir / source_name).write_text(code, encoding="utf-8")
+        if language == "python":
+            # The runner sees the call directory, even when it cannot import DeepTutor.
+            helper = files("deeptutor.services").joinpath("pptx_fonts.py")
+            (call_dir / "deeptutor_pptx_fonts.py").write_bytes(helper.read_bytes())
 
         has_stdin = str(kwargs.get("stdin") or "") != ""
         if has_stdin:
