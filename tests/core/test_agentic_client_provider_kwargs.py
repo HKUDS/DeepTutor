@@ -641,6 +641,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "y_api",
         "onomeo",
         "runcrate",
+        "martllm",
         "llmtr",
         "cloudgpu",
         "standardcompute",
