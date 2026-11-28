@@ -23,13 +23,27 @@ is what makes per-user MCP configuration safe to offer at all.
 Validation is deliberately re-run at connect time, not only when a server is
 saved: a check that happens once at save time is defeated by a DNS record that
 changes afterwards.
+
+**Fake-IP proxies.** A local proxy in Fake-IP mode (Loon, Clash, Surge, ...)
+answers DNS for public hostnames with synthetic addresses from a private range
+(for example ``fd27:712::/32``) and routes the connection by hostname. The
+operator can list those ranges in ``DEEPTUTOR_MCP_FAKE_IP_RANGES`` (comma
+separated CIDRs). Within them, an address a *hostname* resolves to is not
+rejected as private in strict mode. IP-literal URLs, loopback and the
+link-local / metadata ranges above stay blocked whatever the setting says.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import logging
+import os
 import socket
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
+
+FAKE_IP_RANGES_ENV = "DEEPTUTOR_MCP_FAKE_IP_RANGES"
 
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),
@@ -72,6 +86,31 @@ def _is_blocked(
     return any(normalized in net for net in networks)
 
 
+_LOOPBACK = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
+
+
+def _fake_ip_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Ranges the operator declared as Fake-IP proxy answers (read per call)."""
+    networks = []
+    for item in os.environ.get(FAKE_IP_RANGES_ENV, "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            logger.warning("Ignoring invalid %s entry %r", FAKE_IP_RANGES_ENV, item)
+    return tuple(networks)
+
+
+def _is_hostname(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return False
+
+
 def validate_mcp_url(
     url: str, *, strict: bool = False, trusted_origin: str | None = None
 ) -> tuple[bool, str]:
@@ -105,6 +144,7 @@ def validate_mcp_url(
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
 
+    fake_ip_networks = _fake_ip_networks() if strict and _is_hostname(hostname) else ()
     resolved = False
     for info in infos:
         try:
@@ -114,8 +154,11 @@ def validate_mcp_url(
         resolved = True
         normalized = _normalize_addr(addr)
         approved_rfc1918 = private_allowed and any(normalized in network for network in _RFC1918)
+        fake_ip = any(normalized in network for network in fake_ip_networks) and not any(
+            normalized in network for network in _LOOPBACK
+        )
         if _is_blocked(addr, strict=False) or (
-            _is_blocked(addr, strict=strict) and not approved_rfc1918
+            _is_blocked(addr, strict=strict) and not (approved_rfc1918 or fake_ip)
         ):
             return False, (
                 f"Blocked: {hostname} resolves to a disallowed address ({addr}). "
