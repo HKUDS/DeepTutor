@@ -62,6 +62,7 @@ import {
   type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
 import { PageIndexConfigForm } from "@/components/knowledge/PageIndexSettingsModal";
+import PageIndexOssSettingsForm from "@/components/knowledge/PageIndexOssSettingsForm";
 import KnowledgeEngineIcon from "@/components/knowledge/KnowledgeEngineIcon";
 
 import { useAuthStatus } from "@/hooks/useAuthStatus";
@@ -1950,7 +1951,12 @@ export default function EngineDetail({
           </Section>
         )}
 
-        {/* PageIndex credentials */}
+        {/* PageIndex settings */}
+        {provider.id === "pageindex-oss" && (
+          <Section label={t("Indexing")} icon={Settings2}>
+            <PageIndexOssSettingsForm onChanged={onChanged} onError={onError} />
+          </Section>
+        )}
         {provider.id === "pageindex" && (
           <Section label={t("Credentials")} icon={KeyRound}>
             <PageIndexConfigForm onChanged={onChanged} onError={onError} />

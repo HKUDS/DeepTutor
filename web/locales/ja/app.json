@@ -6664,5 +6664,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Flash の段階ごとの同時実行数",
+  "SDK default (64)": "SDK の既定値（64）",
+  "Enter a whole number from 1 to 128, or leave blank.": "1～128 の整数を入力するか、空欄にしてください。",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Flash のみ。要約と拡張の各段階にこの上限が適用され、同時に実行される場合があります。空欄にすると SDK の既定値を使用します。"
 }

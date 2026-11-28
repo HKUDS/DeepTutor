@@ -304,9 +304,11 @@ DEFAULT_MINERU_SETTINGS: dict[str, Any] = _DEFAULT_MINERU_ENGINE
 # deployment-level credential is reused by every ``pageindex`` KB.
 # Kept in its own JSON file so the credential lives beside other per-feature
 # settings and never leaks into model/network config.
+# The same file holds the optional, Flash-only OSS concurrency setting.
 DEFAULT_PAGEINDEX_SETTINGS: dict[str, Any] = {
     "version": 1,
     "api_key": "",
+    "oss_summary_concurrency": None,
 }
 
 # Query-rewrite layer for retrieval (``RAGService.search``). Disabled by
@@ -1053,9 +1055,17 @@ class RuntimeSettingsService:
         return self._normalize_pageindex(payload)
 
     def _normalize_pageindex(self, settings: dict[str, Any]) -> dict[str, Any]:
+        value = settings.get("oss_summary_concurrency")
+        concurrency = None
+        if type(value) in (int, str) and value != "":
+            try:
+                concurrency = max(1, min(128, int(value)))
+            except ValueError:
+                pass
         return {
             "version": 1,
             "api_key": _string(settings.get("api_key")),
+            "oss_summary_concurrency": concurrency,
         }
 
     def _apply_query_rewrite_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:

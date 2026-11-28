@@ -9042,6 +9042,19 @@
               }
             ],
             "title": "Api Key"
+          },
+          "oss_summary_concurrency": {
+            "anyOf": [
+              {
+                "maximum": 128.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oss Summary Concurrency"
           }
         },
         "title": "PageIndexConfigUpdate",
@@ -28685,7 +28698,7 @@
     },
     "/api/knowledge-bases/rag-pipelines/pageindex/config": {
       "get": {
-        "description": "Read the PageIndex credential state (key redacted to a boolean).",
+        "description": "Read PageIndex Cloud credential state and OSS Flash concurrency.",
         "operationId": "get_pageindex_pipeline_config_api_knowledge_bases_rag_pipelines_pageindex_config_get",
         "parameters": [
           {
@@ -28747,7 +28760,7 @@
         ]
       },
       "put": {
-        "description": "Persist the deployment-level PageIndex Cloud credential.",
+        "description": "Persist PageIndex Cloud credentials and OSS Flash concurrency independently.",
         "operationId": "update_pageindex_pipeline_config_api_knowledge_bases_rag_pipelines_pageindex_config_put",
         "parameters": [
           {

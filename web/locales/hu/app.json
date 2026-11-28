@@ -6664,5 +6664,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Flash párhuzamosság szakaszonként",
+  "SDK default (64)": "SDK-alapértelmezés (64)",
+  "Enter a whole number from 1 to 128, or leave blank.": "Adjon meg egy 1 és 128 közötti egész számot, vagy hagyja üresen.",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Csak Flash módban. Az összegzési és kibontási szakasz külön-külön használja ezt a korlátot, és egyszerre is futhatnak. Az SDK alapértelmezéséhez hagyja üresen."
 }
