@@ -7571,5 +7571,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} points",
+  "Solution steps": "Étapes de résolution",
+  "This model cannot read images, so the photo answer was not graded.": "Ce modèle ne peut pas lire les images : la réponse en photo n’a pas été notée.",
+  "The judge returned no structured verdict, so this answer was not graded.": "L’évaluation n’a renvoyé aucun verdict structuré : cette réponse n’a pas été notée.",
+  "The judge was not confident enough to grade this answer.": "L’évaluation n’était pas assez sûre pour noter cette réponse."
 }

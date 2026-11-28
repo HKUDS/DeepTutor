@@ -6688,5 +6688,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} балів",
+  "Solution steps": "Кроки розв’язання",
+  "This model cannot read images, so the photo answer was not graded.": "Ця модель не вміє читати зображення, тому відповідь на фото не оцінено.",
+  "The judge returned no structured verdict, so this answer was not graded.": "Оцінювач не повернув структурованого вердикту, тому цю відповідь не оцінено.",
+  "The judge was not confident enough to grade this answer.": "Оцінювач не був достатньо впевнений, щоб оцінити цю відповідь."
 }

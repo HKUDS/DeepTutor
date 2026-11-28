@@ -1,4 +1,5 @@
 import { wsUrl } from "@/lib/api";
+import { parseQuizVerdict, type QuizVerdict } from "@/lib/quiz-verdict";
 
 export interface QuizJudgeImage {
   /** Base64 of the freshly-picked image (no ``data:`` prefix). */
@@ -29,6 +30,8 @@ export interface QuizJudgeHandle {
 export interface QuizJudgeHandlers {
   onStart?: () => void;
   onChunk: (chunk: string) => void;
+  /** Structured verdict; the server sends it once, right before ``done``. */
+  onVerdict?: (verdict: QuizVerdict) => void;
   onDone: (finalText: string) => void;
   onError: (message: string) => void;
 }
@@ -81,7 +84,7 @@ export function startQuizJudge(
 
   ws.onmessage = (ev) => {
     armIdleTimer();
-    let frame: { type?: string; content?: string };
+    let frame: { type?: string; content?: string; verdict?: unknown };
     try {
       frame = JSON.parse(ev.data);
     } catch {
@@ -94,6 +97,11 @@ export function startQuizJudge(
     if (frame.type === "text" && typeof frame.content === "string") {
       buffer += frame.content;
       handlers.onChunk(frame.content);
+      return;
+    }
+    if (frame.type === "verdict") {
+      const verdict = parseQuizVerdict(frame.verdict);
+      if (verdict) handlers.onVerdict?.(verdict);
       return;
     }
     if (frame.type === "done") {

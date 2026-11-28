@@ -222,6 +222,8 @@ export interface QuizResultItem {
   explanation?: string;
   difficulty?: string;
   is_correct: boolean;
+  /** AI-judged or pending (``ungraded``) result; omitted = from is_correct. */
+  result?: "correct" | "incorrect" | "partial" | "ungraded";
 }
 
 async function expectJson<T>(response: Response): Promise<T> {

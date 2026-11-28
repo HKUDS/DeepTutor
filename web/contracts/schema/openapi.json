@@ -4767,6 +4767,18 @@
             ],
             "title": "Ai Judgment"
           },
+          "ai_verdict": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Verdict"
+          },
           "bookmarked": {
             "anyOf": [
               {
@@ -4789,6 +4801,17 @@
             ],
             "title": "Followup Session Id"
           },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
           "resolved": {
             "anyOf": [
               {
@@ -4799,6 +4822,23 @@
               }
             ],
             "title": "Resolved"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "enum": [
+                  "correct",
+                  "partial",
+                  "incorrect",
+                  "ungraded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
           }
         },
         "title": "EntryUpdateRequest",
@@ -8405,6 +8445,18 @@
             "title": "Ai Judgment",
             "type": "string"
           },
+          "ai_verdict": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Verdict"
+          },
           "assessment_type": {
             "default": "",
             "title": "Assessment Type",
@@ -10021,6 +10073,24 @@
             "default": "",
             "title": "Question Type",
             "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "enum": [
+                  "correct",
+                  "incorrect",
+                  "partial",
+                  "ungraded",
+                  "voided"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
           },
           "user_answer": {
             "default": "",

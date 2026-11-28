@@ -42,6 +42,12 @@ import {
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
+import {
+  parseQuizVerdict,
+  resolveQuizAssessment,
+  type QuizVerdict,
+} from "@/lib/quiz-verdict";
+import QuizVerdictSummary from "@/components/quiz/QuizVerdictSummary";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
   addEntryToCategory,
@@ -121,12 +127,14 @@ type JudgmentState = {
   text: string;
   isStreaming: boolean;
   error: string | null;
+  verdict?: QuizVerdict | null;
 };
 
 const EMPTY_JUDGMENT: JudgmentState = {
   text: "",
   isStreaming: false,
   error: null,
+  verdict: null,
 };
 
 type AnswerView = "reference" | "judgment";
@@ -188,6 +196,22 @@ function isAnswerCorrect(question: QuizQuestion, answer: AnswerState): boolean {
   return userAnswer.toLowerCase() === correct.toLowerCase();
 }
 
+/** Exact matching first; the AI verdict only grades what it cannot. */
+function getAssessment(
+  question: QuizQuestion,
+  answer: AnswerState,
+  verdict: QuizVerdict | null | undefined,
+) {
+  return resolveQuizAssessment({
+    exactCorrect: isAnswerCorrect(question, answer),
+    objective:
+      isMultipleChoice(question) ||
+      isConceptQuizQuestion(question.question_type),
+    hasImages: answer.images.length > 0,
+    verdict,
+  });
+}
+
 export default function QuizViewer({
   questions,
   sessionId,
@@ -205,6 +229,10 @@ export default function QuizViewer({
   const lastReportedSignatureRef = useRef("");
 
   const [entryIds, setEntryIds] = useState<Record<string, number>>({});
+  const entryIdsRef = useRef(entryIds);
+  useEffect(() => {
+    entryIdsRef.current = entryIds;
+  }, [entryIds]);
   const [bookmarked, setBookmarked] = useState<Record<string, boolean>>({});
   // Captured from the notebook entry on lookup so QuizFollowupTabBody
   // can hydrate prior chat history when the follow-up tab opens.
@@ -303,10 +331,11 @@ export default function QuizViewer({
           // Rehydrate the AI judgment so the learner can keep reading
           // it across page refreshes. We only overwrite when local state
           // is still empty so an in-flight judge run isn't clobbered.
+          const storedVerdict = parseQuizVerdict(entry.ai_verdict);
           if (
             questionIndex !== undefined &&
-            entry.ai_judgment &&
-            entry.ai_judgment.length > 0
+            ((entry.ai_judgment && entry.ai_judgment.length > 0) ||
+              storedVerdict)
           ) {
             setJudgments((prev) => {
               const current = prev[questionIndex];
@@ -317,6 +346,7 @@ export default function QuizViewer({
                   text: entry.ai_judgment ?? "",
                   isStreaming: false,
                   error: null,
+                  verdict: storedVerdict,
                 },
               };
             });
@@ -417,6 +447,15 @@ export default function QuizViewer({
     return isAnswerCorrect(q, ans);
   }, [ans, canShowCorrectness, q]);
 
+  // A final AI verdict on an answer exact matching could not accept replaces
+  // the exact-match badge (the verdict summary shows the judged result).
+  const judgedResult = q
+    ? getAssessment(q, ans, judgments[idx]?.verdict).result
+    : undefined;
+
+  // Reported once per set of answers, with the submit-time grade: each post
+  // adds a ``[Quiz Performance]`` chat message, so a verdict that arrives
+  // later is stored through the entry PATCH only (the server keeps it).
   const submittedResults = useMemo(
     () =>
       questions.flatMap((question, questionIdx) => {
@@ -432,7 +471,7 @@ export default function QuizViewer({
             correct_answer: question.correct_answer,
             explanation: question.explanation ?? "",
             difficulty: question.difficulty ?? "",
-            is_correct: isAnswerCorrect(question, answer),
+            ...getAssessment(question, answer, null),
           },
         ];
       }),
@@ -498,7 +537,7 @@ export default function QuizViewer({
           difficulty: question.difficulty ?? "",
           user_answer: getUserAnswer(question, answer),
           user_answer_images: imagePayload,
-          is_correct: isAnswerCorrect(question, answer),
+          ...getAssessment(question, answer, null),
         });
         setEntryIds((prev) => ({ ...prev, [key]: entry.id }));
         setBookmarked((prev) => ({ ...prev, [key]: entry.bookmarked }));
@@ -636,8 +675,9 @@ export default function QuizViewer({
 
     setJudgments((prev) => ({
       ...prev,
-      [idx]: { text: "", isStreaming: true, error: null },
+      [idx]: { text: "", isStreaming: true, error: null, verdict: null },
     }));
+    let verdict: QuizVerdict | null = null;
     setAnswerViews((prev) => ({ ...prev, [idx]: "judgment" }));
 
     // Pass the UI language through; the backend falls back to English for
@@ -671,6 +711,13 @@ export default function QuizViewer({
             };
           });
         },
+        onVerdict: (next) => {
+          verdict = next;
+          setJudgments((prev) => ({
+            ...prev,
+            [idx]: { ...(prev[idx] ?? EMPTY_JUDGMENT), verdict: next },
+          }));
+        },
         onDone: (finalText) => {
           setJudgments((prev) => {
             const current = prev[idx] ?? EMPTY_JUDGMENT;
@@ -687,12 +734,28 @@ export default function QuizViewer({
           // Persist the AI judgment text on the notebook entry so it
           // survives a page refresh. Best-effort — a failed write just
           // means the next reload won't have the judgment cached.
+          // Read the id now: the submit upsert may have landed after the
+          // learner clicked the judge button.
           const key = q ? getQuestionKey(q, idx) : "";
-          const eId = key ? entryIds[key] : undefined;
-          if (eId && finalText.trim().length > 0) {
-            void updateNotebookEntry(eId, { ai_judgment: finalText }).catch(
-              () => {},
-            );
+          const eId = key ? entryIdsRef.current[key] : undefined;
+          if (eId && (finalText.trim().length > 0 || verdict)) {
+            const assessment = q ? getAssessment(q, answer, verdict) : null;
+            void updateNotebookEntry(eId, {
+              ai_judgment: finalText,
+              // A final verdict sends an explicit result so a re-judge
+              // replaces the previous one; the server derives ``resolved``
+              // from it. An unsure verdict is no grade: it keeps the stored
+              // one instead of turning a judged-correct answer into a mistake.
+              ...(verdict ? { ai_verdict: verdict } : {}),
+              ...(verdict?.final && assessment
+                ? {
+                    is_correct: assessment.is_correct,
+                    result:
+                      assessment.result ??
+                      (assessment.is_correct ? "correct" : "incorrect"),
+                  }
+                : {}),
+            }).catch(() => {});
           }
         },
         onError: (message) => {
@@ -708,7 +771,7 @@ export default function QuizViewer({
       },
     );
     judgeHandlesRef.current.set(idx, handle);
-  }, [answers, entryIds, idx, language, q]);
+  }, [answers, idx, language, q]);
 
   const handleStopAiJudge = useCallback(() => {
     judgeHandlesRef.current.get(idx)?.cancel();
@@ -1214,7 +1277,7 @@ export default function QuizViewer({
             </button>
           ) : (
             <>
-              {isGradable && isCorrect !== null && (
+              {isGradable && isCorrect !== null && !judgedResult && (
                 <span
                   className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                     isCorrect
@@ -1354,6 +1417,13 @@ export default function QuizViewer({
                         />
                       )}
                     </div>
+                    {judgment.verdict && !judgment.isStreaming && (
+                      <QuizVerdictSummary
+                        verdict={judgment.verdict}
+                        // Exact matching decided: no contradicting badge.
+                        showResult={judgedResult !== undefined}
+                      />
+                    )}
                     {judgment.error ? (
                       <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[12px] text-red-700 dark:border-red-950/50 dark:bg-red-950/20 dark:text-red-300">
                         {judgment.error}

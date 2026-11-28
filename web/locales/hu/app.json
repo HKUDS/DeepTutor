@@ -6666,5 +6666,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} pont",
+  "Solution steps": "Megoldási lépések",
+  "This model cannot read images, so the photo answer was not graded.": "Ez a modell nem tud képeket olvasni, ezért a fényképes válasz nem kapott értékelést.",
+  "The judge returned no structured verdict, so this answer was not graded.": "Az értékelő nem adott strukturált ítéletet, ezért ez a válasz nem kapott értékelést.",
+  "The judge was not confident enough to grade this answer.": "Az értékelő nem volt elég biztos a válasz értékeléséhez."
 }

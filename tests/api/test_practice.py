@@ -411,3 +411,262 @@ def test_analytics_local_midnight_dst_zero_days_and_deleted_sources(bank):
     with repo.connect() as conn:
         conn.execute("UPDATE sessions SET deleted_at=? WHERE id='lesson'", (now,))
     assert repo.analytics("America/New_York", 7, now=now)["sources"] == []
+
+
+_JUDGED = {
+    "result": "correct",
+    "final": True,
+    "is_correct": True,
+    "confidence": 0.95,
+    "steps": [{"label": "Total", "ok": True, "comment": "120 is right."}],
+    "awarded_points": 4,
+    "max_points": 4,
+}
+
+
+def _open_question(**changes):
+    return {
+        "question_type": "short_answer",
+        "options": {},
+        "correct_answer": "120",
+        "user_answer": "",
+        **changes,
+    }
+
+
+def test_ungraded_photo_answer_waits_for_the_judge(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    assert repo.overview("UTC")["mistakes"] == 0
+
+    patch = {
+        "is_correct": False,
+        "result": "incorrect",
+        "ai_verdict": {**_JUDGED, "result": "incorrect"},
+    }
+    assert client.patch(f"/bank/entries/{entry['id']}", json=patch).status_code == 200
+
+    assert repo.overview("UTC")["mistakes"] == 1
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert stored["result"] == "incorrect"
+    assert stored["ai_verdict"]["result"] == "incorrect"
+
+
+def test_judged_correct_answer_is_not_a_mistake(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(user_answer="x = 120"))
+    assert repo.overview("UTC")["mistakes"] == 1  # provisional exact-match miss
+
+    patch = {"is_correct": True, "result": "correct", "resolved": True, "ai_verdict": _JUDGED}
+    assert client.patch(f"/bank/entries/{entry['id']}", json=patch).status_code == 200
+
+    assert repo.overview("UTC")["mistakes"] == 0
+    assert client.get("/bank/entries?mistakes_only=true").json()["total"] == 0
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert stored["is_correct"] is True
+    assert stored["result"] == "correct"
+    assert stored["ai_verdict"] == _JUDGED
+
+
+def test_partial_verdict_stays_reviewable_but_not_plain_incorrect(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    patch = {
+        "is_correct": False,
+        "result": "partial",
+        "ai_verdict": {**_JUDGED, "result": "partial"},
+    }
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+
+    assert repo.overview("UTC")["mistakes"] == 1
+    assert client.get(f"/bank/entries/{entry['id']}").json()["result"] == "partial"
+
+
+def test_judge_cannot_erase_a_mistake_that_was_already_practised(bank):
+    store, repo, client = bank
+    entry = seed(store)
+    repo.review(entry["id"], "review_once", repo.state(entry["id"])["version"], "again", "A")
+
+    patch = {"is_correct": True, "result": "correct", "ai_verdict": _JUDGED}
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_plain_correctness_patch_does_not_release_mistakes(bank):
+    store, repo, client = bank
+    entry = seed(store)
+    client.patch(f"/bank/entries/{entry['id']}", json={"is_correct": True, "result": "correct"})
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_entry_patch_rejects_unknown_results(bank):
+    store, _, client = bank
+    entry = seed(store)
+    response = client.patch(f"/bank/entries/{entry['id']}", json={"result": "voided-ish"})
+    assert response.status_code == 422
+
+
+def test_a_new_submission_drops_the_previous_verdict_without_erasing_mistakes(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(user_answer="x = 7"))
+    wrong = {
+        "is_correct": False,
+        "result": "incorrect",
+        "ai_verdict": {**_JUDGED, "result": "incorrect"},
+    }
+    client.patch(f"/bank/entries/{entry['id']}", json=wrong)
+
+    # Re-recording results for the same answer keeps the verdict.
+    seed(store, **_open_question(user_answer="x = 7"), result="incorrect")
+    assert client.get(f"/bank/entries/{entry['id']}").json()["ai_verdict"]["result"] == "incorrect"
+
+    # A retry with a new answer clears it, and does not wipe the first mistake.
+    seed(store, **_open_question(user_answer="120"), is_correct=True, user_answer_images=[])
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert stored["ai_verdict"] is None
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_rejudging_a_correct_answer_keeps_result_and_resolution_consistent(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": True, "result": "correct", "ai_verdict": _JUDGED},
+    )
+    assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
+
+    # An older client re-judges and only sends is_correct=False.
+    client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": False, "ai_verdict": {**_JUDGED, "result": "incorrect"}},
+    )
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (
+        False,
+        "incorrect",
+        False,
+    )
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_ungraded_rejudge_keeps_manual_resolution(bank):
+    store, _, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(f"/bank/entries/{entry['id']}", json={"resolved": True})
+    unsure = {"result": "ungraded", "final": False}
+    response = client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": False, "result": "ungraded", "ai_verdict": unsure},
+    )
+    assert response.status_code == 200
+    assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
+
+
+def test_stale_quiz_results_cannot_turn_a_judged_answer_back_into_a_mistake(bank):
+    store, repo, client = bank
+    # Submit: exact matching misses the typed answer, so it is a mistake for now.
+    entry = seed(store, **_open_question(user_answer="x = 120"), user_answer_images=[])
+    assert repo.overview("UTC")["mistakes"] == 1
+    patch = {"is_correct": True, "result": "correct", "ai_verdict": _JUDGED}
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    assert repo.overview("UTC")["mistakes"] == 0
+
+    # ``/quiz-results`` posts carry no image list and the provisional grade;
+    # one that lands after the verdict must not re-grade the judged answer.
+    seed(store, **_open_question(user_answer="x = 120"))
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (True, "correct", True)
+    assert stored["ai_verdict"]["result"] == "correct"
+    assert repo.overview("UTC")["mistakes"] == 0
+
+    seed(store, **_open_question(user_answer="x = 120"), is_correct=True, result="correct")
+    assert repo.overview("UTC")["mistakes"] == 0
+
+
+def test_rejudging_correct_releases_a_stuck_provisional_mistake(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(user_answer="x = 120"))
+    patch = {"is_correct": True, "result": "correct", "ai_verdict": _JUDGED}
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    # A state left behind by an earlier build: judged correct, still a mistake.
+    with repo.connect() as conn:
+        conn.execute(
+            "UPDATE practice_review_state SET is_mistake=1 WHERE entry_id=?", (entry["id"],)
+        )
+    assert repo.overview("UTC")["mistakes"] == 1
+
+    # A byte-identical re-judge heals it.
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    assert repo.overview("UTC")["mistakes"] == 0
+
+
+def test_uncertain_rejudge_keeps_a_confirmed_mistake(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    wrong = {
+        "is_correct": False,
+        "result": "incorrect",
+        "ai_verdict": {**_JUDGED, "result": "incorrect", "is_correct": False},
+    }
+    client.patch(f"/bank/entries/{entry['id']}", json=wrong)
+    assert repo.overview("UTC")["mistakes"] == 1
+
+    unsure = {
+        "is_correct": False,
+        "result": "ungraded",
+        "ai_verdict": {
+            "result": "ungraded",
+            "final": False,
+            "is_correct": None,
+            "confidence": 0.4,
+            "steps": [],
+            "reason": "low_confidence",
+        },
+    }
+    assert client.patch(f"/bank/entries/{entry['id']}", json=unsure).status_code == 200
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"is_correct": False, "result": "correct"},
+        {"is_correct": True, "result": "partial"},
+        {"result": "voided"},
+        {"ai_verdict": {}},
+        {"ai_verdict": {"result": "probably", "final": True}},
+        {"ai_verdict": {"result": "ungraded", "final": True}},
+        {"ai_verdict": {"result": "correct", "final": True, "feedback": "x" * 40_000}},
+    ],
+)
+def test_entry_patch_rejects_contradictory_or_malformed_grades(bank, patch):
+    store, _, client = bank
+    entry = seed(store)
+    assert client.patch(f"/bank/entries/{entry['id']}", json=patch).status_code == 422
+
+
+def test_entry_patch_rejects_non_finite_verdict_numbers(bank):
+    store, _, client = bank
+    entry = seed(store)
+    # ``json.loads`` accepts these literals; stored, they would break every read.
+    body = '{"ai_verdict": {"result": "correct", "final": true, "awarded_points": N}}'
+    for literal in ("Infinity", "NaN", "1e999"):
+        response = client.patch(
+            f"/bank/entries/{entry['id']}",
+            content=body.replace("N", literal),
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 422
+    stored = client.get(f"/bank/entries/{entry['id']}")
+    assert stored.status_code == 200
+    assert stored.json()["ai_verdict"] is None
+
+
+def test_entry_patch_derives_correctness_from_the_result(bank):
+    store, _, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(f"/bank/entries/{entry['id']}", json={"result": "correct"})
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (True, "correct", True)

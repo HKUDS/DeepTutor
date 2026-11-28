@@ -6666,5 +6666,10 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} 分",
+  "Solution steps": "解题步骤",
+  "This model cannot read images, so the photo answer was not graded.": "当前模型无法读取图片，因此照片作答未被评分。",
+  "The judge returned no structured verdict, so this answer was not graded.": "评判未返回结构化结论，因此该作答未被评分。",
+  "The judge was not confident enough to grade this answer.": "评判把握不足，未对该作答评分。"
 }

@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
+from deeptutor.core.assessment import AssessmentResult
 from deeptutor.core.turn_request import TurnRequest
 from deeptutor.modules.catalog import module_enabled
 from deeptutor.response_languages import validate_reply_language_override
@@ -125,6 +126,9 @@ class QuizResultItem(BaseModel):
     explanation: str | None = ""
     difficulty: str | None = ""
     is_correct: bool
+    # Set when the AI judge graded a non-exact answer (e.g. a photo); omitted
+    # results are derived from ``is_correct`` as before.
+    result: AssessmentResult | None = None
 
     @field_validator("options", mode="before")
     @classmethod
@@ -143,20 +147,26 @@ class QuizResultsRequest(BaseModel):
 
 
 def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
-    total = len(answers)
-    correct = sum(1 for item in answers if item.is_correct)
+    # A pending (ungraded) answer is neither right nor wrong in the score.
+    ungraded = sum(1 for item in answers if item.result == "ungraded")
+    total = len(answers) - ungraded
+    correct = sum(1 for item in answers if item.is_correct and item.result != "ungraded")
     score_pct = round((correct / total) * 100) if total else 0
     lines = ["[Quiz Performance]"]
     for idx, item in enumerate(answers, 1):
         question = item.question.strip().replace("\n", " ")
         user_answer = (item.user_answer or "").strip() or "(blank)"
-        status = "Correct" if item.is_correct else "Incorrect"
+        status = {"partial": "Partially correct", "ungraded": "Not graded"}.get(
+            item.result or "", "Correct" if item.is_correct else "Incorrect"
+        )
         suffix = f" ({status})"
-        if not item.is_correct and (item.correct_answer or "").strip():
+        graded_wrong = not item.is_correct and item.result != "ungraded"
+        if graded_wrong and (item.correct_answer or "").strip():
             suffix = f" ({status}, correct: {(item.correct_answer or '').strip()})"
         qid = f"[{item.question_id}] " if item.question_id else ""
         lines.append(f"{idx}. {qid}Q: {question} -> Answered: {user_answer}{suffix}")
-    lines.append(f"Score: {correct}/{total} ({score_pct}%)")
+    pending = f", {ungraded} not graded" if ungraded else ""
+    lines.append(f"Score: {correct}/{total} ({score_pct}%){pending}")
     return "\n".join(lines)
 
 

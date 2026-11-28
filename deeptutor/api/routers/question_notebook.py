@@ -6,14 +6,16 @@ from __future__ import annotations
 
 import base64 as _b64
 from hashlib import sha256 as _sha256
+import json
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 import uuid as _uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from deeptutor.core.assessment import AssessmentResult, AssessmentSource, QuestionOriginType
+from deeptutor.learning.semantic_assessment import VerdictResult
 from deeptutor.services.session import get_sqlite_session_store
 from deeptutor.services.storage import get_attachment_store
 
@@ -21,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ScoreTrend = Literal["new", "improved", "declined", "unchanged"]
+# A judge verdict is at most ~20 KB (12 capped steps plus feedback).
+_MAX_VERDICT_CHARS = 32_000
 
 # ── Models ────────────────────────────────────────────────────────
 
@@ -81,6 +85,7 @@ class NotebookEntryItem(BaseModel):
     bookmarked: bool = False
     followup_session_id: str = ""
     ai_judgment: str = ""
+    ai_verdict: dict[str, Any] | None = None
     created_at: float
     updated_at: float
     categories: list[CategoryItem] | None = None
@@ -96,7 +101,35 @@ class EntryUpdateRequest(BaseModel):
     bookmarked: bool | None = None
     followup_session_id: str | None = None
     ai_judgment: str | None = None
+    # Structured AI-judge verdict (see ``quiz_judge`` verdict frame) and the
+    # grade it implies for answers exact matching cannot grade.
+    ai_verdict: dict[str, Any] | None = None
+    is_correct: bool | None = None
+    result: VerdictResult | None = None
     resolved: bool | None = None
+
+    @field_validator("ai_verdict")
+    @classmethod
+    def _check_verdict_shape(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        result, final = value.get("result"), value.get("final")
+        if result not in get_args(VerdictResult) or not isinstance(final, bool):
+            raise ValueError("ai_verdict needs a known result and a boolean final")
+        if final and result == "ungraded":
+            raise ValueError("an ungraded verdict cannot be final")
+        if len(json.dumps(value, ensure_ascii=False)) > _MAX_VERDICT_CHARS:
+            raise ValueError("ai_verdict is too large")
+        return value
+
+    @model_validator(mode="after")
+    def _grade_is_consistent(self) -> EntryUpdateRequest:
+        if self.result is not None:
+            if self.is_correct is None:
+                self.is_correct = self.result == "correct"
+            elif self.is_correct != (self.result == "correct"):
+                raise ValueError("is_correct contradicts result")
+        return self
 
 
 class CategoryCreateRequest(BaseModel):
@@ -420,6 +453,16 @@ async def get_entry(entry_id: int) -> NotebookEntryItem:
 
 @router.patch("/entries/{entry_id}")
 async def update_entry(entry_id: int, payload: EntryUpdateRequest):
+    if payload.ai_verdict is not None:
+        try:
+            json.dumps(payload.ai_verdict, allow_nan=False)
+        except ValueError:
+            # Stored, ``NaN``/``Infinity`` would break every later read. Not a
+            # model validator: its 422 body echoes the value and cannot be
+            # serialised either.
+            raise HTTPException(
+                status_code=422, detail="ai_verdict must not contain NaN or Infinity"
+            ) from None
     store = get_sqlite_session_store()
     updates = payload.model_dump(exclude_none=True)
     if not updates:
