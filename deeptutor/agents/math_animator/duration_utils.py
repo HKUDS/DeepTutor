@@ -31,7 +31,11 @@ def parse_target_duration_seconds(text: str) -> float | None:
             continue
     for match in _MINUTE_PATTERN.finditer(raw):
         try:
-            candidates.append(float(match.group("value")) * 60.0)
+            duration = float(match.group("value")) * 60.0
+            seconds_match = _SECOND_PATTERN.match(raw[match.end() :].lstrip())
+            if seconds_match:
+                duration += float(seconds_match.group("value"))
+            candidates.append(duration)
         except (TypeError, ValueError):
             continue
     if not candidates:
