@@ -30,6 +30,7 @@
           "responding"
         ],
         "tools_used": [
+          "mastery_record",
           "mastery_prepare_lesson",
           "mastery_status",
           "mastery_quiz",
@@ -63,6 +64,10 @@
     }
   },
   "tools": {
+    "mastery_record": {
+      "class_path": "deeptutor.capabilities.mastery.record_tool:MasteryRecordTool",
+      "order": 391
+    },
     "mastery_topics": {
       "class_path": "deeptutor.tools.mastery_nav:MasteryTopicsTool",
       "order": 40

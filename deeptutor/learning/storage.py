@@ -2247,6 +2247,71 @@ class LearningStore:
         interactions = (LearningTransaction._interaction_from_row(row) for row in rows)
         return [interaction for interaction in interactions if interaction is not None]
 
+    def list_assessment_records(
+        self,
+        path_id: str,
+        *,
+        knowledge_point_id: str = "",
+        record_id: str = "",
+        limit: int = 10,
+        offset: int = 0,
+        expected_revision: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read completed assessments, filtered before pagination.
+
+        Quiz leaves come from interactions (not their duplicate evidence rows).
+        Qualitative assessments have no question transaction and use evidence.
+        Group parents and voided/ungraded attempts are not completed records.
+        Unlike load(), this read neither imports legacy files nor creates paths.
+        """
+        path_id = self._validate_id(path_id)
+        with self._connect() as conn:
+            conn.execute("BEGIN")
+            path = conn.execute(
+                "SELECT revision FROM mastery_paths WHERE path_id = ?", (path_id,)
+            ).fetchone()
+            revision = int(path["revision"]) if path is not None else 0
+            if expected_revision is not None and revision != expected_revision:
+                raise LearningConflictError(path_id, expected_revision, revision)
+            rows = conn.execute(
+                """
+                WITH records AS (
+                    SELECT 'interaction:' || interaction_id AS record_id,
+                           'quiz' AS kind, created_at AS timestamp,
+                           json_extract(question_json, '$.knowledge_point_id') AS kp_id,
+                           question_json, result_json AS payload_json,
+                           user_answer AS learner_answer, session_id, turn_id
+                    FROM mastery_interactions
+                    WHERE path_id = ? AND status = 'graded'
+                      AND COALESCE(json_extract(question_json, '$.question_type'), '') != 'group'
+                      AND COALESCE(json_extract(result_json, '$.voided'), 0) = 0
+                      AND (json_type(result_json, '$.is_correct') IN ('true', 'false')
+                           OR json_extract(result_json, '$.result') IN ('correct', 'incorrect', 'partial'))
+                    UNION ALL
+                    SELECT 'evidence:' || ordinal, 'qualitative', timestamp,
+                           knowledge_point_id, NULL, evidence_json,
+                           json_extract(evidence_json, '$.learner_answer'), session_id, turn_id
+                    FROM mastery_learning_evidence
+                    WHERE path_id = ? AND assessment_type = 'qualitative'
+                )
+                SELECT * FROM records
+                WHERE (? = '' OR kp_id = ?) AND (? = '' OR record_id = ?)
+                ORDER BY timestamp DESC, record_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (
+                    path_id,
+                    path_id,
+                    knowledge_point_id,
+                    knowledge_point_id,
+                    record_id,
+                    record_id,
+                    max(1, min(int(limit), 21)),
+                    max(0, int(offset)),
+                ),
+            ).fetchall()
+        return [{**dict(row), "path_revision": revision} for row in rows]
+
     def list_events(self, path_id: str, *, after_revision: int = 0) -> list[MasteryEvent]:
         path_id = self._validate_id(path_id)
         self._import_legacy_if_needed(path_id)
