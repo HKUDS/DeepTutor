@@ -158,3 +158,11 @@ async def test_turning_the_hint_off_skips_the_llm_and_the_cache(
     assert result["hint"] == ""
     assert collected == 1
     assert calls == 1
+
+
+def test_sanitize_strips_list_markers_but_keeps_leading_text() -> None:
+    assert chat_hints._sanitize("- Explain recursion again", "en") == "Explain recursion again"
+    assert chat_hints._sanitize("## • Explain recursion again", "en") == "Explain recursion again"
+    assert chat_hints._sanitize("-3 squared is 9, right?", "en") == "-3 squared is 9, right?"
+    assert chat_hints._sanitize("*args or **kwargs here?", "en") == "*args or **kwargs here?"
+    assert chat_hints._sanitize("#include fails to compile", "en") == "#include fails to compile"

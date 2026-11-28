@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
+import re
 import time
 from typing import Any
 
@@ -290,7 +291,8 @@ def _sanitize(raw: str, language: str) -> str:
     # Models reach for a fence or a leading bullet even when told not to.
     for fence in ("```", "「", "」", '"', "'", "“", "”", "‘", "’"):
         text = text.replace(fence, "")
-    text = text.lstrip("-•*# ").strip()
+    # A marker needs trailing space: "-3", "*args" and "#include" are text.
+    text = re.sub(r"^(?:•\s*|[-*#]+\s+)+", "", text).strip()
     if not text:
         return ""
     # A model that ignored "the question alone" usually answers first and asks
