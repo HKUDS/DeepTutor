@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AddMaterialsDialog } from "@/components/reading/library/AddMaterialsDialog";
 
 const mock = vi.hoisted(() => ({
@@ -44,6 +44,20 @@ vi.mock("@/lib/reading-workspace-api", () => ({
   listReadingLibraryMaterials: mock.listLibrary,
   readingContentId: vi.fn(),
 }));
+
+// jsdom doesn't implement the native dialog methods. Chromium covers actual
+// focus handling and Escape in the UI audit.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  };
+});
+afterAll(() => {
+  Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
