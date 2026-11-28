@@ -68,6 +68,9 @@ _RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
     "हिंदी": "hi",
     "hungarian": "hu",
     "magyar": "hu",
+    "persian": "fa",
+    "farsi": "fa",
+    "فارسی": "fa",
 }
 
 

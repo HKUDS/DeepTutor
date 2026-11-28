@@ -121,6 +121,7 @@ ResponseLanguage = Literal[
     "tr",
     "hi",
     "hu",
+    "fa",
 ]
 
 

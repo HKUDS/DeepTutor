@@ -64,4 +64,5 @@ export type ResponseLanguage =
   | "vi"
   | "tr"
   | "hi"
-  | "hu";
+  | "hu"
+  | "fa";

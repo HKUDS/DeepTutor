@@ -18244,6 +18244,7 @@ export interface components {
             | "tr"
             | "hi"
             | "hu"
+            | "fa"
           )
         | null;
       /** Sidebar Description */
