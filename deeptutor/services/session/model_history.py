@@ -11,6 +11,8 @@ from copy import deepcopy
 import json
 from typing import Any
 
+from .provider_response_state import portable_tool_call_id
+
 MODEL_TURN_KEY = "model_turn"
 MODEL_TURN_VERSION = 1
 # Structured Little Tutor source, written beside ``model_turn`` on the
@@ -202,7 +204,10 @@ def replay_group(
                     for key in ("_provider_response_state", "thinking_blocks", "reasoning_content"):
                         message.pop(key, None)
                     for call in message.get("tool_calls") or []:
+                        call["id"] = portable_tool_call_id(call["id"])
                         call.pop("extra_content", None)
+                    if message.get("role") == "tool":
+                        message["tool_call_id"] = portable_tool_call_id(message["tool_call_id"])
             return _without_completed_thinking(messages)
     messages = []
     for row in rows:
