@@ -41,6 +41,7 @@ beforeEach(() => {
   )
   mock.fetch.mockResolvedValue({
     ok: true,
+    headers: new Headers({ 'Content-Type': 'audio/mpeg' }),
     blob: async () => new Blob(['test audio'], { type: 'audio/mpeg' }),
   })
 })

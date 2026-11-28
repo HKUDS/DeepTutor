@@ -8,13 +8,18 @@ may call it; it is not gated by per-user LLM grants.
 
 from __future__ import annotations
 
+import base64
+from collections.abc import AsyncIterator
+import json
 import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.services.voice import (
     VoiceProviderError,
+    stream_speech,
     synthesize_speech,
     transcribe_audio,
 )
@@ -35,34 +40,83 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1)
     voice: str | None = None
     format: str | None = None
+    stream: bool = Field(
+        default_factory=bool, description="Stream independently playable speech clips as NDJSON."
+    )
 
 
 @router.post("/tts")
 async def text_to_speech(payload: TTSRequest) -> Response:
     """Synthesize ``text`` to audio using the active TTS provider."""
     try:
+        if payload.stream:
+            clips = stream_speech(payload.text, voice=payload.voice, response_format=payload.format)
+            first = await anext(clips)
+            return StreamingResponse(
+                _stream_clips(first, clips),
+                media_type="application/x-ndjson",
+                headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+            )
         audio, content_type = await synthesize_speech(
             payload.text,
             voice=payload.voice,
             response_format=payload.format,
         )
-    except ValueError as exc:  # missing/invalid configuration
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except VoiceProviderTimeout as exc:
-        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
-    except VoiceProviderError as exc:
-        logger.warning("TTS provider error: %s", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    pcm_info = _parse_pcm_content_type(content_type)
-    if pcm_info:
-        sample_rate, channels = pcm_info
-        audio = _pcm16_to_wav(audio, sample_rate=sample_rate, channels=channels)
-        content_type = "audio/wav"
+    except (ValueError, VoiceProviderError) as exc:
+        raise _tts_http_error(exc) from exc
+    audio, content_type = _browser_audio(audio, content_type)
     return Response(
         content=audio,
         media_type=content_type,
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _tts_http_error(exc: ValueError | VoiceProviderError) -> HTTPException:
+    if isinstance(exc, ValueError):
+        code = status.HTTP_400_BAD_REQUEST
+    elif isinstance(exc, VoiceProviderTimeout):
+        code = status.HTTP_504_GATEWAY_TIMEOUT
+    else:
+        logger.warning("TTS provider error: %s", exc)
+        code = status.HTTP_502_BAD_GATEWAY
+    return HTTPException(status_code=code, detail=str(exc))
+
+
+def _browser_audio(audio: bytes, content_type: str) -> tuple[bytes, str]:
+    pcm_info = _parse_pcm_content_type(content_type)
+    if pcm_info:
+        sample_rate, channels = pcm_info
+        return _pcm16_to_wav(audio, sample_rate=sample_rate, channels=channels), "audio/wav"
+    return audio, content_type
+
+
+def _clip_frame(clip: tuple[bytes, str, bool]) -> str:
+    audio, content_type, final = clip
+    audio, content_type = _browser_audio(audio, content_type)
+    return (
+        json.dumps(
+            {
+                "audio": base64.b64encode(audio).decode("ascii"),
+                "content_type": content_type,
+                "final": final,
+            }
+        )
+        + "\n"
+    )
+
+
+async def _stream_clips(
+    first: tuple[bytes, str, bool],
+    clips: AsyncIterator[tuple[bytes, str, bool]],
+) -> AsyncIterator[str]:
+    yield _clip_frame(first)
+    try:
+        async for clip in clips:
+            yield _clip_frame(clip)
+    except (ValueError, VoiceProviderError) as exc:
+        # Headers and the first clip are already sent, so report a stream error.
+        yield json.dumps({"detail": _tts_http_error(exc).detail}) + "\n"
 
 
 @router.post("/stt")
