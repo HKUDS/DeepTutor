@@ -60,7 +60,7 @@ class WeKnoraPipeline:
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         raise RuntimeError(
-            "WeKnora knowledge bases are managed in WeKnora; DeepTutor does not "
+            "WeKnora knowledge bases are managed in WeKnora; Astitvam does not "
             "upload or index their documents."
         )
 

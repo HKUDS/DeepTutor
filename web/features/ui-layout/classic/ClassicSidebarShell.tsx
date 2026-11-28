@@ -189,12 +189,12 @@ export function ClassicSidebarShell({
           <Link
             href="/"
             prefetch={false}
-            aria-label="DeepTutor"
+            aria-label={t("Astitvam") as string}
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
               src="/brand/color-logo.png"
-              alt="DeepTutor"
+              alt={t("Astitvam") as string}
               width={22}
               height={22}
               className="h-[22px] w-[22px] rounded-md"
@@ -258,19 +258,14 @@ export function ClassicSidebarShell({
         <Link href="/" prefetch={false} className="group flex items-center gap-1.5">
           <Image
             src="/brand/color-logo.png"
-            alt="DeepTutor"
+            alt={t("Astitvam") as string}
             width={22}
             height={22}
             className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
           />
-          <Image
-            src="/brand/color-word.png"
-            alt="DeepTutor"
-            width={1200}
-            height={310}
-            priority
-            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
-          />
+          <span className="bg-gradient-to-r from-sky-500 to-orange-400 bg-clip-text font-serif text-[17px] font-semibold tracking-tight text-transparent transition-transform duration-200 group-hover:scale-105">
+            {t("Astitvam")}
+          </span>
         </Link>
         {/* The rail is a desktop affordance; in the drawer the scrim and the
             top-bar toggle already own "make this go away". */}

@@ -77,7 +77,7 @@ export default function ConnectKiwixModal({ onClose, onConnect }: Props) {
       </div>
     }>
       <div className="space-y-4 p-4">
-        <p className="text-[12px] text-[var(--muted-foreground)]">{t("Each knowledge base connects one searchable ZIM on one kiwix-serve instance. Connect other archives or servers separately. DeepTutor reads matching articles on demand.")}</p>
+        <p className="text-[12px] text-[var(--muted-foreground)]">{t("Each knowledge base connects one searchable ZIM on one kiwix-serve instance. Connect other archives or servers separately. Astitvam reads matching articles on demand.")}</p>
         <label className="block text-[12px] font-medium">{t("Knowledge base name")}
           <input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} className={inputClass} placeholder={t("my-archive")} data-autofocus />
         </label>

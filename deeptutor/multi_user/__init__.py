@@ -1,4 +1,4 @@
-"""Optional multi-user support for DeepTutor.
+"""Optional multi-user support for Astitvam.
 
 The package is deliberately isolated from the legacy single-user services.
 Existing code enters it through thin adapters only when auth.json enables auth.

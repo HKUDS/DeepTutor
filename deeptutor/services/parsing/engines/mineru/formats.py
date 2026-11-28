@@ -9,7 +9,7 @@ from .._versions import version_at_least
 MIN_MINERU_VERSION = "3.4.5"
 
 # Keep this list aligned with ``mineru/cli/common.py`` in the official MinerU
-# project. DeepTutor uses dotted, lower-case suffixes throughout its parser
+# project. Astitvam uses dotted, lower-case suffixes throughout its parser
 # protocol.
 MINERU_PDF_FORMATS = frozenset({".pdf"})
 MINERU_IMAGE_FORMATS = frozenset(

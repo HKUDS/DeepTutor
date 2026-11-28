@@ -3090,7 +3090,7 @@ def _resolve_kb_raw_dir(kb_name: str, *, allow_unsupported: bool = False) -> Pat
     """Resolve a KB's managed ``raw/`` directory without inventing one.
 
     Connected KBs are external-resource pointers and intentionally have no
-    DeepTutor-managed raw directory.  File listing treats that as an empty
+    Astitvam-managed raw directory.  File listing treats that as an empty
     collection for backwards compatibility; endpoints that require a local
     file receive an explicit conflict response.
     """
@@ -3952,7 +3952,7 @@ async def run_reindex_task(
 
             from deeptutor.services.rag.service import RAGService
 
-            # provider=None → RAGService resolves the KB's DeepTutor-bound
+            # provider=None → RAGService resolves the KB's Astitvam-bound
             # engine, so re-indexing a PageIndex/LightRAG/GraphRAG KB stays on
             # that provider rather than forcing the default pipeline.
             rag_service = RAGService(kb_base_dir=str(base_path), provider=None)

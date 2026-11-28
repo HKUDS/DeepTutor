@@ -5,7 +5,7 @@ import { browserStorage } from "@/shared/storage";
 /**
  * The workspace feature list — the part of the sidebar a learner owns.
  *
- * Every learner uses a different half of DeepTutor, so the shipped list is a
+ * Every learner uses a different half of Astitvam, so the shipped list is a
  * starting point rather than a layout: rows can be dragged into the order the
  * work actually happens in, and the ones this learner never opens fold away
  * into "More" instead of sitting in the way. The arrangement is a per-machine

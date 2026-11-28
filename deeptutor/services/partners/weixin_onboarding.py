@@ -239,7 +239,7 @@ async def _apply_outcome(attempt: _Attempt, outcome: QrOutcome) -> None:
             )
             attempt.status = "error"
             attempt.error = (
-                "WeChat confirmed the login, but DeepTutor could not save or start "
+                "WeChat confirmed the login, but Astitvam could not save or start "
                 "the channel. Try the scan again or save the channel settings."
             )
             return

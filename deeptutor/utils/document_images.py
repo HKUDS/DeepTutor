@@ -1,6 +1,6 @@
 """Embedded-image extraction for Office documents and PDFs.
 
-Text extraction everywhere in DeepTutor is text-only by design, which silently
+Text extraction everywhere in Astitvam is text-only by design, which silently
 drops the pictures inside DOCX/PPTX/PDF attachments: the reader never sees
 them and neither does the model. This module is the shared fix — bytes in,
 embedded raster images out, plus the *marker strings* that let the plain-text

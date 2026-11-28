@@ -36,7 +36,7 @@ flavours exist today:
   copied or indexed locally. See ``services/rag/pipelines/weknora``.
 * ``kiwix`` — a pointer (``server_url`` + ``zim_name``) to one searchable ZIM
   served by kiwix-serve. Retrieval reads matched articles over its public HTTP
-  API; DeepTutor neither copies the archive nor builds a second index.
+  API; Astitvam neither copies the archive nor builds a second index.
 
 All connected flavours share the same lifecycle quirks: no on-disk folder under
 ``base_dir``, no embedding reconcile, and deletion must never touch the
@@ -84,7 +84,7 @@ LIGHTRAG_SERVER_KB_TYPE = "lightrag_server"
 IMA_KB_TYPE = "ima"
 
 # A connected Tencent WeKnora knowledge base. The external service owns both
-# indexing and document management; DeepTutor only stores retrieval credentials.
+# indexing and document management; Astitvam only stores retrieval credentials.
 WEKNORA_KB_TYPE = "weknora"
 
 # A connected MarginNote 4 library: a pointer (``device_id`` + optional
@@ -95,7 +95,7 @@ WEKNORA_KB_TYPE = "weknora"
 MARGINNOTE4_KB_TYPE = "marginnote4"
 
 # One archive served by kiwix-serve.  The server owns the ZIM and its index;
-# DeepTutor stores only its URL and ZIM name.
+# Astitvam stores only its URL and ZIM name.
 KIWIX_KB_TYPE = "kiwix"
 
 # Every pointer/connected KB type. Membership here is what makes the manager
@@ -142,11 +142,11 @@ def supports_rag_retrieval(entry: Any) -> bool:
 
 
 def supports_local_raw_files(entry: Any) -> bool:
-    """Whether the KB owns a DeepTutor-managed local ``raw/`` directory.
+    """Whether the KB owns an Astitvam-managed local ``raw/`` directory.
 
     Connected KBs are pointers to external resources.  Some point at a local
     folder and others at a remote service, but neither kind participates in
-    DeepTutor's raw-file upload and management API.
+    Astitvam's raw-file upload and management API.
     """
     return isinstance(entry, dict) and not is_connected_kb(entry)
 

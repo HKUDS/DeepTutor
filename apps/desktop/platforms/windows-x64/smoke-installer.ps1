@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $desktop = (Resolve-Path "$PSScriptRoot/../..").Path
 $installer = @(Get-ChildItem "$desktop/out/*-Setup.exe")
 if ($installer.Count -ne 1) { throw 'Expected exactly one Windows installer' }
-$root = Join-Path $env:TEMP "DeepTutor 安装 smoke $([guid]::NewGuid())"
+$root = Join-Path $env:TEMP "Astitvam 安装 smoke $([guid]::NewGuid())"
 $install = Join-Path $root 'installed app'
 $userRoot = Join-Path $root 'user data'
 New-Item -ItemType Directory -Path $install, $userRoot -Force | Out-Null
@@ -18,7 +18,7 @@ try {
     Write-Host 'Installing into a path containing spaces and Chinese characters...'
     $setup = Start-Process $installer[0].FullName -ArgumentList @('/S', "/D=$install") -Wait -PassThru
     if ($setup.ExitCode -ne 0) { throw "Installer exited with $($setup.ExitCode)" }
-    $exe = Join-Path $install 'Open DeepTutor.exe'
+    $exe = Join-Path $install 'Astitvam.exe'
     if (!(Test-Path $exe) -or !(Test-Path $sentinel)) { throw 'Install did not preserve the destination' }
     $env:OPEN_DEEPTUTOR_TEST_HOME = $userRoot
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
@@ -40,7 +40,7 @@ try {
                 $health = Invoke-WebRequest "$backend/health/ready" -TimeoutSec 5
                 $page = Invoke-WebRequest $frontend -TimeoutSec 5
                 $proxy = Invoke-WebRequest "$frontend/api/settings/ui" -TimeoutSec 5
-                if ($health.StatusCode -eq 200 -and $page.Content -match 'DeepTutor' -and $proxy.StatusCode -eq 200) { break }
+                if ($health.StatusCode -eq 200 -and $page.Content -match 'Astitvam' -and $proxy.StatusCode -eq 200) { break }
             } catch { }
         }
         if ((Get-Date) -gt $deadline) { throw "Installed app did not become ready. Runtime log:`n$text" }
@@ -59,7 +59,7 @@ try {
     }
     $data = Join-Path $userRoot 'workspace/data/user/settings/interface.json'
     if (!(Test-Path $data)) { throw 'App did not initialize its user data' }
-    Start-Process (Join-Path $install 'Uninstall Open DeepTutor.exe') -ArgumentList '/S' -Wait | Out-Null
+    Start-Process (Join-Path $install 'Uninstall Astitvam.exe') -ArgumentList '/S' -Wait | Out-Null
     $deadline = (Get-Date).AddSeconds(30)
     while ((Test-Path $exe) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
     if (Test-Path $exe) { throw 'Uninstall left the app executable behind' }

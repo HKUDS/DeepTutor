@@ -38,7 +38,7 @@ _SLOT = re.compile(r"\x00(\d+)\x00")
 
 
 def deck_name(title: str) -> str:
-    """Return the Anki deck name ``DeepTutor::<note title>``.
+    """Return the Anki deck name ``Astitvam::<note title>``.
 
     Args:
         title: Note title. ``::`` is replaced so it cannot create extra decks.
@@ -48,23 +48,23 @@ def deck_name(title: str) -> str:
     """
     cleaned = _CONTROL_CHARS.sub("", (title or "").strip()) or "Untitled"
     cleaned = cleaned.replace("::", " — ")
-    return f"DeepTutor::{cleaned}"
+    return f"Astitvam::{cleaned}"
 
 
 def note_tags(title: str) -> str:
     """Return space-separated Anki tags for a note.
 
     Args:
-        title: Note title, turned into a slug after the ``deeptutor`` tag.
+        title: Note title, turned into a slug after the ``astitvam`` tag.
 
     Returns:
-        ``deeptutor`` plus an optional title slug.
+        ``astitvam`` plus an optional title slug.
     """
     slug = _SLUG_SPLIT.sub("-", (title or "").strip())
     slug = re.sub(r"-{2,}", "-", slug).strip("-").lower()
-    if not slug or slug == "deeptutor":
-        return "deeptutor"
-    return f"deeptutor {slug}"
+    if not slug or slug == "astitvam":
+        return "astitvam"
+    return f"astitvam {slug}"
 
 
 def markdown_to_anki_html(text: str) -> str:

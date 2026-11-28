@@ -18,13 +18,13 @@ test.describe("v2 turn lifecycle", () => {
 
     const activity = assistantActivity(page);
     await expect(activity.last()).toContainText(
-      /DeepTutor (?:Exploring|Reasoning|Planning|Quizzing|Reflecting)/i,
+      /Astitvam (?:Exploring|Reasoning|Planning|Quizzing|Reflecting)/i,
     );
 
     await page.getByRole("textbox", { name: /answer/i }).fill("Continue");
     await page.getByRole("button", { name: /answer|submit/i }).click();
     await expect(activity.last()).toContainText(
-      /DeepTutor (?:Exploring|Reasoning|Planning|responded)/i,
+      /Astitvam (?:Exploring|Reasoning|Planning|responded)/i,
     );
   });
 
@@ -37,7 +37,7 @@ test.describe("v2 turn lifecycle", () => {
     const activity = assistantActivity(page);
     await expect(activity.last()).toBeVisible();
     await page.getByRole("button", { name: /drop connection/i }).click();
-    await expect(activity.last()).toContainText(/DeepTutor/i);
+    await expect(activity.last()).toContainText(/Astitvam/i);
     await expect(page.getByRole("button", { name: /retry/i })).toHaveCount(0);
   });
 

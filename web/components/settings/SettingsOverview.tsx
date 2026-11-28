@@ -110,7 +110,7 @@ export default function SettingsOverview() {
       <SettingsPageHeader
         title={t("General")}
         description={t(
-          "Make DeepTutor feel at home. Apply your preferences using the bar below.",
+          "Make Astitvam feel at home. Apply your preferences using the bar below.",
         )}
       />
       <SettingSection title={t("Language")}>
@@ -239,7 +239,7 @@ export default function SettingsOverview() {
           <div className="space-y-3">
             <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
               {t(
-                "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting DeepTutor.",
+                "This removes configured models and provider credentials. Accounts, conversations, knowledge bases, and uploaded files are preserved. Deployment environment variables are not changed; some settings may require restarting Astitvam.",
               )}
             </p>
             {resetError && (

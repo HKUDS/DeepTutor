@@ -7,7 +7,7 @@ compared to an indexed KB, whose chunks are whole passages.
 
 So retrieval has two stages, and this module owns the policy for the second:
 
-1. map matched documents into DeepTutor's ``sources`` shape;
+1. map matched documents into Astitvam's ``sources`` shape;
 2. decide which of them are worth spending a full-text fetch on
    (:func:`hydration_targets`) — items with *no* snippet first, then items whose
    snippet is too thin to reason from, best-ranked first, bounded by a budget so
@@ -37,7 +37,7 @@ MAX_FULLTEXT_CHARS = 12_000
 
 
 def documents_to_sources(documents: Iterable[ImaDocument]) -> list[dict[str, Any]]:
-    """Map matched IMA documents into DeepTutor's ``sources`` shape.
+    """Map matched IMA documents into Astitvam's ``sources`` shape.
 
     Items whose match was on the title alone carry no snippet and are still
     listed, so the model can see the document exists even before (or without)

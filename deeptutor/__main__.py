@@ -1,4 +1,4 @@
-"""Run DeepTutor CLI via ``python -m deeptutor``."""
+"""Run Astitvam CLI via ``python -m deeptutor``."""
 
 from deeptutor_cli.main import main
 

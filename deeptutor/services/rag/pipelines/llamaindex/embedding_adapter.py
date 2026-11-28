@@ -1,4 +1,4 @@
-"""LlamaIndex embedding adapter backed by DeepTutor's embedding service."""
+"""LlamaIndex embedding adapter backed by Astitvam's embedding service."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _config_fingerprint(config: EmbeddingConfig) -> tuple[Any, ...]:
 
 
 class CustomEmbedding(BaseEmbedding):
-    """Custom LlamaIndex embedding adapter for DeepTutor embedding providers."""
+    """Custom LlamaIndex embedding adapter for Astitvam embedding providers."""
 
     _client: Any = PrivateAttr()
     _logger: Any = PrivateAttr()
@@ -213,7 +213,7 @@ def bind_operation_embedding(adapter: CustomEmbedding) -> None:
 
 
 def configure_llamaindex_settings(logger=None) -> CustomEmbedding | None:
-    """Configure LlamaIndex globals for DeepTutor's current embedding config."""
+    """Configure LlamaIndex globals for Astitvam's current embedding config."""
     embedding_cfg = get_embedding_config()
 
     with _settings_lock:

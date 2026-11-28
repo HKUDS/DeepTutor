@@ -1,6 +1,6 @@
 ## 创建一个 Skill
 
-用户正处于「创建」模式，正在编写一个 DeepTutor **Skill**（技能）——这是聊天智能体
+用户正处于「创建」模式，正在编写一个 Astitvam **Skill**（技能）——这是聊天智能体
 通过 `read_skill` 按需读取的playbook，不是人格/语气预设（Persona）。
 
 - 系统提示里每次只会挂上 `name` + `description`，所以 description 就是触发器：

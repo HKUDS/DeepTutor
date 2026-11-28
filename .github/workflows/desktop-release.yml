@@ -1,6 +1,6 @@
 name: Desktop Release
 
-# Builds Open DeepTutor for MacOS (Apple Silicon and Intel) and Windows from
+# Builds Astitvam for MacOS (Apple Silicon and Intel) and Windows from
 # the release tag and attaches the downloads to the same GitHub Release that
 # pypi-release.yml publishes. Each platform's build lives in
 # apps/desktop/platforms/<target>/.
@@ -61,13 +61,13 @@ jobs:
       matrix:
         include:
           - target: macos-arm64
-            name: Open DeepTutor for MacOS with Apple Silicon
+            name: Astitvam for MacOS with Apple Silicon
             runner: macos-15
           - target: macos-x64
-            name: Open DeepTutor for MacOS with Intel Silicon
+            name: Astitvam for MacOS with Intel Silicon
             runner: macos-15-intel
           - target: windows-x64
-            name: Open DeepTutor for Windows
+            name: Astitvam for Windows
             runner: windows-2025
     environment: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && 'desktop-release' || 'desktop-validation' }}
     runs-on: ${{ matrix.runner }}
@@ -273,10 +273,10 @@ jobs:
               ...context.repo, release_id: release.id, per_page: 100,
             });
             const versioned = [
-              `Open-DeepTutor-MacOS-Apple-Silicon-${tag}.dmg`,
-              `Open-DeepTutor-MacOS-Intel-${tag}.dmg`,
-              `Open-DeepTutor-Windows-${tag}-Setup.exe`,
-              `Open-DeepTutor-Windows-${tag}-Portable.zip`,
+              `Astitvam-MacOS-Apple-Silicon-${tag}.dmg`,
+              `Astitvam-MacOS-Intel-${tag}.dmg`,
+              `Astitvam-Windows-${tag}-Setup.exe`,
+              `Astitvam-Windows-${tag}-Portable.zip`,
             ];
             const expected = [...versioned, ...versioned.map(name => name.replace(`-${tag}`, ''))];
             const uploaded = new Set(assets

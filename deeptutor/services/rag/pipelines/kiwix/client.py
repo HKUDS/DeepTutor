@@ -2,7 +2,7 @@
 
 One connected KB points to one ZIM name on one server.  Search uses the ZIM's
 existing full-text index; only matched articles are read, so no archive is
-uploaded, unpacked, or indexed again by DeepTutor.
+uploaded, unpacked, or indexed again by Astitvam.
 """
 
 from __future__ import annotations

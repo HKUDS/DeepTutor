@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Connect a chat account (QQ, Telegram, …) to your DeepTutor account.
+ * Connect a chat account (QQ, Telegram, …) to your Astitvam account.
  *
  * Without a link, a partner reached over a channel sees only a channel-local
  * sender id: the conversation lands in a shared pool you cannot read back here,

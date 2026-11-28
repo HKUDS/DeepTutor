@@ -4,7 +4,7 @@
  * Two facts make this worth its own module.
  *
  * The async Clipboard API does not exist outside a secure context, and a
- * plain-http origin is an ordinary way to run DeepTutor rather than an exotic
+ * plain-http origin is an ordinary way to run Astitvam rather than an exotic
  * one: the launcher binds the web app to `0.0.0.0` while printing a
  * `localhost` URL, so anyone opening the same instance from another machine
  * on the LAN gets `http://<lan-ip>:3782` — where `navigator.clipboard` is

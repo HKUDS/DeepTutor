@@ -1,6 +1,6 @@
 """Built-in text-only parsing engine.
 
-This is the default, dependency-light path: it reuses DeepTutor's legacy text
+This is the default, dependency-light path: it reuses Astitvam's legacy text
 extractors and emits markdown/plain text for downstream RAG providers.
 """
 

@@ -1,4 +1,4 @@
-"""The task model — what DeepTutor runs on when nobody asked it to run.
+"""The task model — what Astitvam runs on when nobody asked it to run.
 
 A dozen calls happen without anyone requesting them: naming a conversation once
 it has its first exchange, naming a mastery goal, writing the lines under a
@@ -52,7 +52,7 @@ TASK_OVERRIDES_KEY = "overrides"
 
 
 class TaskKind(StrEnum):
-    """One call DeepTutor makes on its own.
+    """One call Astitvam makes on its own.
 
     Every ``task_llm_scope`` call site names one. That is what lets the settings
     page list what actually uses the task model instead of a hand-kept list that

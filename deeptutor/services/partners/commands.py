@@ -43,7 +43,7 @@ BUILTIN_PARTNER_COMMANDS: tuple[PartnerCommandSpec, ...] = (
     PartnerCommandSpec("/tool", "Show or change enabled tools.", "[on|off <name>|reset]"),
     PartnerCommandSpec(
         "/link",
-        "Connect this chat account to your DeepTutor account.",
+        "Connect this chat account to your Astitvam account.",
         "<code from the web app>",
     ),
 )
@@ -141,7 +141,7 @@ class PartnerCommandHandler:
             )
         if not args:
             return PartnerCommandResult(
-                "Usage: /link <code>. Open this partner in DeepTutor and choose "
+                "Usage: /link <code>. Open this partner in Astitvam and choose "
                 "“Link this chat account” to get a code."
             )
         user_id = redeem_link_code(
@@ -150,7 +150,7 @@ class PartnerCommandHandler:
         if not user_id:
             return PartnerCommandResult(
                 "That code is not valid — it may have expired or already been used. "
-                "Generate a fresh one in DeepTutor and try again."
+                "Generate a fresh one in Astitvam and try again."
             )
         actor = actor_for_account(user_id)
         if actor is None:

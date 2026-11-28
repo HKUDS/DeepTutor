@@ -343,7 +343,7 @@ def extract_article_markdown(raw_html: str, base_url: str = "") -> tuple[str, st
     title_els = tree.xpath("//title/text()")
     if title_els:
         title = re.sub(r"\s+", " ", title_els[0]).strip()
-        # Strip site suffix like " | DeepTutor"
+        # Strip site suffix like " | Astitvam"
         title = re.sub(r"\s*[|｜]\s*[^|]+$", "", title).strip()
 
     # Select before pruning.  Cleanup selectors are necessarily heuristic, and

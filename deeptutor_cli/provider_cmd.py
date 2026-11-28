@@ -50,7 +50,7 @@ async def _login_openai_codex() -> None:
         typer.echo(f"Remote server tunnel command: {started['ssh_forward_command']}")
         typer.echo(
             "Opening the OpenAI Codex sign-in in your browser; "
-            "credentials are written only to DeepTutor's private directory."
+            "credentials are written only to Astitvam's private directory."
         )
         if not webbrowser.open(authorize_url):
             typer.echo(f"The browser did not open automatically. Visit: {authorize_url}")
@@ -102,7 +102,7 @@ async def _login_github_copilot() -> None:
     try:
         token = await login_github_copilot(print_fn=typer.echo)
         typer.echo(
-            "GitHub sign-in saved in DeepTutor's owner-private storage. Validating Copilot..."
+            "GitHub sign-in saved in Astitvam's owner-private storage. Validating Copilot..."
         )
         models = await list_github_copilot_models()
         if not models:

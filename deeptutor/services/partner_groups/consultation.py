@@ -1,4 +1,4 @@
-"""The idle boundary between a live Group discussion and DeepTutor's answer."""
+"""The idle boundary between a live Group discussion and Astitvam's answer."""
 
 from dataclasses import dataclass, field
 import math

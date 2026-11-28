@@ -7,7 +7,7 @@ one service, a request header for another, a URL query parameter for a third, a
 command argument for a fourth. :func:`build_server_config` folds an entry plus
 the supplied values into an
 :class:`~deeptutor.services.mcp.config.MCPServerConfig`, the only server shape
-the rest of DeepTutor understands.
+the rest of Astitvam understands.
 
 Three invariants keep the data honest, all enforced in ``__post_init__`` so a
 hand-edited catalog file cannot slip past them:

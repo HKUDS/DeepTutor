@@ -117,7 +117,7 @@ export default function AboutSettingsPage() {
       }
       if (cancelled) return;
       if (Date.now() >= deadline) {
-        setError(t("DeepTutor did not reconnect before the update timeout."));
+        setError(t("Astitvam did not reconnect before the update timeout."));
         return;
       }
       timer = setTimeout(poll, POLL_INTERVAL_MS);
@@ -205,7 +205,7 @@ export default function AboutSettingsPage() {
       <SettingsPageHeader
         title={t("About")}
         description={t(
-          "DeepTutor version, release channel, and the safest update path for this installation.",
+          "Astitvam version, release channel, and the safest update path for this installation.",
         )}
       />
 
@@ -281,7 +281,7 @@ export default function AboutSettingsPage() {
         <SettingRow
           title={t("Installation")}
           description={t(
-            status?.installation.reason || "How DeepTutor is installed here.",
+            status?.installation.reason || "How Astitvam is installed here.",
           )}
           control={
             <span className="text-[12.5px] text-[var(--foreground)]">
@@ -292,7 +292,7 @@ export default function AboutSettingsPage() {
         <SettingRow
           title={t("Release channel")}
           description={t(
-            "Only stable, published DeepTutor releases are considered.",
+            "Only stable, published Astitvam releases are considered.",
           )}
           control={
             <span className="text-[12.5px] text-[var(--foreground)]">
@@ -305,7 +305,7 @@ export default function AboutSettingsPage() {
       <SettingSection
         title={t("Updates")}
         description={t(
-          "Version checks are cached for 24 hours. DeepTutor never installs an update without confirmation.",
+          "Version checks are cached for 24 hours. Astitvam never installs an update without confirmation.",
         )}
       >
         <SettingRow
@@ -422,7 +422,7 @@ export default function AboutSettingsPage() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title={t("Update and restart DeepTutor?")}
+        title={t("Update and restart Astitvam?")}
         confirmLabel={t("Update and restart")}
         busy={requesting}
         busyLabel={t("Preparing update…")}
@@ -430,7 +430,7 @@ export default function AboutSettingsPage() {
         onCancel={() => setConfirmOpen(false)}
       >
         {t(
-          "DeepTutor will briefly stop, install {{version}}, and reopen with the same settings. Active conversations must finish first.",
+          "Astitvam will briefly stop, install {{version}}, and reopen with the same settings. Active conversations must finish first.",
           { version: latestVersion ?? "" },
         )}
       </ConfirmDialog>

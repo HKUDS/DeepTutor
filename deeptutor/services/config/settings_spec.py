@@ -1,4 +1,4 @@
-"""Machine-readable description of what a DeepTutor install can be told to be.
+"""Machine-readable description of what an Astitvam install can be told to be.
 
 Every knob the setup capability is allowed to change is one :class:`SettingSpec`
 row here, and each row carries its own ``read`` / ``choices`` / ``write`` /
@@ -43,7 +43,7 @@ Credentials reach the server through the frontend's own card (see
 ``request_credential`` in the setup capability) so they never enter the model's
 context, the conversation history, or the session transcript on disk.
 
-Imports of the rest of DeepTutor are deferred into the row callables on
+Imports of the rest of Astitvam are deferred into the row callables on
 purpose: this module is imported from ``deeptutor.capabilities``, and a
 top-level import of the model catalog or the parsing engines would close an
 import cycle through ``services.config.__init__``.
@@ -214,7 +214,7 @@ def _interface_specs() -> list[SettingSpec]:
             scope="personal",
             effect="instant",
             label="Interface language",
-            summary="Language of the DeepTutor UI (menus, buttons, settings).",
+            summary="Language of the Astitvam UI (menus, buttons, settings).",
             read=language_read,
             choices=_static_choices(_LANGUAGE_CHOICES, language_read),
             write=_write_ui("language"),

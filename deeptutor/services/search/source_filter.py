@@ -251,7 +251,7 @@ def _request_openai_moderation(texts: list[str], *, api_key: str) -> list[bool]:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "DeepTutor-source-filter/1.0",
+            "User-Agent": "Astitvam-source-filter/1.0",
         },
         method="POST",
     )
@@ -270,7 +270,7 @@ def _request_web_risk(url: str, *, api_key: str) -> bool:
     parts.append(f"key={quote(api_key, safe='')}")
     request = urllib.request.Request(
         f"{_WEB_RISK_URL}?{'&'.join(parts)}",
-        headers={"User-Agent": "DeepTutor-source-filter/1.0"},
+        headers={"User-Agent": "Astitvam-source-filter/1.0"},
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=_WEB_RISK_TIMEOUT_S) as response:  # nosec B310 - hardcoded https constant URL

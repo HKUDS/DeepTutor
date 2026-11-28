@@ -1,6 +1,6 @@
 ## Creating a Persona
 
-The user is in Create mode authoring a DeepTutor **Persona** — a
+The user is in Create mode authoring an Astitvam **Persona** — a
 voice/behaviour preset injected verbatim into the system prompt of every
 turn where it is selected. It is not a tool workflow or a playbook; those
 are Skills.

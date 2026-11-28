@@ -1,7 +1,9 @@
 <div align="center">
 
-<p align="center"><img src="assets/figs/logo/color-full.png" alt="DeepTutor" width="480"></p>
-<h1 align="center">DeepTutor: Lifelong Personalized Tutoring</h1>
+<h1 align="center">Astitvam</h1>
+<p align="center">Lifelong Personalized Tutoring · Application owner: Sunil Kumar</p>
+<p align="center">A rebranded build of the DeepTutor open-source project; original upstream attribution and Apache-2.0 terms are preserved.</p>
+<p align="center">Internal package names and the existing desktop data directory remain unchanged for compatibility. Upstream links and historical release notes continue to refer to DeepTutor.</p>
 
 <p align="center">
 <a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
@@ -40,7 +42,7 @@
 > 🤝 **We're actively recruiting maintainers!** See the [Contributing Guide](CONTRIBUTING.md#join-the-team) for the roles, requirements and how to apply.
 
 <div align="center">
-<img src="assets/figs/web-dev/overview.png" alt="DeepTutor Home and workspace navigation" width="900">
+<img src="assets/figs/web-dev/overview.png" alt="Astitvam Home and workspace navigation" width="900">
 </div>
 
 ### 📦 Releases

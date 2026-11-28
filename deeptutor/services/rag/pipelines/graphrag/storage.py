@@ -6,7 +6,7 @@ like the PageIndex pipeline). The version dir doubles as GraphRAG's project
 root::
 
     <kb_dir>/version-N/
-        settings.yaml        # generated from DeepTutor config (see config.py)
+        settings.yaml        # generated from Astitvam config (see config.py)
         input/               # parsed *.txt fed to the indexer
         output/              # GraphRAG's parquet artefacts + lancedb
         cache/  logs/

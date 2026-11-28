@@ -1,4 +1,4 @@
-"""LightRAG parser that consumes frozen DeepTutor ingress bundles."""
+"""LightRAG parser that consumes frozen Astitvam ingress bundles."""
 
 from __future__ import annotations
 

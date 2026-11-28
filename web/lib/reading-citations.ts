@@ -16,7 +16,7 @@ import { toolResultMetadata } from "@/lib/tool-event";
  *
  * ## Why code spans are excluded first
  *
- * A bracketed token inside code is code, not a citation. DeepTutor has already
+ * A bracketed token inside code is code, not a citation. Astitvam has already
  * shipped the bug where `[0]` in a snippet was linkified into a citation anchor
  * (issue #468), so this parser masks fenced blocks and inline code *before*
  * matching rather than hoping the pattern is narrow enough.

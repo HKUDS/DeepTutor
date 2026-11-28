@@ -1,4 +1,4 @@
-# DeepTutor visualizer package protocol
+# Astitvam visualizer package protocol
 
 A visualizer type is a declarative agent contract plus a canvas renderer. User
 packages are zip archives with this shape:

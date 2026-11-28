@@ -11,7 +11,7 @@ from .._versions import package_version, version_at_least
 MIN_MARKITDOWN_VERSION = "0.1.7"
 
 # Built-in local converters shipped by MarkItDown 0.1.7. Azure Content
-# Understanding formats are intentionally excluded because DeepTutor's local
+# Understanding formats are intentionally excluded because Astitvam's local
 # adapter does not configure that billable cloud service.
 MARKITDOWN_0_1_7_FORMATS = frozenset(
     {
@@ -64,7 +64,7 @@ def markitdown_supported_formats() -> frozenset[str]:
 
     Converter modules expose extension constants. Inspecting them means a
     future compatible MarkItDown release can add a built-in type without
-    waiting for a DeepTutor release.
+    waiting for an Astitvam release.
     """
     discovered: set[str] = set()
     try:

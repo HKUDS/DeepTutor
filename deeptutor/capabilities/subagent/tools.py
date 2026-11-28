@@ -159,7 +159,7 @@ class ConsultSubagentTool(BaseTool):
         # in ``finally`` once the run ends.
         image_dir, image_paths = _stage_images(spec.get("images") or [])
 
-        # Head this round with the question DeepTutor is putting to the agent, so
+        # Head this round with the question Astitvam is putting to the agent, so
         # the transcript reads as a dialogue (esp. across several consults).
         await _stream("question", question)
 

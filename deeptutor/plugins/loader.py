@@ -1,4 +1,4 @@
-"""Neutral plugin discovery for DeepTutor.
+"""Neutral plugin discovery for Astitvam.
 
 External packages register under the ``deeptutor.plugins`` entry-point group.
 This module is intentionally domain-agnostic: it only discovers manifests and

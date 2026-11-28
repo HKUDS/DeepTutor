@@ -6,7 +6,7 @@ Pinned to the 3.x line (``graphrag>=3,<4``); the indexing/query surface mirrors
 ``graphrag.cli.{index,query}`` for that line.
 
 All imports are lazy so the package only loads when a GraphRAG KB is actually
-used — DeepTutor runs fine without the optional dependency installed.
+used — Astitvam runs fine without the optional dependency installed.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ DEFAULT_COMMUNITY_LEVEL = 2
 # able to make the health check lie.
 PROBE_MAX_TOKENS = 1024
 PROBE_TIMEOUT_SECONDS = 25
-EMBEDDING_PROBE_TEXT = "DeepTutor GraphRAG embedding compatibility test"
+EMBEDDING_PROBE_TEXT = "Astitvam GraphRAG embedding compatibility test"
 
 # Per-mode output tables the query API needs (mirrors graphrag.cli.query).
 _OUTPUTS_BY_MODE: dict[str, tuple[list[str], list[str]]] = {
@@ -197,7 +197,7 @@ async def _validate_probe_completion(completion: Any, response_model: type) -> N
 
 
 async def _probe_completion_model_impl(llm_cfg: Any) -> None:
-    """Probe a resolved DeepTutor model through the GraphRAG adapter."""
+    """Probe a resolved Astitvam model through the GraphRAG adapter."""
     await _validate_probe_completion(*_create_probe_completion(llm_cfg))
 
 

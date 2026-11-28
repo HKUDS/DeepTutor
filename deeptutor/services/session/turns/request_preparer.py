@@ -647,7 +647,7 @@ class TurnRequestPreparer:
             "tools": list(payload.get("tools") or []),
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
-            # Who this conversation is handed to; "" when DeepTutor answers.
+            # Who this conversation is handed to; "" when Astitvam answers.
             # The client restates it every turn, so the last one is current.
             "answer_by": str(payload.get("answer_by") or ""),
         }
@@ -889,10 +889,10 @@ class TurnRequestPreparer:
                 await self.store.transition_turn(
                     turn["id"],
                     "failed",
-                    error="DeepTutor is preparing an update; try again after it reconnects",
+                    error="Astitvam is preparing an update; try again after it reconnects",
                     failure_code="rejected",
                 )
-            raise RuntimeError("DeepTutor is preparing an update; try again after it reconnects")
+            raise RuntimeError("Astitvam is preparing an update; try again after it reconnects")
         mastery_lease_acquired = False
         if mastery_binding is not None and mastery_lease_managed:
             try:

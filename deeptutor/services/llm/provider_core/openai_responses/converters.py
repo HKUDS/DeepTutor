@@ -193,7 +193,7 @@ def convert_tools(
     boolean settings are preserved, including an opt-in to strict validation.
 
     With ``native_web_search=True`` (providers whose Responses API performs
-    web searches server-side, e.g. DeepSeek), DeepTutor's ``web_search``
+    web searches server-side, e.g. DeepSeek), Astitvam's ``web_search``
     function tool is declared as the provider's native ``{"type":
     "web_search"}`` tool instead of a function schema: the server runs the
     search mid-generation and the response carries ``web_search_call`` items
@@ -268,7 +268,7 @@ def adapt_chat_kwargs_to_responses(extra_kwargs: Mapping[str, Any]) -> dict[str,
     or ``max_tokens`` for older chat models. The Responses API does not accept
     either name and uses ``max_output_tokens`` instead, so the OpenAI SDK raises
     ``TypeError`` from ``responses.create`` before any HTTP request leaves the
-    client. See DeepTutor#437.
+    client. See Astitvam#437.
 
     Output formats use ``text.format`` instead of ``response_format``;
     JSON Schema options live directly in that format, without the chat

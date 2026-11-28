@@ -167,7 +167,7 @@ _OBJECT_PATTERN = re.compile(
 )
 
 # Phrases that are unambiguous on their own — the user naming the act of
-# configuring DeepTutor itself.
+# configuring Astitvam itself.
 _DIRECT_PATTERN = re.compile(
     r"(帮我配置|帮我设置|自己配置|配置一下\s*deeptutor|设置一下\s*deeptutor|初始化配置)"
     r"|(\bconfigure\s+deeptutor\b|\bset\s?up\s+deeptutor\b|\bsetup\s+wizard\b)",

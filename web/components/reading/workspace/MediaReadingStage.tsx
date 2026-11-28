@@ -335,7 +335,7 @@ export function MediaReadingStage({
       if (error === 101 || error === 150) {
         setPlayerError(
           t(
-            "This video's owner disabled embedded playback. Open it on YouTube; DeepTutor can still use captions when they are available.",
+            "This video's owner disabled embedded playback. Open it on YouTube; Astitvam can still use captions when they are available.",
           ),
         );
       } else if (error === 153) {

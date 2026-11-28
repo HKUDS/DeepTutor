@@ -58,8 +58,8 @@ def test_headers_and_one_row_per_card_with_deck_tag_guid_columns():
     front, back, deck, tags, guid = rows[0]
     assert "frequency" in front
     assert "Cycles" in back
-    assert deck == "DeepTutor::Fourier analysis"
-    assert tags == "deeptutor fourier-analysis"
+    assert deck == "Astitvam::Fourier analysis"
+    assert tags == "astitvam fourier-analysis"
     assert guid == cards[0]["card_id"]
     assert guid.startswith("flash:")
 
@@ -189,11 +189,11 @@ def test_fenced_code_language_is_not_part_of_the_code_body():
 
 
 def test_deck_title_sanitises_hierarchy_and_tags_slug_the_title():
-    assert deck_name("Child::Name") == "DeepTutor::Child — Name"
-    assert deck_name("") == "DeepTutor::Untitled"
-    assert note_tags("Fourier Transform") == "deeptutor fourier-transform"
-    assert note_tags("") == "deeptutor"
-    assert note_tags("deeptutor") == "deeptutor"
+    assert deck_name("Child::Name") == "Astitvam::Child — Name"
+    assert deck_name("") == "Astitvam::Untitled"
+    assert note_tags("Fourier Transform") == "astitvam fourier-transform"
+    assert note_tags("") == "astitvam"
+    assert note_tags("astitvam") == "astitvam"
 
 
 def test_storage_export_covers_every_note_in_the_workspace(tmp_path):
@@ -211,8 +211,8 @@ def test_storage_export_covers_every_note_in_the_workspace(tmp_path):
     fronts = {card["front"] for card in cards}
     assert fronts == {"From alpha", "From beta"}
     text = render_anki_export(cards)
-    assert "DeepTutor::Alpha" in text
-    assert "DeepTutor::Beta" in text
+    assert "Astitvam::Alpha" in text
+    assert "Astitvam::Beta" in text
 
 
 def test_protected_spans_do_not_nest_or_accept_user_placeholders():

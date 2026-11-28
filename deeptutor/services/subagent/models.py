@@ -1,7 +1,7 @@
 """Backend option discovery — the synced model + reasoning-effort lists.
 
 The /settings "Partners & Agents" page lets the user pick the model and
-reasoning effort DeepTutor drives each backend with. Those lists change over
+reasoning effort Astitvam drives each backend with. Those lists change over
 time (vendors add/retire models), so this is read live, not hard-coded, and the
 page's "sync" button just re-reads it:
 

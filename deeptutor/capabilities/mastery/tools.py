@@ -3473,7 +3473,7 @@ def _normalized_module_tree(
     """Reduce whatever the model emitted to ``[(name, objective, knowledge points)]``.
 
     The tool schema asks for ``[{name, knowledge_points: [{name, type}]}]``, but
-    DeepTutor runs on whatever model the learner brings, and smaller ones
+    Astitvam runs on whatever model the learner brings, and smaller ones
     routinely answer with ``objectives`` instead of ``modules``, ``title``
     instead of ``name``, bare strings instead of knowledge-point objects, or a
     flat objective list with no module layer at all (#1019). Every one of those

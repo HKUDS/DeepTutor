@@ -492,7 +492,7 @@ async def _open_upstream(
     base = settings["invidious"]["api_base_url"]
     public_base = settings["invidious"]["public_base_url"]
     client = httpx.AsyncClient(timeout=STREAM_TIMEOUT_SECONDS, follow_redirects=False)
-    headers = {"User-Agent": "DeepTutor/1.0", "Accept": mime}
+    headers = {"User-Agent": "Astitvam/1.0", "Accept": mime}
     if range_header:
         headers["Range"] = range_header
     current = url

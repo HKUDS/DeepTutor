@@ -1,6 +1,6 @@
 """Load an entry-point group without letting one bad plugin take the app down.
 
-DeepTutor exposes two plugin groups — ``deeptutor.plugins`` for capabilities the
+Astitvam exposes two plugin groups — ``deeptutor.plugins`` for capabilities the
 registry can run, ``deeptutor.loop_capabilities`` for chat-loop capabilities —
 and both need the same plumbing: read the group, import each target, hand it to
 a group-specific coercer, and skip whatever fails with a warning naming the

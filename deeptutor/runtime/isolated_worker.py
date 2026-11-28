@@ -4,7 +4,7 @@ Unlike ``multiprocessing.spawn``, the fixed ``python -m`` entry point works
 from Uvicorn, the CLI, notebooks, ``python -c``, and frozen test runners
 without requiring callers to guard their own main module. Arguments and
 results travel through private temporary pickle files; callable paths are
-fixed by DeepTutor code and are never accepted from an API request.
+fixed by Astitvam code and are never accepted from an API request.
 """
 
 from __future__ import annotations

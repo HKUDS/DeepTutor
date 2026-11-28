@@ -5,7 +5,7 @@
  * sub-trace ("Plan for 5s", "Round 3 · 8s", …). That made the
  * trace card noisy and made it hard to tell at a glance how long
  * the whole answer took. The current design hoists timing to the
- * single ``DeepTutor reasoning…`` status row at the top of the
+ * single ``Astitvam reasoning…`` status row at the top of the
  * answer: one number, ticking up while the turn is in flight and
  * frozen once the turn is done.
  *

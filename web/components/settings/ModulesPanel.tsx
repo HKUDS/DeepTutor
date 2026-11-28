@@ -10,7 +10,7 @@ export default function ModulesPanel() {
     <section className="my-6 rounded-xl border p-5">
       <h2 className="text-lg font-semibold">{t("Modules")}</h2>
       <p className="my-2 text-sm text-[var(--muted-foreground)]">
-        {t("Stop DeepTutor before changing modules. Removing a module keeps your data.")}
+        {t("Stop Astitvam before changing modules. Removing a module keeps your data.")}
       </p>
       {error && <button onClick={reload}>{t("Retry")}</button>}
       {!modules && !error && <p aria-busy="true">{t("Loading...")}</p>}

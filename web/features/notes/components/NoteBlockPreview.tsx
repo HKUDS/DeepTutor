@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowDown,
@@ -71,7 +70,9 @@ export default function NoteBlockPreview({
   )
   const image = (
     <div className="dt-note-preview-image">
-      <Image src="/brand/color-full.png" alt="" width={1600} height={313} unoptimized />
+      <span className="font-serif text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+        Astitvam
+      </span>
       <small>{t('Image caption')}</small>
     </div>
   )

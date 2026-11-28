@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MESSAGES, resolveLanguage, translate } from '../src/i18n.mjs';
 
-test('the shell starts in English and follows DeepTutor interface languages', () => {
+test('the shell starts in English and follows Astitvam interface languages', () => {
   assert.equal(resolveLanguage(undefined), 'en');
   assert.equal(resolveLanguage('auto'), 'en');
   assert.equal(resolveLanguage('zh'), 'zh');

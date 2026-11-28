@@ -1,4 +1,4 @@
-"""Import-cheap catalog for DeepTutor's built-in tools.
+"""Import-cheap catalog for Astitvam's built-in tools.
 
 The runtime registry needs to know which names exist at process boot, but it
 does not need the implementation classes until a turn actually mounts one.

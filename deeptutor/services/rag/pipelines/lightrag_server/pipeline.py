@@ -8,7 +8,7 @@ KB's endpoint, asks the server for grounded context (no server-side generation),
 and shapes the result for the ``rag`` tool. Indexing is offloaded entirely to the
 server, so :meth:`initialize` / :meth:`add_documents` are not part of this
 engine's job and fail with a clear message; :meth:`delete` is a no-op because
-deleting the KB only drops DeepTutor's pointer (handled by the manager) and must
+deleting the KB only drops Astitvam's pointer (handled by the manager) and must
 never touch the user's server.
 """
 
@@ -102,7 +102,7 @@ class LightRagServerPipeline:
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         raise RuntimeError(
             "LightRAG Server knowledge bases are indexed on the external server; "
-            "DeepTutor does not build or store their index. Add documents on the "
+            "Astitvam does not build or store their index. Add documents on the "
             "LightRAG server directly."
         )
 

@@ -47,7 +47,7 @@ export interface Answerers {
 }
 
 export interface AnswerModeProps {
-  /** DeepTutor's own register for this conversation; "" is its usual voice. */
+  /** Astitvam's own register for this conversation; "" is its usual voice. */
   persona?: { value: string; onChange: (persona: string) => void };
   answerers?: Answerers;
   /** Controlled open state, so `/persona` can open this list. */
@@ -59,7 +59,7 @@ export interface PartnerLinkProps {
   partners?: Choice<PartnerInfo>;
   groups?: Choice<PartnerGroup>;
   agents?: Choice<Agent> & {
-    /** Most times DeepTutor may ask the agent in one turn. */
+    /** Most times Astitvam may ask the agent in one turn. */
     budget?: number | null;
     onBudgetChange?: (budget: number) => void;
   };
@@ -87,11 +87,11 @@ function AgentFace({ kind, size }: { kind?: string; size: number }) {
 /**
  * How this conversation is answered — the right end of the composer tray.
  *
- * Two questions in one list: in what voice DeepTutor answers, and who answers
+ * Two questions in one list: in what voice Astitvam answers, and who answers
  * at all. Choosing a partner or a connected agent hands the turn to them
  * whole: they get the message as written, their reply is the answer, and their
- * work shows in the conversation the way DeepTutor's own does. Asking them
- * something on DeepTutor's behalf is a different thing and lives in the
+ * work shows in the conversation the way Astitvam's own does. Asking them
+ * something on Astitvam's behalf is a different thing and lives in the
  * partner menu beside this one.
  */
 export default function AnswerModeMenu({
@@ -107,7 +107,7 @@ export default function AnswerModeMenu({
   const id = kind ? chosen.slice(kind.length + 1) : "";
   const partner = kind === "partner" ? answerers?.partners.find((item) => item.partner_id === id) : undefined;
   const agent = kind === "subagent" ? answerers?.agents.find((item) => item.name === id) : undefined;
-  // The trigger names whoever answers; a voice only when DeepTutor does.
+  // The trigger names whoever answers; a voice only when Astitvam does.
   let icon: ReactNode = <UserRound size={14} strokeWidth={1.7} className="shrink-0" />;
   let value = persona?.value || t("Default");
   if (partner || kind === "partner") {
@@ -205,7 +205,7 @@ function AnswerList({
         )}
         {answerers && (
           <TraySection title={t("composer.tray.whoAnswers")} hint={t("composer.tray.whoAnswersHint")}>
-            {matches("DeepTutor") && (
+            {matches("Astitvam") && (
               <TrayOption
                 selected={!answerers.value}
                 onSelect={() => pick(null)}
@@ -261,9 +261,9 @@ function AnswerList({
 }
 
 /**
- * DeepTutor working with partners — the tray's partner menu.
+ * Astitvam working with partners — the tray's partner menu.
  *
- * Here DeepTutor still answers: it asks one partner, convenes a partner
+ * Here Astitvam still answers: it asks one partner, convenes a partner
  * group, or puts questions to a connected agent, and writes the reply from
  * what they said. One of these at a time, and none while the turn is handed
  * to someone outright.
@@ -411,13 +411,13 @@ function PartnerLinkList({
   );
 }
 
-/** How many times DeepTutor may ask the chosen agent this turn. */
+/** How many times Astitvam may ask the chosen agent this turn. */
 function Budget({ value, onChange }: { value: number | null; onChange: (value: number) => void }) {
   const { t } = useTranslation();
   const current = value ?? BUDGET_MIN;
   return (
     <div className="dt-tray-budget">
-      <span>{t("Max rounds DeepTutor may ask")}</span>
+      <span>{t("Max rounds Astitvam may ask")}</span>
       <span className="flex items-center gap-1">
         <button
           type="button"

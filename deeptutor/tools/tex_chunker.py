@@ -6,7 +6,7 @@ Features:
 2. Token estimation (based on GPT tokenizer)
 3. Maintain context coherence (overlap between chunks)
 
-Author: DeepTutor Team
+Author: Astitvam Team
 Version: v1.0
 Based on: TODO.md specification
 """

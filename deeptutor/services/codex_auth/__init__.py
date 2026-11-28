@@ -1,4 +1,4 @@
-"""Independent OpenAI Codex OAuth support for DeepTutor."""
+"""Independent OpenAI Codex OAuth support for Astitvam."""
 
 from .contracts import (
     CatalogSnapshot,

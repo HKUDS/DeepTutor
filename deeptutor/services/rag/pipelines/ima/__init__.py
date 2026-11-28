@@ -1,7 +1,7 @@
 """Tencent IMA integration — retrieval, inventory and authoring over a live library.
 
 A KB bound to the ``ima`` provider is a connection pointer to a library the user
-keeps in IMA (https://ima.qq.com) and curates there. DeepTutor never indexes or
+keeps in IMA (https://ima.qq.com) and curates there. Astitvam never indexes or
 stores anything locally; everything is an OpenAPI call:
 
 * :mod:`.pipeline` — the ``rag`` engine: ``search_knowledge`` plus a bounded

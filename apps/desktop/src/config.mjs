@@ -39,7 +39,7 @@ export function validateConfig(value) {
   }
   const relative = path.relative(result.sourcePath, result.runtimeHome);
   if (!relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
-    throw new Error('The desktop data folder must be outside the DeepTutor source folder');
+    throw new Error('The desktop data folder must be outside the Astitvam source folder');
   }
   return result;
 }

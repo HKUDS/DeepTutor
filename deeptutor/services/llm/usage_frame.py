@@ -2,7 +2,7 @@
 
 Token counts arrive in three shapes and every reader used to guess for itself:
 
-* a plain dict — DeepTutor's own :class:`~deeptutor.services.llm.types.TutorStreamChunk`
+* a plain dict — Astitvam's own :class:`~deeptutor.services.llm.types.TutorStreamChunk`
   carries ``usage: dict[str, int]``, and the native adapters build one directly;
 * a pydantic model — the OpenAI SDK's ``CompletionUsage``;
 * a bare object with attributes — some gateways and the Responses API SDK.
@@ -13,7 +13,7 @@ missing the dict case). This module is the only place the guessing happens.
 
 Key names differ by API dialect — chat completions says ``prompt_tokens`` while
 the Responses API says ``input_tokens`` — so :func:`token_counts` takes the
-source names and always returns DeepTutor's canonical triple.
+source names and always returns Astitvam's canonical triple.
 """
 
 from __future__ import annotations

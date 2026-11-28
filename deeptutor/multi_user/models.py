@@ -1,4 +1,4 @@
-"""Small data models for DeepTutor's optional multi-user layer."""
+"""Small data models for Astitvam's optional multi-user layer."""
 
 from __future__ import annotations
 

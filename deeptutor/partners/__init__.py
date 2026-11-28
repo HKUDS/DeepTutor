@@ -1,4 +1,4 @@
-"""Partners — IM-connected companions driven by the DeepTutor chat agent loop.
+"""Partners — IM-connected companions driven by the Astitvam chat agent loop.
 
 This package hosts the channel (IM) layer: the chat-platform integrations,
 the message bus that decouples them from the agent runtime, and their

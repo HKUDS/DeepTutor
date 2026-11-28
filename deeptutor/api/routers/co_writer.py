@@ -847,7 +847,7 @@ async def export_all_flashcards() -> Response:
     cards = cards_from_storage(get_co_writer_storage())
     if not cards:
         raise HTTPException(status_code=404, detail="No flashcards to export")
-    return _anki_text_response(render_anki_export(cards), "deeptutor-flashcards.txt")
+    return _anki_text_response(render_anki_export(cards), "astitvam-flashcards.txt")
 
 
 @router.get("/documents/{doc_id}", response_model=DocumentResponse)

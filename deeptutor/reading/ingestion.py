@@ -834,7 +834,7 @@ async def _load_bilibili_media(url: str, languages: Sequence[str]) -> BilibiliMe
     headers = {
         "Accept": "application/json",
         "Referer": request.canonical_url,
-        "User-Agent": "Mozilla/5.0 DeepTutor/ImmersiveReading",
+        "User-Agent": "Mozilla/5.0 Astitvam/ImmersiveReading",
     }
     async with httpx.AsyncClient(
         timeout=10,

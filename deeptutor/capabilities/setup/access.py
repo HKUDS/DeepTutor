@@ -20,7 +20,7 @@ A **partner is refused outright**, for either scope. A partner is a synthetic
 user whose owner is a real account: its turns resolve ownership to that person
 (:func:`~deeptutor.multi_user.paths.get_owner_path_service`), so honouring a
 configuration request from an IM-facing companion would mean letting whoever is
-chatting with it reconfigure the owner's DeepTutor — including, if the owner is
+chatting with it reconfigure the owner's Astitvam — including, if the owner is
 an administrator, the whole deployment.
 """
 
@@ -79,7 +79,7 @@ def can_write(scope: Scope) -> AccessDecision:
             allowed=False,
             reason=(
                 "Configuration cannot be changed from a partner conversation. "
-                "The owner can make this change in DeepTutor directly."
+                "The owner can make this change in Astitvam directly."
             ),
         )
     if scope == "personal":

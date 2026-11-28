@@ -988,7 +988,7 @@ async def get_settings():
         "connection_targets": _connection_targets(),
         # What actually runs on the background task model. The list comes from
         # the call sites themselves (one TaskKind each), so the task models page
-        # cannot list a task DeepTutor no longer makes — or miss a new one.
+        # cannot list a task Astitvam no longer makes — or miss a new one.
         "task_kinds": task_kind_payload(),
     }
 
@@ -1786,7 +1786,7 @@ async def test_mineru_connection(payload: MinerUSettingsUpdate):
             return {
                 "ok": False,
                 "message": (
-                    f"Local MinerU CLI reported {detail}. DeepTutor needs MinerU >= "
+                    f"Local MinerU CLI reported {detail}. Astitvam needs MinerU >= "
                     f"{MIN_MINERU_VERSION}; upgrade with "
                     f"`pip install -U 'mineru[all]>={MIN_MINERU_VERSION}'`."
                 ),
@@ -2169,7 +2169,7 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
                 detail=(
                     "Could not list GitHub Copilot models. "
                     "Run: deeptutor provider login github-copilot "
-                    "for this account in the server's DeepTutor home, "
+                    "for this account in the server's Astitvam home, "
                     "then retry. If already logged in, check Copilot access and connectivity."
                 ),
             ) from None
@@ -2581,7 +2581,7 @@ async def complete_tour(payload: TourCompletePayload | None = None):
 
     return {
         "status": "completed",
-        "message": "Configuration saved. DeepTutor will restart shortly.",
+        "message": "Configuration saved. Astitvam will restart shortly.",
         "launch_at": launch_at,
         "redirect_at": redirect_at,
         "runtime": applied,

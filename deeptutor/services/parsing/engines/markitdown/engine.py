@@ -55,7 +55,7 @@ class MarkItDownParser:
                 ready=False,
                 reason="update_required",
                 message=(
-                    f"Installed markitdown {version or 'unknown'} is too old. DeepTutor needs "
+                    f"Installed markitdown {version or 'unknown'} is too old. Astitvam needs "
                     f"markitdown >= {MIN_MARKITDOWN_VERSION} with all format extras. Update it "
                     "under Settings → Document Parsing."
                 ),

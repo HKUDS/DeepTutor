@@ -1,6 +1,6 @@
 """Core data models for the MarginNote 4 bridge.
 
-These types describe MN4 objects as they land in DeepTutor after sync.
+These types describe MN4 objects as they land in Astitvam after sync.
 The MN4 Add-on serialises its native objects (notes, excerpts, cards, mindmap
 nodes, documents) into :class:`MarginNoteObject` rows that the sync store
 indexes and the capability tools query.
@@ -11,7 +11,7 @@ Design notes
   so re-syncs update in place instead of creating duplicates.
 * Text fields (``title``, ``excerpt``, ``content``) are plain strings — no
   HTML or MN4 markup. The Add-on is responsible for flattening rich text.
-* ``raw`` preserves the original MN4 JSON for fields DeepTutor does not model
+* ``raw`` preserves the original MN4 JSON for fields Astitvam does not model
   yet, so the schema can grow without re-syncing.
 * ``device_id`` ties each object to the paired device that synced it, so a
   user with multiple devices can tell which copy is authoritative.
@@ -58,7 +58,7 @@ class MarginNoteObject:
         color:  MN4 highlight colour label, when applicable.
         created_at:  ISO-8601 timestamp from MN4.
         updated_at:  ISO-8601 timestamp from MN4 (last modification).
-        synced_at:  ISO-8601 timestamp when DeepTutor received this version.
+        synced_at:  ISO-8601 timestamp when Astitvam received this version.
         device_id:  The paired device that synced this object.
         raw:  Original MN4 JSON payload, preserved verbatim for forward compat.
     """
@@ -114,7 +114,7 @@ class SyncResult:
 
 @dataclass(slots=True)
 class PairedDevice:
-    """A MarginNote 4 device registered with this DeepTutor instance.
+    """A MarginNote 4 device registered with this Astitvam instance.
 
     Attributes:
         device_id:  Stable identifier generated at pairing time.
@@ -137,7 +137,7 @@ class PairedDevice:
 class LearningEvent:
     """A study event observed on the MN4 side (Phase 3).
 
-    Captures a review or study interaction so DeepTutor can track mastery
+    Captures a review or study interaction so Astitvam can track mastery
     without touching MN4's private FSRS scheduling data.
 
     Attributes:

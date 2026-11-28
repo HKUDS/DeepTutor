@@ -1,6 +1,6 @@
 """Client for Tencent IMA's knowledge-base OpenAPI (``/openapi/wiki/v1``).
 
-A method table over the calls DeepTutor needs, with the wire mechanics delegated
+A method table over the calls Astitvam needs, with the wire mechanics delegated
 to :class:`~deeptutor.services.rag.pipelines.ima.transport.ImaTransport`, the
 payload decoding to :mod:`.models`, and file downloads to :mod:`.media`:
 

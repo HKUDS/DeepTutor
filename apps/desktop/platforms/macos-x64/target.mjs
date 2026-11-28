@@ -1,4 +1,4 @@
-// Open DeepTutor for MacOS with Intel Silicon. Builds on an Intel Mac, or on
+// Astitvam for MacOS with Intel Silicon. Builds on an Intel Mac, or on
 // Apple Silicon through Rosetta: every build tool runs from the x64 toolchain.
 export default {
   id: 'macos-x64', platform: 'darwin', arch: 'x64',
@@ -7,5 +7,5 @@ export default {
   // PyMuPDF 2 and cryptography 50 ship no Intel Mac wheels and their sources do not
   // build here; wheels only resolves to the newest releases that do (PyMuPDF 1.28).
   pip: ['--only-binary', ':all:'],
-  artifact: 'Open-DeepTutor-MacOS-Intel',
+  artifact: 'Astitvam-MacOS-Intel',
 };

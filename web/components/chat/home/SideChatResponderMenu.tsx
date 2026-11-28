@@ -3,7 +3,7 @@
 /**
  * Who answers in a side chat — the far end of its composer tray.
  *
- * In the main chat this end holds two menus: who DeepTutor works with, and
+ * In the main chat this end holds two menus: who Astitvam works with, and
  * who answers at all. A side chat has one question only, because who answers
  * is what the side chat is: Dito, a partner, a partner group (convened by
  * Dito), or a connected agent. Picking another hands the next message to

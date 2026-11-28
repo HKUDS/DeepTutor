@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_CHARS = 50_000
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024  # 4 MB — safety cap on raw download
 DEFAULT_TIMEOUT_S = 15.0
-DEFAULT_USER_AGENT = "DeepTutor/1.0 (+https://hkuds.dev/deeptutor)"
+DEFAULT_USER_AGENT = "Astitvam/1.0 (+https://hkuds.dev/deeptutor)"
 ALLOWED_SCHEMES = {"http", "https"}
 MAX_REDIRECTS = 5
 

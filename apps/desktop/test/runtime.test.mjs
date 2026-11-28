@@ -89,7 +89,7 @@ test('occupied ports are left alone and an available port is chosen', async t =>
 });
 
 test('a signed bundle installs from and into paths containing spaces and Chinese characters', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'DeepTutor 安装 test '));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'Astitvam 安装 test '));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
   const source = path.join(root, 'source');
   const seed = path.join(root, 'seed');
@@ -145,7 +145,7 @@ test('readiness polling can be cancelled', async () => {
 });
 
 test('public placeholders are patched in a cache, preserving immutable bundle', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'Open DeepTutor test '));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'Astitvam test '));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = path.join(root, 'source');
   await mkdir(path.join(source, '.next/static'), { recursive: true });

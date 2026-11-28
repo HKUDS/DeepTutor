@@ -6,7 +6,7 @@ owns the *shared* half — the turn's runtime context, the user's own material
 blocks (who the assistant is, and what a round of this loop means) through
 :meth:`foundation_blocks`, which is where a loop that is not chat differs.
 
-Chat's foundation is "you are DeepTutor, here is the exploring-loop protocol".
+Chat's foundation is "you are Astitvam, here is the exploring-loop protocol".
 A tutoring loop's foundation is its own playbook, and it says so as the first
 thing the model reads rather than as an addendum to chat's.
 """
@@ -193,7 +193,7 @@ class LoopPromptAssembler:
         Identity, the runtime facts of the turn, the standing policy, and what
         one round of the loop means. A loop with its own protocol overrides
         this wholesale rather than appending a correction to chat's — the
-        difference between "you are a tutor" and "you are DeepTutor, but in
+        difference between "you are a tutor" and "you are Astitvam, but in
         this mode behave like a tutor" is most of why a specialised mode reads
         as a chat wearing a hat.
         """
@@ -209,7 +209,7 @@ class LoopPromptAssembler:
 
         Partner turns carry ``metadata["agent_identity"]`` (user-given name +
         description); their identity comes from that and the Soul block, so
-        the "You are DeepTutor" general is swapped for ``general_partner``.
+        the "You are Astitvam" general is swapped for ``general_partner``.
         Chat turns carry no identity and render the general block unchanged.
         """
         identity = context.metadata.get("agent_identity")

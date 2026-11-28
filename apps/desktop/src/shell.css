@@ -44,7 +44,10 @@ body {
 }
 .brand { display: flex; flex-direction: column; align-items: center; animation: rise .9s cubic-bezier(.2, .8, .2, 1) both; }
 .mark { width: 56px; height: 56px; margin-bottom: 24px; }
-.wordmark { width: 184px; height: auto; }
+.wordmark {
+  color: var(--fg); font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px; font-weight: 600; letter-spacing: -.035em;
+}
 .tagline { margin: 18px 0 0; font-size: 13px; color: var(--muted); letter-spacing: .005em; }
 
 .loading { margin-top: 56px; display: flex; flex-direction: column; align-items: center; gap: 14px; animation: fade 1s .3s both; }

@@ -6,7 +6,7 @@ Features:
 2. Extract and locate main tex file
 3. Read tex content
 
-Author: DeepTutor Team
+Author: Astitvam Team
 Version: v1.0
 Based on: TODO.md specification
 """

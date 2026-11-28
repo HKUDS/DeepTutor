@@ -30,7 +30,7 @@ VERSION_CHECK_TTL_SECONDS = 24 * 60 * 60
 LAUNCHER_PID_ENV = "DEEPTUTOR_LAUNCHER_PID"
 SYSTEMD_UPDATE_REASON = (
     "In-app updates are unavailable under a systemd service because systemd may stop "
-    "the update worker with the service. Stop the service, upgrade DeepTutor with "
+    "the update worker with the service. Stop the service, upgrade Astitvam with "
     "the same Python environment, then start the service with systemctl."
 )
 
@@ -136,7 +136,7 @@ def _optional_string(value: object) -> str | None:
 def _version_tuple(value: str) -> tuple[int, int, int]:
     match = _CURRENT_VERSION.match(value.strip())
     if match is None:
-        raise ValueError(f"Invalid DeepTutor version: {value}")
+        raise ValueError(f"Invalid Astitvam version: {value}")
     return tuple(int(part) for part in match.groups())  # type: ignore[return-value]
 
 
@@ -244,7 +244,7 @@ def detect_installation() -> Installation:
             current_version=__version__,
             automatic_update=False,
             command="pip install -U deeptutor",
-            reason="The running DeepTutor distribution could not be identified.",
+            reason="The running Astitvam distribution could not be identified.",
         )
     if bool((direct_url.get("dir_info") or {}).get("editable")):
         return Installation(
@@ -350,7 +350,7 @@ class VersionCheckService:
                     headers={
                         "Accept": "application/vnd.github+json",
                         "X-GitHub-Api-Version": "2022-11-28",
-                        "User-Agent": "DeepTutor-Version-Check",
+                        "User-Agent": "Astitvam-Version-Check",
                     },
                 )
                 response.raise_for_status()
@@ -365,7 +365,7 @@ class VersionCheckService:
         try:
             response = await client.head(
                 self._latest_url,
-                headers={"User-Agent": "DeepTutor-Version-Check"},
+                headers={"User-Agent": "Astitvam-Version-Check"},
                 follow_redirects=False,
             )
             if response.is_redirect:
@@ -441,7 +441,7 @@ def _release_from_latest_url(value: str) -> ReleaseInfo:
         raise VersionCheckError("The latest release has an invalid version") from None
     return ReleaseInfo(
         version=version,
-        name=f"DeepTutor {version}",
+        name=f"Astitvam {version}",
         published_at="",
         url=f"https://github.com{parsed.path}",
         excerpt="",
@@ -491,7 +491,7 @@ class UpdateJobStore:
         current = _normalise_stable_version(current_version)
         target = _normalise_stable_version(target_version)
         if _version_tuple(target) <= _version_tuple(current):
-            raise UpdateRequestError("No newer DeepTutor release is available")
+            raise UpdateRequestError("No newer Astitvam release is available")
         self.root.mkdir(parents=True, exist_ok=True)
         job = UpdateJob(
             id=uuid.uuid4().hex,

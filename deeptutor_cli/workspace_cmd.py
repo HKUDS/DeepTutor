@@ -31,7 +31,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("reset")
     def reset() -> None:
-        """Return to DeepTutor's default content workspace."""
+        """Return to Astitvam's default content workspace."""
         from deeptutor.services.workspace import WorkspaceError, get_content_workspace_service
 
         try:

@@ -131,7 +131,7 @@ class ResearchClient:
                     ok, detail = await validate_mcp_url_async(url, strict=True)
                     if not ok:
                         raise ResearchError(detail)
-                    headers = {"User-Agent": "DeepTutor-Research/1", "Accept": accept}
+                    headers = {"User-Agent": "Astitvam-Research/1", "Accept": accept}
                     if parsed.hostname == "api.github.com" and self.github_token:
                         headers["Authorization"] = f"Bearer {self.github_token}"
                     async with client.stream("GET", url, headers=headers) as response:

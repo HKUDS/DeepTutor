@@ -50,7 +50,7 @@ class SubagentBackend(ABC):
         """Put one question to the subagent and stream every native event.
 
         ``session_id`` resumes the backend's prior session for this turn (so the
-        subagent keeps context across DeepTutor's successive questions); the
+        subagent keeps context across Astitvam's successive questions); the
         returned :class:`ConsultResult` carries the session id to thread into the
         next consult. ``images`` are local file paths the user forwarded with the
         question (Codex attaches them with ``-i``; Claude Code is pointed at them

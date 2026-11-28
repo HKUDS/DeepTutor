@@ -304,8 +304,8 @@ export function SidebarShell({
         {/* The open sidebar's header, stood on end: the workspace (with its
             menu of settings and account), the way back out, then search. */}
         {bodySlot ? (
-          <Link href={brandHref} prefetch={false} aria-label="DeepTutor" className="dt-rail-brand">
-            <Image src="/brand/color-logo.png" alt="DeepTutor" width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
+          <Link href={brandHref} prefetch={false} aria-label={t("Astitvam") as string} className="dt-rail-brand">
+            <Image src="/brand/color-logo.png" alt={t("Astitvam") as string} width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
           </Link>
         ) : (
           <WorkspaceMenu compact accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
@@ -365,19 +365,14 @@ export function SidebarShell({
           <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
             <Image
               src="/brand/color-logo.png"
-              alt="DeepTutor"
+              alt={t("Astitvam") as string}
               width={22}
               height={22}
               className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
             />
-            <Image
-              src="/brand/color-word.png"
-              alt="DeepTutor"
-              width={1200}
-              height={310}
-              priority
-              className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
-            />
+            <span className="bg-gradient-to-r from-sky-500 to-orange-400 bg-clip-text font-serif text-[17px] font-semibold tracking-tight text-transparent transition-transform duration-200 group-hover:scale-105">
+              {t("Astitvam")}
+            </span>
           </Link>
           {/* The rail is a desktop affordance; in the drawer the scrim and the
               top-bar toggle already own "make this go away". */}
@@ -391,30 +386,37 @@ export function SidebarShell({
         </div>
       ) : (
         <div className="dt-sidebar-header">
-          <WorkspaceMenu accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
-          <Tooltip label={t("navigation.search")} side="bottom" shortcut={SHORTCUTS.search}>
-            <button
-              type="button"
-              className="dt-nav-icon dt-sidebar-search"
-              aria-label={t("navigation.search")}
-              aria-haspopup="dialog"
-              onClick={() => setPaletteOpen(true)}
-            >
-              <Search size={16} strokeWidth={1.7} />
-            </button>
-          </Tooltip>
-          {/* The rail is a desktop affordance; in the drawer the scrim and the
-              top-bar toggle already own "make this go away". */}
-          <Tooltip label={t("Collapse sidebar")} side="bottom">
-            <button
-              type="button"
-              onClick={() => setCollapsed(true)}
-              className="dt-nav-icon max-md:hidden"
-              aria-label={t("Collapse sidebar")}
-            >
-              <ChevronsLeft size={17} strokeWidth={1.6} />
-            </button>
-          </Tooltip>
+          <Link href={brandHref} prefetch={false} aria-label={t("Astitvam") as string} className="dt-sidebar-brand">
+            <span className="bg-gradient-to-r from-sky-500 to-orange-400 bg-clip-text font-serif text-[17px] font-semibold tracking-tight text-transparent">
+              {t("Astitvam")}
+            </span>
+          </Link>
+          <div className="dt-sidebar-header-controls">
+            <WorkspaceMenu accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
+            <Tooltip label={t("navigation.search")} side="bottom" shortcut={SHORTCUTS.search}>
+              <button
+                type="button"
+                className="dt-nav-icon dt-sidebar-search"
+                aria-label={t("navigation.search")}
+                aria-haspopup="dialog"
+                onClick={() => setPaletteOpen(true)}
+              >
+                <Search size={16} strokeWidth={1.7} />
+              </button>
+            </Tooltip>
+            {/* The rail is a desktop affordance; in the drawer the scrim and the
+                top-bar toggle already own "make this go away". */}
+            <Tooltip label={t("Collapse sidebar")} side="bottom">
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                className="dt-nav-icon max-md:hidden"
+                aria-label={t("Collapse sidebar")}
+              >
+                <ChevronsLeft size={17} strokeWidth={1.6} />
+              </button>
+            </Tooltip>
+          </div>
         </div>
       )}
 

@@ -65,8 +65,8 @@
   "Attachment processing": "첨부 파일 처리",
   "Attach": "첨부",
   "Attach files": "파일 첨부",
-  "Uploaded to DeepTutor": "DeepTutor에 업로드했습니다",
-  "Sending to DeepTutor": "DeepTutor로 전송 중",
+  "Uploaded to Astitvam": "Astitvam에 업로드했습니다",
+  "Sending to Astitvam": "Astitvam로 전송 중",
   "Sending to document parser": "문서 분석기로 전송 중",
   "Document parser is processing": "문서를 분석하는 중",
   "Retrieving parsed result": "분석 결과를 가져오는 중",
@@ -491,7 +491,7 @@
   "Add your provider and credentials, then test the connection.": "제공업체와 인증 정보를 추가한 뒤 연결을 테스트하세요.",
   "2. Choose a chat model": "2. 대화 모델 선택",
   "Home": "홈",
-  "Welcome to DeepTutor": "DeepTutor에 오신 것을 환영합니다",
+  "Welcome to Astitvam": "Astitvam에 오신 것을 환영합니다",
   "How can I help you today?": "오늘은 어떤 학습을 도와드릴까요?",
   "Ask Questions": "질문하기",
   "Visualize": "시각화",
@@ -672,5 +672,7 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Astitvam": "Astitvam",
+  "Owned by Sunil Kumar": "소유자: Sunil Kumar"
 }

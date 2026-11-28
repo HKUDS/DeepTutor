@@ -679,7 +679,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         </h2>
         <p className="mx-auto max-w-sm text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {t(
-            "Import a ChatGPT data export or add a Claude Code or Codex folder, then open any conversation to continue it in DeepTutor.",
+            "Import a ChatGPT data export or add a Claude Code or Codex folder, then open any conversation to continue it in Astitvam.",
           )}
         </p>
       </div>

@@ -118,18 +118,14 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             <Link href={homeHref} className="flex items-center gap-1.5">
               <Image
                 src="/brand/color-logo.png"
-                alt="DeepTutor"
+                alt="Astitvam"
                 width={20}
                 height={20}
                 className="h-5 w-5"
               />
-              <Image
-                src="/brand/color-word.png"
-                alt="DeepTutor"
-                width={1200}
-                height={310}
-                className="h-[18px] w-auto"
-              />
+              <span className="font-serif text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+                Astitvam
+              </span>
             </Link>
           </div>
 

@@ -4,7 +4,7 @@ Implements the same contract as :class:`LlamaIndexPipeline` (see
 ``..base.RAGPipeline``) but delegates indexing and retrieval to a local
 microsoft/graphrag project. Each KB owns a self-contained GraphRAG project under
 its ``version-N`` directory (see ``storage``); documents are parsed to text by
-DeepTutor first (see ``ingestion``) so GraphRAG only ever sees ``.txt`` input.
+Astitvam first (see ``ingestion``) so GraphRAG only ever sees ``.txt`` input.
 
 GraphRAG is an optional dependency: every method fails with a clear, actionable
 message when it is not installed instead of an opaque ``ImportError``.
@@ -252,7 +252,7 @@ class GraphRagPipeline:
 
 
 def _context_to_sources(context_data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Map GraphRAG context records into DeepTutor's source-citation shape."""
+    """Map GraphRAG context records into Astitvam's source-citation shape."""
     sources: list[dict[str, Any]] = []
     if not isinstance(context_data, dict):
         return sources

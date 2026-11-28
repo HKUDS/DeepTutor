@@ -17,11 +17,11 @@ def should_send_embedding_dimensions(
     dimension: int | None,
     send_dimensions: bool | None,
 ) -> bool:
-    """Apply DeepTutor's tri-state ``dimensions`` request policy.
+    """Apply Astitvam's tri-state ``dimensions`` request policy.
 
     Explicit user choices always win. In automatic mode, Jina uses its known
     Matryoshka dimensions while OpenAI-compatible transports use the model
-    families already supported by DeepTutor's regular embedding adapters.
+    families already supported by Astitvam's regular embedding adapters.
     """
     if not dimension:
         return False

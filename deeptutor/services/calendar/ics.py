@@ -21,9 +21,9 @@ from zoneinfo import ZoneInfo
 from .models import CalendarEntry, CalendarEvent
 from .recurrence import Timing, parse_instant, to_wall, zone
 
-PRODID = "-//HKUDS//DeepTutor//EN"
+PRODID = "-//HKUDS//Astitvam//EN"
 UID_HOST = "deeptutor"
-DEFAULT_CALENDAR_NAME = "DeepTutor"
+DEFAULT_CALENDAR_NAME = "Astitvam"
 _FOLD = 75
 _TZ_PAD_YEARS = 1
 _TZ_MAX_SPAN = 40
@@ -52,7 +52,7 @@ def render_calendar(
             when ``calendar_name`` is omitted).
         events: Master rows and override rows to serialise.
         calendar_name: ``X-WR-CALNAME``. Defaults to the sole calendar's name
-            or ``DeepTutor``.
+            or ``Astitvam``.
     """
     title = calendar_name or _calendar_title(calendars)
     masters = [event for event in events if not event.series_id]

@@ -23,7 +23,7 @@ const ROWS: { key: ModelCapabilityKey; label: string }[] = [
 /**
  * Per-model capability overrides.
  *
- * Each row is a three-way choice: follow DeepTutor's built-in tables ("Auto",
+ * Each row is a three-way choice: follow Astitvam's built-in tables ("Auto",
  * shown together with what they currently say), or declare the answer. The
  * Auto values come from the backend so the UI never keeps a second copy of
  * the tables; the reasoning row's Auto is what the effort selector already
@@ -130,7 +130,7 @@ export function ModelCapabilityFields({
       </div>
       <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
         {t(
-          "Override what DeepTutor assumes about this model. Auto follows the built-in tables.",
+          "Override what Astitvam assumes about this model. Auto follows the built-in tables.",
         )}
       </p>
     </div>

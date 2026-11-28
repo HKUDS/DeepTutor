@@ -286,7 +286,7 @@ class PartnerRunner:
     # ── one turn ──────────────────────────────────────────────────
 
     def _identify(self, msg: InboundMessage) -> None:
-        """Attach the sender's DeepTutor identity to a channel message, if any.
+        """Attach the sender's Astitvam identity to a channel message, if any.
 
         In-app turns arrive with an actor already set. A channel message
         carries only a sender id, which counts as an identity once that account
@@ -739,7 +739,7 @@ class PartnerRunner:
             "chat_id": msg.chat_id,
             "sender_id": msg.sender_id,
             "session_key": session_key,
-            # Swaps the system prompt's product identity ("You are DeepTutor")
+            # Swaps the system prompt's product identity ("You are Astitvam")
             # for the partner's user-given identity; the Soul does the rest.
             "agent_identity": {
                 "name": self.config.name,

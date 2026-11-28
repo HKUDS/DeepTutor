@@ -1,6 +1,6 @@
 """Docling version and input-format compatibility helpers.
 
-The fallback mirrors Docling 2.148.0, the minimum version DeepTutor installs.
+The fallback mirrors Docling 2.148.0, the minimum version Astitvam installs.
 The list stays static on purpose. Importing even Docling's format-model module
 loads Transformers and PyTorch in current Docling releases. On macOS the
 PyTorch and FAISS wheels bundle different OpenMP runtimes, and putting both in
@@ -115,7 +115,7 @@ DOCLING_2_148_0_FORMATS = frozenset(
 
 
 def docling_supported_formats() -> frozenset[str]:
-    """Return the formats supported by DeepTutor's Docling compatibility floor.
+    """Return the formats supported by Astitvam's Docling compatibility floor.
 
     Do not import ``docling`` here. This helper is called by upload-policy and
     file-routing paths that must stay independent of Docling's ML runtime.
@@ -128,7 +128,7 @@ def installed_docling_version() -> str:
 
 
 def docling_version_is_current(version: str | None = None) -> bool:
-    """Whether ``version`` satisfies DeepTutor's Docling compatibility floor."""
+    """Whether ``version`` satisfies Astitvam's Docling compatibility floor."""
 
     def release(value: str) -> tuple[int, ...]:
         match = re.match(r"\d+(?:\.\d+)*", str(value or "").strip())

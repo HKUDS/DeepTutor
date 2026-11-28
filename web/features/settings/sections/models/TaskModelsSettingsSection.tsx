@@ -9,7 +9,7 @@ export default function TaskModelsSettingsPage() {
       <SettingsPageHeader
         title={t("Task models")}
         description={t(
-          "The model behind the calls DeepTutor makes on its own — titles, suggestions, lookups. Set one for all of them, or give a task its own.",
+          "The model behind the calls Astitvam makes on its own — titles, suggestions, lookups. Set one for all of them, or give a task its own.",
         )}
       />
       <TaskModelsWorkspace />

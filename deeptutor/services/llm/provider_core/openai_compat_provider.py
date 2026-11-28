@@ -496,7 +496,7 @@ class OpenAICompatProvider(LLMProvider):
         sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
         if responses_api:
             # Responses function calls use the provider-issued ``call_id`` as
-            # a protocol identity. The converter splits DeepTutor's compound
+            # a protocol identity. The converter splits Astitvam's compound
             # ``call_id|item_id`` form itself; hashing it here would make the
             # later function_call_output point at a different call than the
             # replayed native function_call item.

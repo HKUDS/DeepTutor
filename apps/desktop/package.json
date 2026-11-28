@@ -1,9 +1,10 @@
 {
   "name": "open-deeptutor",
-  "productName": "Open DeepTutor",
+  "productName": "Astitvam",
   "version": "0.0.0",
   "private": true,
-  "description": "Open DeepTutor for MacOS and Windows: DeepTutor's local runtime in a native window",
+  "description": "Astitvam for MacOS and Windows: an agent-native learning companion in a native window",
+  "author": "Sunil Kumar",
   "license": "Apache-2.0",
   "type": "module",
   "main": "src/main.mjs",

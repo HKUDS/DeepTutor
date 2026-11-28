@@ -1,4 +1,4 @@
-"""Resolve DeepTutor model bindings at the GraphRAG/LiteLLM boundary."""
+"""Resolve Astitvam model bindings at the GraphRAG/LiteLLM boundary."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _runtime_binding(llm_cfg: Any) -> str:
 
 
 def resolve_completion_provider(llm_cfg: Any) -> str:
-    """Map a resolved DeepTutor provider to the narrow LiteLLM transport GraphRAG needs."""
+    """Map a resolved Astitvam provider to the narrow LiteLLM transport GraphRAG needs."""
     binding = _runtime_binding(llm_cfg)
     spec = find_by_name(binding)
     if spec is None:
@@ -39,7 +39,7 @@ def resolve_completion_provider(llm_cfg: Any) -> str:
         )
     if backend == "openai_compat":
         # DeepSeek's LiteLLM provider owns its parameter compatibility logic.
-        # Other DeepTutor OpenAI-compatible profiles already expose an OpenAI
+        # Other Astitvam OpenAI-compatible profiles already expose an OpenAI
         # chat-completions endpoint and are safest on the generic transport.
         return "deepseek" if spec.name == "deepseek" else "openai"
     raise GraphRagUnsupportedProviderError(
@@ -82,7 +82,7 @@ def resolve_completion_call_args(llm_cfg: Any) -> dict[str, Any]:
 
 
 def resolve_persisted_completion_provider(model_config: Any) -> str:
-    """Recover a provider for old DeepTutor GraphRAG settings without rewriting them."""
+    """Recover a provider for old Astitvam GraphRAG settings without rewriting them."""
     current = str(getattr(model_config, "model_provider", "") or "openai")
     if current != "openai":
         return current

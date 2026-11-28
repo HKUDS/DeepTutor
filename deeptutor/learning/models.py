@@ -529,7 +529,7 @@ class MasteryPathLease(BaseModel):
 class TopicSourceKind(str, Enum):
     """What a learner may point a mastery goal at.
 
-    Everything DeepTutor already holds for them is fair game: their library
+    Everything Astitvam already holds for them is fair game: their library
     (``BOOK``), their notes (``NOTEBOOK``), an indexed corpus or one document
     inside it (``KNOWLEDGE_BASE`` / ``FILE``), and — added with the mastery
     goal rework — the working history that shows what they have actually been

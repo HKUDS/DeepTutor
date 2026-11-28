@@ -485,7 +485,7 @@ class NapcatChannel(BaseChannel):
                 return None
             return {"type": "image", "data": {"file": ref}}
         # Local path → base64 so it works even when NapCat runs on a
-        # different host/container than DeepTutor.
+        # different host/container than Astitvam.
         path = Path(os.path.expanduser(ref)).resolve()
         if not path.is_file():
             logger.warning("napcat: local image not found: {}", path)

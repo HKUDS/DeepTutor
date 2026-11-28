@@ -11,7 +11,7 @@ import wave
 from .base import VoiceProviderError
 
 FFMPEG_STT_INSTALL_HINT = (
-    "Install FFmpeg, add its bin directory to DeepTutor's PATH, then restart DeepTutor."
+    "Install FFmpeg, add its bin directory to Astitvam's PATH, then restart Astitvam."
 )
 
 

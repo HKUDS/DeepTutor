@@ -28,8 +28,12 @@ const fontSerif = Lora({
 export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 
 export const metadata: Metadata = {
-  title: "DeepTutor",
+  title: "Astitvam",
+  applicationName: "Astitvam",
   description: "Agent-native intelligent learning companion",
+  authors: [{ name: "Sunil Kumar" }],
+  creator: "Sunil Kumar",
+  publisher: "Sunil Kumar",
   icons: {
     icon: [
       { url: "/brand/favicon-16x16.png", sizes: "16x16", type: "image/png" },

@@ -25,8 +25,8 @@ from deeptutor.services.subagent.types import (
 )
 
 CONSULT_ORIGIN_INSTRUCTION = (
-    "Caller identity: DeepTutor Connected Agents. Answer the user's question directly; "
-    "do not route the question to DeepTutor."
+    "Caller identity: Astitvam Connected Agents. Answer the user's question directly; "
+    "do not route the question to Astitvam."
 )
 _ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _REMOTE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,511}\Z")
@@ -168,7 +168,7 @@ class HermesRemoteBackend(SubagentBackend):
             return result
 
         # The gateway contract has no attachment upload field. Do not leak
-        # DeepTutor-local filesystem paths to a remote process.
+        # Astitvam-local filesystem paths to a remote process.
         prompt = question
         try:
             async with self._client(run_config, key) as client:

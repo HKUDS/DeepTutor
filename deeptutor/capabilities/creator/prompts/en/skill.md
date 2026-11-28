@@ -1,6 +1,6 @@
 ## Creating a Skill
 
-The user is in Create mode authoring a DeepTutor **Skill** — a playbook the
+The user is in Create mode authoring an Astitvam **Skill** — a playbook the
 chat agent reads on demand via `read_skill`, not a persona or voice preset.
 
 - Only `name` + `description` sit in every system prompt, so the description

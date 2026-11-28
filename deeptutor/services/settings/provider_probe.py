@@ -117,7 +117,7 @@ def test_search_access(
     proxy: str = "",
     max_results: int = 1,
     require_results: bool = True,
-    query: str = "DeepTutor configuration health check",
+    query: str = "Astitvam configuration health check",
 ):
     """Test exactly one search adapter, never a fallback or live credentials."""
     from deeptutor.services.config.provider_runtime import (

@@ -22,7 +22,7 @@ from deeptutor.core.context import UnifiedContext
 # Deliberately omits ``runtime_context``: exercises the code-default fallback,
 # so the date is injected even when a prompt map lacks the entry.
 PROMPTS_NO_RUNTIME = {
-    "general": "You are DeepTutor.",
+    "general": "You are Astitvam.",
     "runtime_policy": "policy",
     "loop": {"system": "loop"},
 }

@@ -1,6 +1,6 @@
 """Resolve a knowledge base's bound RAG provider.
 
-DeepTutor owns the knowledge-base lifecycle and stores the authoritative
+Astitvam owns the knowledge-base lifecycle and stores the authoritative
 provider binding in ``kb_config.json``. Older KBs may only have
 ``metadata.json``, so metadata remains a legacy fallback. Retrieval and
 incremental indexing should use this helper instead of hand-reading either file
@@ -43,7 +43,7 @@ def load_metadata_provider(kb_base_dir: str | Path, kb_name: str) -> str | None:
 
 
 def resolve_bound_provider(kb_base_dir: str | Path, kb_name: str | None) -> str:
-    """Resolve the provider DeepTutor has bound to a KB.
+    """Resolve the provider Astitvam has bound to a KB.
 
     Order:
     1. ``kb_config.json``: authoritative runtime state.

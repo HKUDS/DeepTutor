@@ -1,6 +1,6 @@
 """Provider-owned index readiness probes.
 
-DeepTutor owns KB lifecycle/status, but each RAG provider owns the shape of its
+Astitvam owns KB lifecycle/status, but each RAG provider owns the shape of its
 persisted index. This module is the narrow read-only seam between those worlds:
 callers ask "is this provider index really queryable?" and get a structured
 answer without knowing provider-specific filenames.

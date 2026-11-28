@@ -1,6 +1,6 @@
 """Partner Manager — create / start / stop / manage in-process partners.
 
-Each partner runs as a set of asyncio tasks within the DeepTutor server
+Each partner runs as a set of asyncio tasks within the Astitvam server
 process: a ``PartnerRunner`` (chat-agent-loop driver), an outbound message
 router, and one listener task per enabled IM channel. Every partner owns an
 isolated chat-format workspace under ``data/partners/{partner_id}/``.

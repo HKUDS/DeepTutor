@@ -1,4 +1,4 @@
-"""Setup loop capability — DeepTutor inspecting and changing its own configuration."""
+"""Setup loop capability — Astitvam inspecting and changing its own configuration."""
 
 from deeptutor.capabilities.setup.capability import SetupCapability
 from deeptutor.capabilities.setup.tools import SETUP_TOOL_NAMES, SETUP_TOOL_TYPES

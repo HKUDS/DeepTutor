@@ -1,4 +1,4 @@
-"""DeepTutor orchestration for the LightRAG 1.5 native document pipeline."""
+"""Astitvam orchestration for the LightRAG 1.5 native document pipeline."""
 
 from __future__ import annotations
 

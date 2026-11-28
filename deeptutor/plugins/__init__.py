@@ -1,4 +1,4 @@
-"""DeepTutor plugin package — entry-point discovery lives in ``loader``."""
+"""Astitvam plugin package — entry-point discovery lives in ``loader``."""
 
 from deeptutor.plugins.loader import (
     PluginManifest,

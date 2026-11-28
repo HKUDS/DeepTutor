@@ -48,7 +48,7 @@ class SandboxBackend:
 
 
 def _active_python_prefix(*, inherit: bool) -> tuple[Path | None, bool]:
-    """Return DeepTutor's Python prefix, including a base Conda environment.
+    """Return Astitvam's Python prefix, including a base Conda environment.
 
     ``sys.prefix != sys.base_prefix`` detects venv/uv environments but is false
     for Conda.  In that case the interpreter still lives below ``sys.prefix``
@@ -303,9 +303,9 @@ class RestrictedSubprocessBackend(SandboxBackend):
     ) -> None:
         """Keep model-authored ``python`` and ``pip`` on one interpreter.
 
-        Desktop installs run DeepTutor from a virtual environment but can
+        Desktop installs run Astitvam from a virtual environment but can
         inherit a host ``PATH`` whose first Python belongs to MSYS, Conda, or a
-        system install.  Prepending the environment that launched DeepTutor
+        system install.  Prepending the environment that launched Astitvam
         prevents a bare ``pip install`` followed by ``python -c`` from silently
         targeting two different environments.
         """

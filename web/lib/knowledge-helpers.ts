@@ -358,7 +358,7 @@ export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
         (section) => section !== "devices" && section !== "kiwix" && (section !== "folders" || !kb.metadata?.type),
       );
 
-/** Local source folders belong to ordinary, DeepTutor-managed indexed KBs. */
+/** Local source folders belong to ordinary, Astitvam-managed indexed KBs. */
 export const kbSupportsLinkedFolders = (kb: KnowledgeBase): boolean =>
   !isMarginNoteKb(kb) && !kb.metadata?.type;
 

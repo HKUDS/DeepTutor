@@ -1,4 +1,4 @@
-"""OpenAI Codex Responses provider backed by DeepTutor's private OAuth service."""
+"""OpenAI Codex Responses provider backed by Astitvam's private OAuth service."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
 )
 from deeptutor.services.llm.request_compat import is_transient_transport_error
 
-DEFAULT_ORIGINATOR = "DeepTutor"
+DEFAULT_ORIGINATOR = "Astitvam"
 
 
 class CodexHTTPError(RuntimeError):
@@ -259,7 +259,7 @@ def _build_headers(
         "Authorization": f"Bearer {token}",
         "OpenAI-Beta": "responses=experimental",
         "originator": DEFAULT_ORIGINATOR,
-        "User-Agent": "DeepTutor (python)",
+        "User-Agent": "Astitvam (python)",
         "accept": "text/event-stream",
         "content-type": "application/json",
     }

@@ -18,7 +18,7 @@ export function invidiousAccountResultMessage(
     case "authorization_unavailable":
       return "The Invidious instance could not verify your account. Check the instance and reconnect.";
     case "authorization_login_required":
-      return "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.";
+      return "Your Astitvam login expired during authorization. Sign in, then start a new Invidious connection.";
     case "authorization_failed":
       return "The account could not be connected. Please start a new connection.";
     default:

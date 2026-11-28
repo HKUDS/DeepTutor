@@ -1,6 +1,6 @@
 """External tool providers: the tools a deployment or a user plugs in.
 
-An *external provider* is something that contributes tools DeepTutor did not
+An *external provider* is something that contributes tools Astitvam did not
 ship — an MCP server today, an installed CLI app next. What they share is the
 disclosure pipeline, which already exists and is source-agnostic: one manifest
 line per tool in the system prompt, full schemas only after the model calls

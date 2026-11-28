@@ -1,8 +1,8 @@
-"""Persistent subagent session ids — continuity across DeepTutor turns.
+"""Persistent subagent session ids — continuity across Astitvam turns.
 
 The backend session/thread id from one consult is remembered (keyed by the chat
 session + the connection) so the NEXT turn resumes the SAME local agent session:
-the agent keeps the full context of everything DeepTutor — and the user, from
+the agent keeps the full context of everything Astitvam — and the user, from
 the sidebar — asked it earlier, instead of starting cold each turn. The consult
 tool and the sidebar "message the agent directly" endpoint share this registry,
 so both talk to one live session per (chat, connection).

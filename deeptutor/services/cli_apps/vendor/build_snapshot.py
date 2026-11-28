@@ -1,6 +1,6 @@
 """Build the vendored CLI-Anything catalog snapshot.
 
-Trims the two upstream registries to the fields DeepTutor reads and stamps the
+Trims the two upstream registries to the fields Astitvam reads and stamps the
 commit the harness installs are pinned to. Install commands are kept *verbatim*:
 turning one into an executable spec is a security-relevant transform, so it lives
 in `loader.py` with tests rather than being baked into vendored data.

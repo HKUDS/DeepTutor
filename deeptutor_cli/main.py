@@ -29,7 +29,7 @@ configure_logging(console_stream=sys.stderr)
 
 app = typer.Typer(
     name="deeptutor",
-    help="DeepTutor CLI – agent-first interface for capabilities, tools, and knowledge.",
+    help="Astitvam CLI – agent-first interface for capabilities, tools, and knowledge.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -153,7 +153,7 @@ def start(
 def stop(
     home: Path | None = typer.Option(None, "--home", help="Runtime workspace root."),
 ) -> None:
-    """Stop a DeepTutor launcher started with ``--detach``."""
+    """Stop an Astitvam launcher started with ``--detach``."""
     from deeptutor.runtime.launcher import stop as stop_web
 
     if not stop_web(home=home):
@@ -166,7 +166,7 @@ def serve(
     port: int | None = typer.Option(None, help="Port number."),
     reload: bool = typer.Option(False, help="Enable auto-reload for development."),
 ) -> None:
-    """Start the DeepTutor API server."""
+    """Start the Astitvam API server."""
     import asyncio
     import sys
 

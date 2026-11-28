@@ -1,4 +1,4 @@
-"""Local and opt-in online diagnostics for the DeepTutor CLI."""
+"""Local and opt-in online diagnostics for the Astitvam CLI."""
 
 from __future__ import annotations
 

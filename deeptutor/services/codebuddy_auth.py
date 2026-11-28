@@ -174,7 +174,7 @@ class CodeBuddyAuthService:
             return self.public_status()
 
     async def logout(self) -> dict[str, Any]:
-        """Disconnect DeepTutor from the CodeBuddy session on this host.
+        """Disconnect Astitvam from the CodeBuddy session on this host.
 
         Not a sign-out: the session belongs to the IDE plugin / CLI that
         created it, and only they can end it.
@@ -194,7 +194,7 @@ class CodeBuddyAuthService:
         if flow is not None:
             await _cancel_flow(flow)
 
-        # DeepTutor does not own this credential: it is the session the IDE
+        # Astitvam does not own this credential: it is the session the IDE
         # plugin and the `codebuddy` CLI share on this host. Ending it from a
         # web endpoint would sign the operator out of their editor too — and on
         # a shared host, out of whoever else is on that login. Drop our cached

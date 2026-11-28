@@ -644,7 +644,7 @@ export async function branchPartnerSession(
 
 // ── Channel account links ─────────────────────────────────────
 //
-// Connecting a chat account (QQ, Telegram, …) to your DeepTutor account, so
+// Connecting a chat account (QQ, Telegram, …) to your Astitvam account, so
 // messages you send the partner there are yours: private history you can read
 // back here, answered out of your own library and memory.
 

@@ -126,7 +126,7 @@ test("probeImaKnowledgeBase sends the manual knowledge base id", async () => {
   }
 });
 
-test("connectImaKnowledgeBase sends the DeepTutor name and invalidates on success", async () => {
+test("connectImaKnowledgeBase sends the supplied name and invalidates on success", async () => {
   const captured: { input: string; body: unknown } = { input: "", body: null };
   const restore = stubFetch(async (input, init) => {
     captured.input = String(input);

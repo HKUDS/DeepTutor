@@ -120,7 +120,7 @@ export default function LinkFolderModal({
             className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]"
           >
             {t(
-              "Use a folder path on the machine running DeepTutor. Linking records the source; files are not imported until you click Sync now.",
+              "Use a folder path on the machine running Astitvam. Linking records the source; files are not imported until you click Sync now.",
             )}
           </p>
           {error && (

@@ -438,11 +438,11 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
         description={
           isRemote
             ? tr({
-                zh: "配置 DeepTutor 通过 HTTP 调用的远程 Hermes 网关、模型与运行参数。",
-                en: "Configure the remote Hermes gateway, model, and run parameters DeepTutor uses over HTTP.",
+                zh: "配置 Astitvam 通过 HTTP 调用的远程 Hermes 网关、模型与运行参数。",
+                en: "Configure the remote Hermes gateway, model, and run parameters Astitvam uses over HTTP.",
               })
             : t(
-                "Model, reasoning effort, and run parameters DeepTutor drives the local {{name}} with when consulting it. These override the CLI defaults; leave blank to keep the CLI's own default.",
+                "Model, reasoning effort, and run parameters Astitvam drives the local {{name}} with when consulting it. These override the CLI defaults; leave blank to keep the CLI's own default.",
                 { name: displayName },
               )
         }
@@ -647,15 +647,15 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "模型", en: "Model" })}
             description={tr({
-              zh: "DeepTutor 调用该智能体时使用的模型与推理强度。",
-              en: "The model and reasoning effort DeepTutor consults this agent with.",
+              zh: "Astitvam 调用该智能体时使用的模型与推理强度。",
+              en: "The model and reasoning effort Astitvam consults this agent with.",
             })}
           >
             <SettingRow
               title={tr({ zh: "启用", en: "Enabled" })}
               description={tr({
-                zh: "关闭后，DeepTutor 不会在对话中调用该智能体。",
-                en: "When off, DeepTutor won't consult this agent in chat.",
+                zh: "关闭后，Astitvam 不会在对话中调用该智能体。",
+                en: "When off, Astitvam won't consult this agent in chat.",
               })}
               control={
                 <Toggle
@@ -767,8 +767,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               description={`${tr(
                 SYSTEM_PROMPT_HINT[kind] ?? SYSTEM_PROMPT_HINT.claude_code,
               )} ${tr({
-                zh: "留空则使用 DeepTutor 的默认委派提示。",
-                en: "Blank uses DeepTutor's default delegate instruction.",
+                zh: "留空则使用 Astitvam 的默认委派提示。",
+                en: "Blank uses Astitvam's default delegate instruction.",
               })}`}
             >
               <div className="py-4">
@@ -793,8 +793,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "运行参数", en: "Run parameters" })}
             description={tr({
-              zh: "DeepTutor 无人值守地驱动该智能体——默认值确保它不会卡在等待确认上。",
-              en: "DeepTutor drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
+              zh: "Astitvam 无人值守地驱动该智能体——默认值确保它不会卡在等待确认上。",
+              en: "Astitvam drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
             })}
           >
             {features.permissionMode && (
@@ -943,8 +943,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               <SettingRow
                 title={tr({ zh: "转发图片", en: "Forward images" })}
                 description={tr({
-                  zh: "允许 DeepTutor 把本轮对话中的图片附件转发给该智能体。",
-                  en: "Let DeepTutor forward image attachments from the chat turn to this agent.",
+                  zh: "允许 Astitvam 把本轮对话中的图片附件转发给该智能体。",
+                  en: "Let Astitvam forward image attachments from the chat turn to this agent.",
                 })}
                 control={
                   <Toggle

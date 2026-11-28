@@ -1,10 +1,10 @@
 """Turn raw KB files into plain-text input for GraphRAG.
 
 GraphRAG's graph engine is text-only — it has no document parser of its own
-(its optional ``markitdown`` reader is just a converter). So DeepTutor owns the
+(its optional ``markitdown`` reader is just a converter). So Astitvam owns the
 "document → text" step and hands GraphRAG ready ``.txt`` files. We deliberately
-reuse DeepTutor's existing extraction primitives here so multimodal/parsing
-stays a DeepTutor-side concern (matching how the LlamaIndex pipeline already
+reuse Astitvam's existing extraction primitives here so multimodal/parsing
+stays an Astitvam-side concern (matching how the LlamaIndex pipeline already
 handles documents) rather than pulling a second parser into the tree.
 
 This is intentionally the one swappable seam: the rest of the GraphRAG pipeline

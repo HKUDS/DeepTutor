@@ -10,12 +10,13 @@ import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
 
-app.setName('Open DeepTutor');
+app.setName('Astitvam');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
 const EDITION = edition();
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const shellURL = pathToFileURL(path.join(sourceDirectory, 'index.html')).href;
 // Runtimes are large and machine-specific, so Windows keeps them out of the roaming profile.
+// Keep the existing support directory so upgrades retain user data.
 const userRoot = process.env.OPEN_DEEPTUTOR_TEST_HOME
   || path.join(WINDOWS ? process.env.LOCALAPPDATA ?? app.getPath('appData') : app.getPath('appData'), 'Open DeepTutor');
 app.setPath('userData', userRoot);
@@ -23,7 +24,7 @@ const runtimeHome = path.join(userRoot, 'workspace');
 const logPath = path.join(userRoot, 'logs/runtime.log');
 const activeFile = path.join(userRoot, 'active.json');
 const transactionFile = path.join(userRoot, 'upgrade.json');
-// DeepTutor's own Settings page writes the interface language and theme here.
+// Astitvam's Settings page writes the interface language and theme here.
 const interfaceFile = path.join(runtimeHome, 'data/user/settings/interface.json');
 const seed = app.isPackaged ? path.join(process.resourcesPath, 'seed/runtime.json') : path.join(sourceDirectory, '../.local', targetId(), 'seed/runtime.json');
 const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-public.pem'), 'utf8');
@@ -331,11 +332,11 @@ async function installUpdate() {
 
 function buildMenu() {
   const about = { label: t('about'), click: () => dialog.showMessageBox(window, {
-    message: `${EDITION.full} v${coreVersion()}`,
+    message: `${EDITION.full} v${coreVersion()}\nOwner: Sunil Kumar`,
     detail: t('aboutDetail', { core: active?.manifest.coreVersion ?? '—', runtime: active?.manifest.runtimeId ?? '—' }),
   }) };
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Open DeepTutor', submenu: WINDOWS ? [about, { type: 'separator' }, { role: 'quit', label: t('quit') }] : [
+    { label: 'Astitvam', submenu: WINDOWS ? [about, { type: 'separator' }, { role: 'quit', label: t('quit') }] : [
       about,
       { type: 'separator' },
       { role: 'hide', label: t('hide') }, { role: 'hideOthers', label: t('hideOthers') }, { role: 'unhide', label: t('showAll') },
@@ -390,7 +391,7 @@ else {
   ui = await readInterface();
   nativeTheme.on('updated', () => void refreshInterface());
   const coreSession = session.fromPartition('persist:deeptutor');
-  // The web UI reads this marker to name the client, e.g. "Open DeepTutor for MacOS with Apple Silicon".
+  // The web UI reads this marker to name the client, e.g. "Astitvam for MacOS with Apple Silicon".
   coreSession.setUserAgent(`${coreSession.getUserAgent()} ${agentMarker(app.getVersion())}`);
   coreSession.setPermissionCheckHandler((_contents, permission) => permission === 'clipboard-sanitized-write');
   coreSession.setPermissionRequestHandler(async (contents, permission, callback, details) => {
@@ -400,7 +401,7 @@ else {
     callback(result.response === 1);
   });
   window = new BrowserWindow({
-    title: 'Open DeepTutor', width: 1360, height: 920, minWidth: 900, minHeight: 620,
+    title: 'Astitvam', width: 1360, height: 920, minWidth: 900, minHeight: 620,
     backgroundColor: BACKGROUND[ui.theme],
     ...(WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
     webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -420,7 +421,7 @@ else {
   void boot();
   }).catch(async error => {
     await logStartupFailure(error);
-    dialog.showErrorBox('Open DeepTutor', error.message);
+    dialog.showErrorBox('Astitvam', error.message);
     exitAllowed = true;
     app.quit();
   });

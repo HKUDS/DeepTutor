@@ -62,7 +62,7 @@ class _SessionTurn:
 
 @dataclass
 class _ClaudeCodeSession:
-    """One long-lived Claude Code CLI process per DeepTutor session.
+    """One long-lived Claude Code CLI process per Astitvam session.
 
     ``ClaudeSDKClient`` enters anyio task groups in ``connect()`` and must
     leave them from the same task, so a dedicated owner task runs connect /
@@ -181,10 +181,10 @@ class ClaudeCodeProvider(LLMProvider):
     """Provider backed by the Claude Agent SDK (local Claude Code login).
 
     Claude Code's own tools are disabled and the operator's Claude Code
-    settings, CLAUDE.md files and hooks are not loaded; DeepTutor's tool
+    settings, CLAUDE.md files and hooks are not loaded; Astitvam's tool
     schemas are exposed through an in-process SDK MCP server instead. When
     Claude calls one, the turn is interrupted and the call is returned as a
-    regular ``tool_calls`` response so DeepTutor's dispatcher executes it.
+    regular ``tool_calls`` response so Astitvam's dispatcher executes it.
     """
 
     def __init__(self, default_model: str | None = DEFAULT_CLAUDE_CODE_MODEL):
@@ -587,7 +587,7 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
                 "content": [
                     {
                         "type": "text",
-                        "text": "Pending: DeepTutor runs this tool and sends its output in the next message.",
+                        "text": "Pending: Astitvam runs this tool and sends its output in the next message.",
                     }
                 ]
             }

@@ -1,4 +1,4 @@
-"""Map frozen DeepTutor MinerU blocks to LightRAG's public Sidecar IR."""
+"""Map frozen Astitvam MinerU blocks to LightRAG's public Sidecar IR."""
 
 from __future__ import annotations
 

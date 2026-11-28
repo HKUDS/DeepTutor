@@ -50,7 +50,7 @@ test("leaving the IMA source clears credentials from the mounted flow", () => {
   );
 });
 
-test("automatic names never overwrite a manual DeepTutor name", () => {
+test("automatic names never overwrite a manual knowledge base name", () => {
   assert.equal(nextAutoName("", null, "IMA Notes"), "IMA Notes");
   assert.equal(nextAutoName("IMA Old", "IMA Old", "IMA New"), "IMA New");
   assert.equal(

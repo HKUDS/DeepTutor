@@ -1,7 +1,7 @@
 """``mastery_build`` must read the module tree real models actually emit.
 
 The tool schema asks for ``[{name, knowledge_points: [{name, type}]}]``, but
-DeepTutor runs on whatever model the learner brings. The variants below were
+Astitvam runs on whatever model the learner brings. The variants below were
 observed in the wild (#1019) on gemma4, qwen3.5 and gpt-oss; every one of them
 used to be dropped silently, leaving an empty path in Learning Space with no
 error the learner could see.

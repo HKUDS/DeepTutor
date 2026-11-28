@@ -381,7 +381,7 @@ async def read_workspace_item(
             "X-Content-Type-Options": "nosniff",
             # Presented files are user/model-controlled. Opening an HTML or
             # SVG snapshot directly on the app origin must never execute it
-            # with access to DeepTutor's authenticated origin.
+            # with access to Astitvam's authenticated origin.
             "Content-Security-Policy": (
                 "sandbox; default-src 'none'; img-src data: blob:; "
                 "media-src 'self' blob:; style-src 'unsafe-inline'"

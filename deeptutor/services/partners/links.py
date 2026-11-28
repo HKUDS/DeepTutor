@@ -1,7 +1,7 @@
-"""Linking a chat-channel account to a DeepTutor account.
+"""Linking a chat-channel account to an Astitvam account.
 
 A partner reached over QQ or Telegram knows only a channel-local sender id.
-Nothing connects that to the person's DeepTutor account, so without a link
+Nothing connects that to the person's Astitvam account, so without a link
 every channel message is anonymous: it lands in the partner's shared thread
 pool, which only admins can read, and the partner answers it out of the admin
 workspace rather than the sender's own library and memory.

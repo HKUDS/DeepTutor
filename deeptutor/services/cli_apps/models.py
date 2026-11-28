@@ -186,7 +186,7 @@ def plan_install(
             trust=AppTrust.THIRD_PARTY,
             reason=(
                 "Ships with its host application rather than being installed, so "
-                "there is nothing for DeepTutor to install."
+                "there is nothing for Astitvam to install."
             ),
         )
 
@@ -197,7 +197,7 @@ def plan_install(
             trust=AppTrust.THIRD_PARTY,
             reason=(
                 "Its published install command is a shell script rather than a "
-                "single package install. DeepTutor builds every install command "
+                "single package install. Astitvam builds every install command "
                 "itself and will not run a shell pipeline from the catalog."
             ),
         )
@@ -229,7 +229,7 @@ def _plan_pip(args: list[str], *, app_id: str, harness_pin: str) -> InstallPlan:
             trust=AppTrust.THIRD_PARTY,
             reason=(
                 "Its published install command installs more than one package, "
-                "which DeepTutor does not model as a single app."
+                "which Astitvam does not model as a single app."
             ),
         )
     requirement = requirements[0]
@@ -275,7 +275,7 @@ def _plan_npm(args: list[str]) -> InstallPlan:
             trust=AppTrust.THIRD_PARTY,
             reason=(
                 "Its published install command installs more than one package, "
-                "which DeepTutor does not model as a single app."
+                "which Astitvam does not model as a single app."
             ),
         )
     return InstallPlan(
@@ -292,7 +292,7 @@ def _unsupported_manager(manager: str) -> InstallPlan:
         runtime=AppRuntime.NONE,
         trust=AppTrust.THIRD_PARTY,
         reason=(
-            f"Installs with {manager}, which the DeepTutor runtime image does not "
+            f"Installs with {manager}, which the Astitvam runtime image does not "
             "carry. Install it into the sandbox image yourself if you need it."
         ),
     )

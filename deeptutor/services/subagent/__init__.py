@@ -1,6 +1,6 @@
 """Subagent driver layer — drive a user's local agent CLI as a subagent.
 
-DeepTutor runs on the same machine as the user's configured agent CLIs — Claude
+Astitvam runs on the same machine as the user's configured agent CLIs — Claude
 Code, Codex, Grok CLI, Antigravity CLI, Kimi CLI, opencode, MiMo Code, Hermes Agent,
 OpenClaw, DeepSeek Harness — so the backend can
 drive them directly (spawned in print mode, or via a managed local server for

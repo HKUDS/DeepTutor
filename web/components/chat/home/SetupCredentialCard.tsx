@@ -13,7 +13,7 @@ import type { SetupCredentialData } from "@/lib/setup-signals";
  * through the model's context and is written to the session transcript. So
  * `request_credential` stops at the boundary and emits this card, which sends
  * the user to the settings page that already owns the provider form. The value
- * is entered there, straight into DeepTutor, and never travels through the
+ * is entered there, straight into Astitvam, and never travels through the
  * conversation.
  *
  * Mirrors `deeptutor.capabilities.setup.tools.RequestCredentialTool`; the

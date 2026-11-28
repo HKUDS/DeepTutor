@@ -46,6 +46,7 @@ def test_turn_schema_contains_the_complete_v2_lifecycle() -> None:
 
 def test_openapi_operation_ids_are_unique_for_type_generation() -> None:
     openapi = json.loads(render_contracts()["openapi.json"])
+    assert openapi["info"]["title"] == "Astitvam API"
     operation_ids = [
         operation["operationId"]
         for path_item in openapi["paths"].values()

@@ -6,7 +6,7 @@ the moment a CLI is detected; remote backends remain unavailable until their
 endpoint and credential source are configured.
 
 * ``consult_budget`` — the user-facing "max rounds": the maximum number of times
-  DeepTutor may put a question to the subagent in one turn. Enforced
+  Astitvam may put a question to the subagent in one turn. Enforced
   authoritatively inside the consult tool; the chat loop's own round budget is
   only a safety ceiling.
 * per-backend ``permission_mode`` / ``sandbox`` / ``approval`` — how the local

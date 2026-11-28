@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 #: Ceiling on connecting a caller's own servers. This runs before the turn's
 #: first stream event, so it is the one place a slow third-party host could
-#: present as "DeepTutor hung".
+#: present as "Astitvam hung".
 _OWNER_SCOPE_TIMEOUT_S = 3.0
 
 

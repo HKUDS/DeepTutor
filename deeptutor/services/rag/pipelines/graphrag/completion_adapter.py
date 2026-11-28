@@ -241,7 +241,7 @@ def _get_adapter_class() -> type:
 
 
 def register_completion_adapter() -> None:
-    """Register DeepTutor's completion type through GraphRAG's public factory API."""
+    """Register Astitvam's completion type through GraphRAG's public factory API."""
     from graphrag_llm.completion import register_completion
 
     initializer: Callable[..., Any] = _get_adapter_class()

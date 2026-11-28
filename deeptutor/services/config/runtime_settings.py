@@ -201,7 +201,7 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "api_token": "",
     # Optional explicit path to a local MinerU executable. Empty = auto-detect
     # from PATH. Lets users install MinerU in an isolated env (uv tool / pipx /
-    # separate conda) so its heavy deps never conflict with DeepTutor's.
+    # separate conda) so its heavy deps never conflict with Astitvam's.
     "local_cli_path": "",
     # Where local-mode model weights download from. ``model_download_endpoint``
     # is a custom HuggingFace mirror (HF_ENDPOINT, e.g. https://hf-mirror.com);
@@ -237,7 +237,7 @@ _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
 }
 
 # markitdown engine slice. Pure-Python, no model downloads. Optionally uses
-# DeepTutor's VLM to describe images.
+# Astitvam's VLM to describe images.
 _DEFAULT_MARKITDOWN_ENGINE: dict[str, Any] = {
     "enable_llm_image_description": False,
 }
@@ -269,7 +269,7 @@ _DEFAULT_TIKA_ENGINE: dict[str, Any] = {
 }
 
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
-# DeepTutor's legacy text extractors for PDF / Office / text-like files.
+# Astitvam's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
 
 # Legacy flat keys that mark a v1 ``mineru.json`` (these live only at the top
@@ -401,7 +401,7 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
 # LightRAG retrieval + indexing knobs (HKUDS/LightRAG native SDK). ``top_k``
 # is the number of entities/relations the query pulls; ``response_type`` mirrors
 # GraphRAG's. These ride into ``QueryParam`` and the pinned SDK constructor.
-# ``max_concurrent_files`` sizes the native parser worker pool after DeepTutor
+# ``max_concurrent_files`` sizes the native parser worker pool after Astitvam
 # has frozen each ParseService result; pre-parsing itself remains serial.
 # Stable catalog references let LightRAG use a dedicated LLM while the global
 # active chat model remains unchanged for ordinary chat.
@@ -430,7 +430,7 @@ DEFAULT_LIGHTRAG_SERVER_SETTINGS: dict[str, Any] = {
 
 IGNORE_PROCESS_OVERRIDES_ENV = "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES"
 
-# Names of the variables a parent DeepTutor process rendered out of the settings
+# Names of the variables a parent Astitvam process rendered out of the settings
 # files, handed to its children so they can tell "our own launcher derived this
 # from system.json" from "an operator set this in the deployment". Without it the
 # launcher's export looks like a deployment override to the backend and the file
@@ -894,7 +894,7 @@ class RuntimeSettingsService:
         if self._ignore_process_overrides():
             return ""
         if key in self._settings_derived_keys:
-            # A parent DeepTutor process rendered this out of the settings files,
+            # A parent Astitvam process rendered this out of the settings files,
             # so the files stay in charge and a later save takes effect live
             # (#1536). An operator-set variable is never on that list.
             return ""

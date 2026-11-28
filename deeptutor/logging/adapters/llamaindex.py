@@ -9,7 +9,7 @@ from typing import Any, Iterator
 
 
 class LlamaIndexLogForwarder(logging.Handler):
-    """Forward selected LlamaIndex records into a DeepTutor logger."""
+    """Forward selected LlamaIndex records into Astitvam's logger."""
 
     def __init__(self, target: logging.Logger) -> None:
         super().__init__(logging.DEBUG)

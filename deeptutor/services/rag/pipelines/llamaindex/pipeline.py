@@ -71,7 +71,7 @@ class IndexingStallError(RuntimeError):
 def _worker_busy_error() -> IndexingStallError:
     return IndexingStallError(
         "A previous indexing worker for this knowledge base is still running. "
-        "Wait for it to finish or restart DeepTutor before retrying."
+        "Wait for it to finish or restart Astitvam before retrying."
     )
 
 
@@ -170,7 +170,7 @@ async def _run_with_stall_guard(
                 raise IndexingStallError(
                     f"Indexing made no progress for {stalled_for:.0f}s while "
                     "embedding documents. Check the embedding endpoint; wait "
-                    "for the worker to finish or restart DeepTutor before retrying."
+                    "for the worker to finish or restart Astitvam before retrying."
                 )
     finally:
         progress_live.clear()

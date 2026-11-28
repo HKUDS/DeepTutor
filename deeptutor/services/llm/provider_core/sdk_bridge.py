@@ -1,7 +1,7 @@
 """Wire adaptation shared by local agent SDK model providers.
 
 SDK lifecycle and authentication stay with each provider. This module only
-translates prompts, streamed messages and DeepTutor-owned MCP tool calls.
+translates prompts, streamed messages and Astitvam-owned MCP tool calls.
 """
 
 from __future__ import annotations
@@ -200,7 +200,7 @@ def _assistant_tool_calls(
 
 
 def _reasoning_options(reasoning_effort: str | None) -> dict[str, Any]:
-    """Map DeepTutor reasoning levels to CodeBuddy SDK thinking controls.
+    """Map Astitvam reasoning levels to CodeBuddy SDK thinking controls.
 
     The SDK enables adaptive thinking when the field is omitted, unlike the
     local CodeBuddy CLI configuration. Defaulting to disabled keeps ordinary

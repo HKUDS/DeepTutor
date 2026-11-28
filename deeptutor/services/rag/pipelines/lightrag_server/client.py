@@ -4,7 +4,7 @@ We talk to the documented endpoints directly (``httpx`` only) — the calls map
 1:1 onto our retrieval-only contract:
 
 * ``POST /query`` with ``only_need_context=True`` — return the grounded context
-  the server retrieved, WITHOUT its own generation. DeepTutor's chat loop keeps
+  the server retrieved, WITHOUT its own generation. Astitvam's chat loop keeps
   ownership of the answer; the server is used purely as a retriever.
 * ``GET /auth-status`` — reachability + whether the server requires an API key
   (whitelisted on the server, so it answers without credentials).
@@ -126,7 +126,7 @@ class LightRagServerClient:
 
 
 def _sources_from_references(references: Any) -> list[dict[str, Any]]:
-    """Map a LightRAG ``references`` list into DeepTutor's ``sources`` shape."""
+    """Map a LightRAG ``references`` list into Astitvam's ``sources`` shape."""
     if not isinstance(references, list):
         return []
     sources: list[dict[str, Any]] = []

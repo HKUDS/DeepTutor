@@ -54,7 +54,7 @@ interface HoverState {
 const INITIAL_VIEW: ViewState = { scale: 1, tx: 0, ty: 0 };
 
 // One canonical hue per layer; alpha is per-state (idle/hover/dim).
-// Drawn from DeepTutor's primary palette so dark mode stays warm too.
+// Drawn from Astitvam's primary palette so dark mode stays warm too.
 const LAYER_COLOR: Record<Layer, string> = {
   L3: "var(--primary)",
   L2: "color-mix(in srgb, var(--primary) 78%, var(--foreground) 22%)",

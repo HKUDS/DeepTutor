@@ -1,4 +1,4 @@
-"""A small DeepTutor agent loop for workflow-owned PageIndex reading."""
+"""A small Astitvam agent loop for workflow-owned PageIndex reading."""
 
 from __future__ import annotations
 

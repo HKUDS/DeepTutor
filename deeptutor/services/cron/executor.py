@@ -39,7 +39,7 @@ def _notification_text(text: str, *, limit: int = 240) -> str:
 async def _maybe_send_desktop_notification(job: CronJob, text: str) -> None:
     """Best-effort local desktop notification for interactive reminders.
 
-    DeepTutor still persists/delivers through its normal chat or partner
+    Astitvam still persists/delivers through its normal chat or partner
     channel. This is only a convenience for local macOS runs; failures are
     deliberately non-fatal because launchd/headless servers often cannot
     show notifications.
@@ -51,7 +51,7 @@ async def _maybe_send_desktop_notification(job: CronJob, text: str) -> None:
     if job.owner.kind == "partner" and (job.owner.channel or "web") != "web":
         return
 
-    title = f"DeepTutor: {job.name or 'Reminder'}"
+    title = f"Astitvam: {job.name or 'Reminder'}"
     body = _notification_text(text)
     try:
         proc = await asyncio.create_subprocess_exec(

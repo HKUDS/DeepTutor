@@ -7,7 +7,7 @@ import { usePartner } from "@/hooks/usePartnerRoster";
 import type { Answerer } from "./answerer";
 
 /**
- * Who is answering, where DeepTutor's orb would be.
+ * Who is answering, where Astitvam's orb would be.
  *
  * A partner shows its own face — its picture when the shared partner list
  * has it, else the emoji and colour the turn itself carries. A connected

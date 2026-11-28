@@ -1,4 +1,4 @@
-"""Turn-scoped DeepTutor wrappers for PageIndex Cloud and OSS SDK tools."""
+"""Turn-scoped Astitvam wrappers for PageIndex Cloud and OSS SDK tools."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def pageindex_sources_from_text(
     kb_name: str = "",
     doc_ids: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Normalize real PageIndex page reads into DeepTutor source rows."""
+    """Normalize real PageIndex page reads into Astitvam source rows."""
     try:
         payload = json.loads(text)
     except (TypeError, ValueError):

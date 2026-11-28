@@ -25,7 +25,7 @@ export default function ConsultationTabBody({
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         {typeof meta.partner_group_idle_seconds === 'number' && meta.partner_group_idle_seconds > 0 && (
           <p role="status" className="shrink-0 border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
-            {t('DeepTutor will respond in {{count}}s. Continue here to keep discussing.', { count: meta.partner_group_idle_seconds })}
+            {t('Astitvam will respond in {{count}}s. Continue here to keep discussing.', { count: meta.partner_group_idle_seconds })}
           </p>
         )}
         <GroupDiscussionBody

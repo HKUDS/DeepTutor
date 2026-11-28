@@ -748,7 +748,7 @@ def test_searchapi_sends_bearer_header_params_proxy_and_base_url_root(searchapi_
     assert "num" not in call["params"]
     assert "api_key" not in call["params"] and "k" not in call["url"]
     assert call["headers"]["Authorization"] == "Bearer k"
-    assert call["headers"]["User-Agent"] == "DeepTutor"
+    assert call["headers"]["User-Agent"] == "Astitvam"
     assert call["proxies"] == {"http": PROXY, "https": PROXY}
 
 

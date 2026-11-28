@@ -1,6 +1,6 @@
 """Explicit EPUB pairing metadata.
 
-Pairing is deliberately two-step: DeepTutor recommends likely language
+Pairing is deliberately two-step: Astitvam recommends likely language
 editions, but a reader explicitly confirms the pair before any downstream
 bilingual rendering or study behavior is enabled. This module stores only that
 confirmation; derived EPUB generation belongs to a later feature.

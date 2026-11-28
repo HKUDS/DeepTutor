@@ -119,7 +119,7 @@ class LoopbackCallback:
         async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             status = "404 Not Found"
             body = (
-                "<!doctype html><title>DeepTutor Codex</title>"
+                "<!doctype html><title>Astitvam Codex</title>"
                 "<p>This callback path is not available.</p>"
             )
             try:
@@ -135,7 +135,7 @@ class LoopbackCallback:
                     ):
                         status = "400 Bad Request"
                         body = (
-                            "<!doctype html><title>DeepTutor Codex</title>"
+                            "<!doctype html><title>Astitvam Codex</title>"
                             "<p>The authentication callback was invalid.</p>"
                         )
                     else:
@@ -149,19 +149,19 @@ class LoopbackCallback:
                         except CodexAuthError:
                             status = "409 Conflict"
                             body = (
-                                "<!doctype html><title>DeepTutor Codex</title>"
+                                "<!doctype html><title>Astitvam Codex</title>"
                                 "<p>Authentication could not be received.</p>"
                             )
                         else:
                             status = "200 OK"
                             body = (
-                                "<!doctype html><title>DeepTutor Codex</title>"
-                                "<p>Authentication received. You can return to DeepTutor.</p>"
+                                "<!doctype html><title>Astitvam Codex</title>"
+                                "<p>Authentication received. You can return to Astitvam.</p>"
                             )
             except (ValueError, UnicodeDecodeError, asyncio.IncompleteReadError, TimeoutError):
                 status = "400 Bad Request"
                 body = (
-                    "<!doctype html><title>DeepTutor Codex</title>"
+                    "<!doctype html><title>Astitvam Codex</title>"
                     "<p>The authentication callback was invalid.</p>"
                 )
 
@@ -208,7 +208,7 @@ class LoopbackCallback:
         if server is None or not server.sockets:
             raise CodexAuthError(
                 "callback_unavailable",
-                "DeepTutor could not start the local Codex sign-in callback.",
+                "Astitvam could not start the local Codex sign-in callback.",
                 503,
             )
         bound_port = int(server.sockets[0].getsockname()[1])
@@ -239,7 +239,7 @@ class LoopbackCallback:
             raise CodexAuthError(
                 "login_timeout",
                 (
-                    "The DeepTutor server did not receive the Codex OAuth callback "
+                    "The Astitvam server did not receive the Codex OAuth callback "
                     f"on localhost:{self.port}. For a remote deployment, keep the "
                     "SSH port-forwarding tunnel open and try again."
                 ),

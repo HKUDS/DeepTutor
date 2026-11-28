@@ -1305,7 +1305,7 @@ async def deliver_codex_oauth_callback(
     """Hand a browser OAuth callback to whichever login is awaiting it.
 
     The browser reaches ``/auth/callback`` on its own loopback address — the
-    far end of the user's tunnel — not on the DeepTutor Web origin, so the
+    far end of the user's tunnel — not on the Astitvam Web origin, so the
     request carries no session and the per-user service instance behind
     :func:`get_codex_oauth_service` cannot be resolved from it. Resolving it
     anyway would land every callback on the default root and strand every

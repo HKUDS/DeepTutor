@@ -26,7 +26,7 @@ describe("Agent setup handoff", () => {
     const prompt = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(prompt).toHaveAttribute("readonly");
     expect(prompt.value).toContain("docs-for-dev/AGENT_SETUP.md");
-    expect(prompt.value).toContain("existing DeepTutor installation");
+    expect(prompt.value).toContain("existing Astitvam installation");
     expect(prompt.value).toContain("pending drafts");
     fireEvent.click(screen.getByRole("button", { name: en["settings.agentSetup.copy"] }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(en.Copied));

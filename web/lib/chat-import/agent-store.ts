@@ -1,7 +1,7 @@
 /**
  * Client-side registry of imported "agents". An agent is a *named, scoped*
  * slice of one source folder (a `.claude` or `.codex` home): the user can carve
- * several agents out of the same folder (e.g. "DeepTutor work" vs "research").
+ * several agents out of the same folder (e.g. "Astitvam work" vs "research").
  * We keep each agent's `FileSystemDirectoryHandle` in IndexedDB — handles are
  * structured-cloneable but not JSON-serializable — so it can be re-synced later
  * without re-picking the folder (subject to a permission re-grant on a fresh

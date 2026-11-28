@@ -90,7 +90,7 @@ test("copyText uses the async Clipboard API in a secure context", async () => {
 });
 
 /**
- * The reported bug: reaching a DeepTutor instance over the LAN means a
+ * The reported bug: reaching an Astitvam instance over the LAN means a
  * plain-http origin, where `navigator.clipboard` is undefined. The old code
  * threw a TypeError here, swallowed it, and rendered 已复制 anyway.
  */

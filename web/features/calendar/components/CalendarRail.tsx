@@ -187,7 +187,7 @@ export function CalendarRail({
 
       <footer className="dt-cal-rail-foot">
         {notifications === 'default' ? (
-          <Tooltip label={t('Reminders work while DeepTutor is open.')}>
+          <Tooltip label={t('Reminders work while Astitvam is open.')}>
             <button type="button" className="dt-cal-rail-notify" onClick={onEnableNotifications}>
               <Bell aria-hidden size={14} strokeWidth={1.8} />
               {t('Turn on reminders')}
@@ -196,12 +196,12 @@ export function CalendarRail({
         ) : notifications === 'denied' ? (
           <p className="dt-cal-rail-hint">
             <BellOff aria-hidden size={13} strokeWidth={1.8} />
-            {t('Notifications are blocked; reminders show inside DeepTutor.')}
+            {t('Notifications are blocked; reminders show inside Astitvam.')}
           </p>
         ) : notifications === 'granted' ? (
           <p className="dt-cal-rail-hint">
             <Bell aria-hidden size={13} strokeWidth={1.8} />
-            {t('Reminders work while DeepTutor is open.')}
+            {t('Reminders work while Astitvam is open.')}
           </p>
         ) : null}
       </footer>

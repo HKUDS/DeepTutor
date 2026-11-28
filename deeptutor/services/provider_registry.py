@@ -1,4 +1,4 @@
-"""Provider registry for DeepTutor LLM routing.
+"""Provider registry for Astitvam LLM routing.
 
 Single source of truth for provider metadata. Adding a new provider:
   1. Add a ProviderSpec to PROVIDERS below.

@@ -61,8 +61,8 @@ _OAUTH_SUBDIR = ("private", "mcp-oauth")
 #: Same rule as the static secret store: the server name becomes a filename.
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
-#: How DeepTutor introduces itself on a consent screen.
-CLIENT_NAME = "DeepTutor"
+#: How Astitvam introduces itself on a consent screen.
+CLIENT_NAME = "Astitvam"
 CLIENT_URI = "https://deeptutor.info"
 
 
@@ -262,7 +262,7 @@ def oauth_redirect_uri(origin: str = "") -> str:
 
 
 def client_metadata(redirect_uri: str) -> "Any":
-    """How DeepTutor registers itself with an authorization server."""
+    """How Astitvam registers itself with an authorization server."""
     from mcp.shared.auth import OAuthClientMetadata
 
     # Validated through the model rather than constructed with bare strings: the

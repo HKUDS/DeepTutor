@@ -427,7 +427,7 @@ function getTraceHeader(
     title = t("Response");
   } else if (role === "reflection" || kind === "tool_result_reflection") {
     // Tool Summarizer sub-trace (Phase 1 of the question pipeline). The
-    // top-level status row carries the verbose "DeepTutor Reflecting…"
+    // top-level status row carries the verbose "Astitvam Reflecting…"
     // wording; the sub-trace just labels itself "Reflecting" so the card
     // header stays short.
     title = t("Reflecting");
@@ -1341,11 +1341,11 @@ function detectStreamingMode(
     // tool result) streams chunks under ``call_kind="tool_result_reflection"``.
     // While those chunks are arriving — and until the next reasoning / tool
     // event flips the mode again — the top-level status row reads
-    // "DeepTutor Reflecting…".
+    // "Astitvam Reflecting…".
     if (callKind === "tool_result_reflection") return "reflecting";
     if (event.type === "content" && callKind === "llm_final_response") {
       // Some pipelines stream response text while an exploration stage is
-      // still open; keep the top-level title on "DeepTutor Exploring…" until
+      // still open; keep the top-level title on "Astitvam Exploring…" until
       // the bus moves on.
       if (event.stage === "exploring") return "exploring";
       if (event.stage === "writing") return "responding";
@@ -1564,7 +1564,7 @@ export function StreamingStatus({
     Boolean(isStreaming),
   );
 
-  const name = agentName?.trim() || "DeepTutor";
+  const name = agentName?.trim() || "Astitvam";
   let modeLabel = t("{{name}} Reasoning…", { name });
   if (mode === "tool_using") modeLabel = t("Tool Calling…");
   else if (mode === "planning") modeLabel = t("{{name}} Planning…", { name });
@@ -1578,7 +1578,7 @@ export function StreamingStatus({
   else if (mode === "quizzing") modeLabel = t("{{name}} Quizzing…", { name });
   else if (mode === "reflecting")
     modeLabel = t("{{name}} Reflecting…", { name });
-  else if (mode === "responded") modeLabel = t("DeepTutor responded.");
+  else if (mode === "responded") modeLabel = t("Astitvam responded.");
 
   const label =
     getExploreContextStatusLabel(events, t, Boolean(isStreaming)) ??
@@ -1602,7 +1602,7 @@ export function StreamingStatus({
   if (answerer) {
     // Their mark where the orb would be, their name held still, and what
     // they are doing breathing beside it — "Paul is thinking…", "Paul
-    // answered". DeepTutor's own phase words do not apply to someone else.
+    // answered". Astitvam's own phase words do not apply to someone else.
     const doing =
       mode === "responded"
         ? t("trace.answerer.done")
@@ -1706,7 +1706,7 @@ export function NestedTraceFlow({
 
 /**
  * Has the turn entered its final-answer phase? Used to auto-collapse the
- * reasoning trace once DeepTutor stops working and starts (or has finished)
+ * reasoning trace once Astitvam stops working and starts (or has finished)
  * its answer.
  *
  *  - turn complete (``!isStreaming``)                    → final
@@ -1747,10 +1747,10 @@ function isFinalAnswerPhase(
 
 /**
  * The assistant activity block: the status header
- * ("DeepTutor Exploring… · 8s", settling to "DeepTutor responded. · 10s")
+ * ("Astitvam Exploring… · 8s", settling to "Astitvam responded. · 10s")
  * with the exploring trace nested directly beneath it.
  *
- * The trace is expanded by default while DeepTutor is still reasoning /
+ * The trace is expanded by default while Astitvam is still reasoning /
  * exploring, and collapses once the turn resolves into its final answer.
  * The header doubles as a disclosure toggle, so the user can re-open a
  * collapsed trace (or fold an expanded one) at any time.

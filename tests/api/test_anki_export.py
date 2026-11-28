@@ -88,14 +88,14 @@ def test_export_one_note_and_all_notes(tmp_path, monkeypatch):
     assert body.splitlines()[: len(ANKI_HEADERS)] == list(ANKI_HEADERS)
     assert "Frequency?" in body
     assert "What is light?" not in body
-    assert "DeepTutor::Fourier" in body
+    assert "Astitvam::Fourier" in body
 
     all_notes = client.get("/documents/flashcards/export")
     assert all_notes.status_code == 200, all_notes.text
-    assert 'filename="deeptutor-flashcards.txt"' in all_notes.headers["content-disposition"]
+    assert 'filename="astitvam-flashcards.txt"' in all_notes.headers["content-disposition"]
     assert "Frequency?" in all_notes.text
     assert "What is light?" in all_notes.text
-    assert "DeepTutor::Optics" in all_notes.text
+    assert "Astitvam::Optics" in all_notes.text
 
 
 def test_cardless_note_and_unknown_ids_are_404(tmp_path, monkeypatch):

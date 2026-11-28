@@ -57,7 +57,7 @@ export default function KbKiwixArticlesSection({ kb }: { kb: KnowledgeBase }) {
       <div>
         <h2 className="text-[15px] font-semibold">{kb.metadata?.zim_title || t("Kiwix archive")}</h2>
         <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-          {t("Search articles in this ZIM. DeepTutor retrieves matches for chat, Book, and Guided Learning without importing the archive.")}
+          {t("Search articles in this ZIM. Astitvam retrieves matches for chat, Book, and Guided Learning without importing the archive.")}
         </p>
         <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">{kb.metadata?.zim_name}</p>
       </div>

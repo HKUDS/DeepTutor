@@ -113,7 +113,7 @@ def _build_converter(
     Docling's option API moves between compatible releases, so a configuration
     failure degrades to a converter with upstream defaults instead of failing the
     parse. That fallback still has to be visible: Docling defaults ``do_ocr`` to
-    True while DeepTutor defaults it to False, so a silent fallback can turn OCR
+    True while Astitvam defaults it to False, so a silent fallback can turn OCR
     on, change the output and slow the run down with nothing in the log to
     explain it (see #2518).
     """
@@ -153,7 +153,7 @@ def _build_converter(
             "Docling option setup failed "
             f"({type(exc).__name__}: {exc}); falling back to upstream defaults "
             "with do_ocr and do_table_structure left unset "
-            f"(DeepTutor requested do_ocr={do_ocr}, do_table_structure={do_table_structure}).",
+            f"(Astitvam requested do_ocr={do_ocr}, do_table_structure={do_table_structure}).",
             file=sys.stderr,
             flush=True,
         )
@@ -192,7 +192,7 @@ def _convert(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="DeepTutor isolated Docling converter")
+    parser = argparse.ArgumentParser(description="Astitvam isolated Docling converter")
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--workdir", required=True, type=Path)
     parser.add_argument("--do-ocr", action="store_true")

@@ -367,7 +367,7 @@ export function MinerUEngineSettings() {
         <SettingSection
           title={t("Local install")}
           description={t(
-            "The MinerU CLI must be reachable by the DeepTutor server process. Reserve >=20 GB of free disk (official guidance): ~2-4 GB install, ~1-2 GB models lazily downloaded on first parse, plus parsing cache.",
+            "The MinerU CLI must be reachable by the Astitvam server process. Reserve >=20 GB of free disk (official guidance): ~2-4 GB install, ~1-2 GB models lazily downloaded on first parse, plus parsing cache.",
           )}
         >
           <SettingRow

@@ -362,7 +362,7 @@ async def lifespan(app: FastAPI):
 from deeptutor.services.workspace.activity import WorkspaceActivityMiddleware
 
 app = FastAPI(
-    title="DeepTutor API",
+    title="Astitvam API",
     version="1.0.0",
     lifespan=lifespan,
     # Disable automatic trailing slash redirects to prevent protocol downgrade issues
@@ -519,7 +519,7 @@ mount_module_routes(app, _router_loader)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to DeepTutor API"}
+    return {"message": "Welcome to Astitvam API"}
 
 
 @app.get("/health/live")

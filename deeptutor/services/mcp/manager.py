@@ -8,7 +8,7 @@ connection and exposes their tools as chat :class:`BaseTool` adapters.
 Lifecycle model
 ---------------
 
-DeepTutor's chat runs as per-turn tasks inside one event loop, while MCP
+Astitvam's chat runs as per-turn tasks inside one event loop, while MCP
 sessions must be opened and closed inside the same task (the SDK's anyio
 cancel scopes are task-bound). Each server therefore gets a dedicated
 *connection task* that owns its ``AsyncExitStack`` end-to-end::

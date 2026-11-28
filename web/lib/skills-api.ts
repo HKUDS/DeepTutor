@@ -152,7 +152,7 @@ export async function installSkillFromHub(
 // ── EduHub / hub browsing ───────────────────────────────────────────────
 // Powers the in-app "Import from EduHub" browser. The backend proxies the
 // hub's public catalog (no login, no iframe), so the panel can render hub
-// skills in DeepTutor's own UI and download them with one click.
+// skills in Astitvam's own UI and download them with one click.
 
 export interface HubSkillListing {
   slug: string;

@@ -1,5 +1,5 @@
 """
-Authentication service for DeepTutor.
+Authentication service for Astitvam.
 
 Disabled by default (auth.enabled=false) so localhost users are unaffected.
 When enabled, guards all API routes with JWT bearer tokens.

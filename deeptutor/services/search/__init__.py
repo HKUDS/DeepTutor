@@ -137,7 +137,7 @@ def web_search(
     consolidation_llm_model: str | None = None,
     **provider_kwargs: Any,
 ) -> dict[str, Any]:
-    """Execute web search and return DeepTutor structured response shape.
+    """Execute web search and return Astitvam structured response shape.
 
     Consolidation is automatic for providers that return raw SERP results
     (``supports_answer=False``).  Pass ``consolidation_llm_model`` to

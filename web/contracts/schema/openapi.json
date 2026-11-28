@@ -12763,7 +12763,7 @@
         "type": "object"
       },
       "TopicSourceKind": {
-        "description": "What a learner may point a mastery goal at.\n\nEverything DeepTutor already holds for them is fair game: their library\n(``BOOK``), their notes (``NOTEBOOK``), an indexed corpus or one document\ninside it (``KNOWLEDGE_BASE`` / ``FILE``), and — added with the mastery\ngoal rework — the working history that shows what they have actually been\ndoing: past conversations, their own wrong answers, drafts they are\nwriting, and study partner transcripts.",
+        "description": "What a learner may point a mastery goal at.\n\nEverything Astitvam already holds for them is fair game: their library\n(``BOOK``), their notes (``NOTEBOOK``), an indexed corpus or one document\ninside it (``KNOWLEDGE_BASE`` / ``FILE``), and — added with the mastery\ngoal rework — the working history that shows what they have actually been\ndoing: past conversations, their own wrong answers, drafts they are\nwriting, and study partner transcripts.",
         "enum": [
           "goal",
           "book",
@@ -15784,7 +15784,7 @@
     }
   },
   "info": {
-    "title": "DeepTutor API",
+    "title": "Astitvam API",
     "version": "1.0.0"
   },
   "openapi": "3.1.0",
@@ -32706,7 +32706,7 @@
     },
     "/api/marginnote4/pair": {
       "post": {
-        "description": "Pair a new MN4 device. Requires a DeepTutor session.\n\nReturns a one-time token the Add-on stores and presents on every sync.",
+        "description": "Pair a new MN4 device. Requires an Astitvam session.\n\nReturns a one-time token the Add-on stores and presents on every sync.",
         "operationId": "pair_device_api_marginnote4_pair_post",
         "parameters": [
           {
@@ -50451,7 +50451,7 @@
     },
     "/api/reading/materials/{material_id}/export": {
       "get": {
-        "description": "Download the material with its annotations applied.\n\n``pdf`` writes real PDF annotations into a copy of the original, so the\nexport keeps working outside DeepTutor; ``markdown`` returns the marks as\ntext, which is what every non-PDF format gets.",
+        "description": "Download the material with its annotations applied.\n\n``pdf`` writes real PDF annotations into a copy of the original, so the\nexport keeps working outside Astitvam; ``markdown`` returns the marks as\ntext, which is what every non-PDF format gets.",
         "operationId": "export_api_reading_materials__material_id__export_get",
         "parameters": [
           {
@@ -62999,7 +62999,7 @@
     },
     "/api/skills/hub/catalog": {
       "get": {
-        "description": "Proxy a skill hub's public catalog for the in-app browser.\n\nThe web \"Import from EduHub\" panel renders these rows in DeepTutor's own\nUI — no embedded iframe, no login — so users can browse, search, and\none-click download skills. Returns ``web_url`` (the hub's site origin) so\nthe panel can offer a \"view on EduHub\" link out.",
+        "description": "Proxy a skill hub's public catalog for the in-app browser.\n\nThe web \"Import from EduHub\" panel renders these rows in Astitvam's own\nUI — no embedded iframe, no login — so users can browse, search, and\none-click download skills. Returns ``web_url`` (the hub's site origin) so\nthe panel can offer a \"view on EduHub\" link out.",
         "operationId": "hub_catalog_api_skills_hub_catalog_get",
         "parameters": [
           {
@@ -65358,7 +65358,7 @@
     },
     "/api/subagents/connections/{name}/message": {
       "post": {
-        "description": "Send a message straight to a connected subagent and stream its run.\n\nThis is the sidebar's \"talk to the agent directly\" path: it resumes the same\nlive session DeepTutor consults (shared via the cross-turn registry, keyed by\nchat session + connection), so the agent keeps full context. Streams the\nnative run as newline-delimited JSON, in the same channel shape the chat WS\nuses, so the sidebar transcript renders it identically.",
+        "description": "Send a message straight to a connected subagent and stream its run.\n\nThis is the sidebar's \"talk to the agent directly\" path: it resumes the same\nlive session Astitvam consults (shared via the cross-turn registry, keyed by\nchat session + connection), so the agent keeps full context. Streams the\nnative run as newline-delimited JSON, in the same channel shape the chat WS\nuses, so the sidebar transcript renders it identically.",
         "operationId": "message_connection_api_subagents_connections__name__message_post",
         "parameters": [
           {
@@ -65641,7 +65641,7 @@
     },
     "/api/system/memory": {
       "get": {
-        "description": "Resident memory of the running DeepTutor process tree.\n\nDeliberately separate from ``/status``: that snapshot resolves the LLM,\nembedding and search configs and is fetched once per settings mount, while\nthis one is cheap enough for the status strip to poll.\n\nAdmin-only, for the same reason ``/status`` strips model names from\nnon-admins — process composition and host memory are operational detail a\ntenant has no need for.",
+        "description": "Resident memory of the running Astitvam process tree.\n\nDeliberately separate from ``/status``: that snapshot resolves the LLM,\nembedding and search configs and is fetched once per settings mount, while\nthis one is cheap enough for the status strip to poll.\n\nAdmin-only, for the same reason ``/status`` strips model names from\nnon-admins — process composition and host memory are operational detail a\ntenant has no need for.",
         "operationId": "get_memory_usage_api_system_memory_get",
         "parameters": [
           {

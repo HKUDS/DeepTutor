@@ -94,7 +94,7 @@ def _hash_token(token: str) -> str:
 
 
 def default_db_path(kb_name: str, *, path_service: Any = None) -> Path:
-    """Default database location under DeepTutor's data directory.
+    """Default database location under Astitvam's data directory.
 
     ``path_service`` overrides whose workspace is used. The device-token
     endpoints carry no session, so they must name the workspace they mean

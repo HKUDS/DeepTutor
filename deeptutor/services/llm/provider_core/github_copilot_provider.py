@@ -18,7 +18,7 @@ from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICo
 from deeptutor.services.provider_registry import find_by_name
 
 DEFAULT_COPILOT_BASE_URL = "https://api.githubcopilot.com"
-USER_AGENT = "DeepTutor/1"
+USER_AGENT = "Astitvam/1"
 EDITOR_VERSION = "vscode/1.99.0"
 EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.0"
 _EXPIRY_SKEW_SECONDS = 60

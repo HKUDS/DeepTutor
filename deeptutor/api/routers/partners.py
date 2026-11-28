@@ -1168,7 +1168,7 @@ async def start_partner(partner_id: str):
         return _stopped_partner_dict(partner_id, cfg)
     instance = await _ensure_running_partner(partner_id, allow_stopped=True)
     # An explicit start is a persisted "run on boot" intent — so the partner
-    # comes back in this state after a DeepTutor restart (a manual /stop clears
+    # comes back in this state after an Astitvam restart (a manual /stop clears
     # it; a lazy chat-driven start does NOT reach here, so it can't flip it).
     get_partner_manager().save_config(partner_id, instance.config, auto_start=True)
     return instance.to_dict(mask_secrets=True)

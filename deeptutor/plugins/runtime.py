@@ -608,7 +608,7 @@ def entry_point_can_load(ep, group: str) -> bool:
         digest = approval_digest(record.manifest, record.artifact_identity)
         if key in _IMPORTED_GENERATIONS and _IMPORTED_GENERATIONS[key] != digest:
             logger.warning(
-                "External plugin generation changed; restart DeepTutor to load reviewed code."
+                "External plugin generation changed; restart Astitvam to load reviewed code."
             )
             return False
         _IMPORTED_GENERATIONS[key] = digest

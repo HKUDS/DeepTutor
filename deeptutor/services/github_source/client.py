@@ -59,7 +59,7 @@ def _headers() -> dict[str, str]:
     h: dict[str, str] = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "DeepTutor/1.0 (+https://hkuds.dev/deeptutor)",
+        "User-Agent": "Astitvam/1.0 (+https://hkuds.dev/deeptutor)",
     }
     token = _token()
     if token:

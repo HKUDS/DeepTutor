@@ -12,7 +12,7 @@ from deeptutor.services.config.runtime_settings import (
 
 @dataclass(frozen=True)
 class MarkItDownConfig:
-    # Reserved: when True, use DeepTutor's VLM to caption images during
+    # Reserved: when True, use Astitvam's VLM to caption images during
     # conversion. Wiring is deferred; the field keeps the signature/UI stable.
     enable_llm_image_description: bool = False
 

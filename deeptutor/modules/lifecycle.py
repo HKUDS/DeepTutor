@@ -69,7 +69,7 @@ def _file_lease(identity: str, *, exclusive: bool):
                 native, 1 | (2 if exclusive else 0), 0, 1, 0, ctypes.byref(overlapped)
             ):
                 raise ModuleLifecycleError(
-                    "Environment is in use. Stop DeepTutor before changing modules."
+                    "Environment is in use. Stop Astitvam before changing modules."
                 )
             try:
                 yield
@@ -82,7 +82,7 @@ def _file_lease(identity: str, *, exclusive: bool):
                 fcntl.flock(handle, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise ModuleLifecycleError(
-                    "Environment is in use. Stop DeepTutor before changing modules."
+                    "Environment is in use. Stop Astitvam before changing modules."
                 ) from exc
             try:
                 yield

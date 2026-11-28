@@ -12,7 +12,7 @@ from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 from deeptutor.core.context import UnifiedContext
 
 PROMPTS = {
-    "general": "You are DeepTutor, an interactive tutor.",
+    "general": "You are Astitvam, an interactive tutor.",
     "runtime_policy": "policy",
     "loop": {"system": "loop"},
 }

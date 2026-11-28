@@ -5,7 +5,7 @@ import { extractMathAnimatorResult } from "../lib/math-animator-types";
 test("extractMathAnimatorResult ignores generic response-only payloads", () => {
   assert.equal(
     extractMathAnimatorResult({
-      response: "Hello! I'm DeepTutor.",
+      response: "Hello! I'm Astitvam.",
       metadata: {
         cost_summary: {
           total_cost_usd: 0,

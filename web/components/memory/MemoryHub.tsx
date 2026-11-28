@@ -91,7 +91,7 @@ export default function MemoryHub() {
       <PageHeader
         icon={Brain}
         title={t("Memory")}
-        description={t("Everything DeepTutor remembers about you, organised across three layers. Click into any layer to inspect or curate it.")}
+        description={t("Everything Astitvam remembers about you, organised across three layers. Click into any layer to inspect or curate it.")}
         action={
         <div className="flex items-center gap-3 text-[12px] text-[var(--muted-foreground)]">
           <button

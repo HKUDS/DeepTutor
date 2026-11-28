@@ -12,7 +12,7 @@ from .config import WeKnoraConfig
 
 logger = logging.getLogger(__name__)
 
-# An external service is not allowed to make the DeepTutor process buffer an
+# An external service is not allowed to make the Astitvam process buffer an
 # unbounded body. Four MiB is ample for a page of KB summaries or retrieval
 # chunks while keeping a compromised/misconfigured server cheap to reject.
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024

@@ -1,32 +1,32 @@
-# Open DeepTutor for MacOS and Windows
+# Astitvam for MacOS and Windows
 
-A double-clickable desktop app for DeepTutor. On first launch it installs its
-bundled runtime, starts the Python and Node services on loopback, and opens
-the complete DeepTutor web UI in its window. Users need no terminal, Python,
-Node, npm, Git or source checkout.
+A double-clickable desktop app for Astitvam, published by Sunil Kumar. On first
+launch it installs its bundled runtime, starts the Python and Node services on
+loopback, and opens the complete Astitvam web UI in its window. Users need no
+terminal, Python, Node, npm, Git or source checkout.
 
-This is a preview. Models and providers are configured in DeepTutor's normal
+This is a preview. Models and providers are configured in Astitvam's normal
 Settings; no credentials or user data ship with the app. Optional external
 tools (Manim/LaTeX, partner CLIs, remote services) keep their usual
 requirements.
 
 ## Editions
 
-| Target        | Name                                          | Short                   | Downloads                                                  |
-| ------------- | --------------------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `macos-arm64` | Open DeepTutor for MacOS with Apple Silicon   | MacOS (Apple Silicon)   | `Open-DeepTutor-MacOS-Apple-Silicon-v<version>.dmg`        |
-| `macos-x64`   | Open DeepTutor for MacOS with Intel Silicon   | MacOS (Intel)           | `Open-DeepTutor-MacOS-Intel-v<version>.dmg`                |
-| `windows-x64` | Open DeepTutor for Windows                    | Windows                 | `Open-DeepTutor-Windows-v<version>-Setup.exe`, `…-Portable.zip` |
+| Target        | Name                                  | Short                 | Downloads                                                   |
+| ------------- | ------------------------------------- | --------------------- | ----------------------------------------------------------- |
+| `macos-arm64` | Astitvam for MacOS with Apple Silicon | MacOS (Apple Silicon) | `Astitvam-MacOS-Apple-Silicon-v<version>.dmg`              |
+| `macos-x64`   | Astitvam for MacOS with Intel Silicon | MacOS (Intel)         | `Astitvam-MacOS-Intel-v<version>.dmg`                      |
+| `windows-x64` | Astitvam for Windows                  | Windows               | `Astitvam-Windows-v<version>-Setup.exe`, `…-Portable.zip` |
 
-- The app version is the DeepTutor version it bundles, read from
+- The app version is the core version it bundles, read from
   `deeptutor/__version__.py` via the sealed runtime, so `package.json` stays at
   `0.0.0`. The start screen and About show the full name with the version;
   the web UI's sidebar uses the short name, and Settings → About shows both.
-  The web UI recognises the app by the `OpenDeepTutor/<version> (macOS; arm64)`
+  The web UI recognises the app by the `AstitvamDesktop/<version> (macOS; arm64)`
   user-agent marker (`(macOS; x64)`, `(Windows; x64)`); names live in
   `src/platform.mjs` and `web/lib/version.ts`.
 - The shell (start screen, menus, dialogs) starts in English and then follows
-  the interface language and theme chosen in DeepTutor's Settings
+  the interface language and theme chosen in Astitvam's Settings
   (`data/user/settings/interface.json`), including live changes. Copy lives in
   `src/i18n.mjs` for every language the web UI ships.
 
@@ -63,7 +63,9 @@ Every build file of a target goes to `.local/<target>/`; downloads go to `out/`.
 | Shutdown | SIGTERM to each service's process group, then SIGKILL  | `taskkill /T /F` on each service's tree   |
 
 Quitting stops the services this app started. It does not stop a separately
-running `deeptutor start`. Web content has no preload, Node integration or
+running `deeptutor start`. The legacy `Open DeepTutor` data directory is retained
+so existing desktop installations keep their settings and learning data. Web
+content has no preload, Node integration or
 desktop IPC privileges; only the private shell page owns the native bridge.
 
 ## Build
@@ -78,7 +80,7 @@ npm ci
 npm run check && npm test
 npm run build:runtime -- --target macos-arm64   # snapshots this checkout's committed HEAD
 npm run smoke -- --target macos-arm64           # boots the bundled core with no developer tools on PATH
-npm run package -- --target macos-arm64         # out/Open-DeepTutor-MacOS-Apple-Silicon-v<version>.dmg
+npm run package -- --target macos-arm64         # out/Astitvam-MacOS-Apple-Silicon-v<version>.dmg
 ```
 
 `--target` defaults to the computer you build on. Every build step (npm, Next)
@@ -118,7 +120,7 @@ unversioned aliases are uploaded and nonempty. A missing Intel DMG means the
 desktop release is incomplete; fix and rerun the failed build before reporting
 the release as complete.
 
-`.github/workflows/desktop-release.yml` runs when a DeepTutor GitHub Release is
+`.github/workflows/desktop-release.yml` runs when a source GitHub Release is
 published. For each target it verifies the tag matches
 `deeptutor/__version__.py`, builds and smoke-tests the runtime, packages the
 app and attaches the downloads to the release. Signed builds read the runtime

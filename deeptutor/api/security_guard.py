@@ -36,7 +36,7 @@ def load_guard_settings() -> dict[str, Any]:
 
 
 def build_security_config(settings: dict[str, Any]) -> Any:
-    """Translate DeepTutor settings into a ``guard.SecurityConfig``."""
+    """Translate Astitvam settings into a ``guard.SecurityConfig``."""
     try:
         from guard import SecurityConfig
     except ImportError as exc:
@@ -52,7 +52,7 @@ def build_security_config(settings: dict[str, Any]) -> Any:
         blacklist=tuple(settings["blacklist"]),
         # Process-local state: each uvicorn worker keeps its own counters.
         enable_redis=False,
-        # DeepTutor sets CORS itself (CORSMiddleware) and owns its response headers.
+        # Astitvam sets CORS itself (CORSMiddleware) and owns its response headers.
         enable_cors=False,
         security_headers={"enabled": False},
         # Prompts, documents and chat messages are free text, not attack input.

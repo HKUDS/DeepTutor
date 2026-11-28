@@ -191,7 +191,7 @@ class WhatsAppChannel(BaseChannel):
                 self.set_setup_state("disconnected")
 
         elif msg_type == "qr":
-            # Authentication output is rendered by DeepTutor's Partner WebUI,
+            # Authentication output is rendered by Astitvam's Partner WebUI,
             # not left in the bridge/server terminal. Bridges in the wild use
             # one of these three field names; ignore non-string diagnostic data.
             payload = data.get("qr") or data.get("payload") or data.get("data") or ""

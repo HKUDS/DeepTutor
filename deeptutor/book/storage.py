@@ -100,7 +100,7 @@ class BookStorage:
 
     Every method here is synchronous and every write goes through an atomic
     replace, and that is what keeps the read-modify-write helpers below (e.g.
-    :meth:`upsert_learning_capture`) safe: DeepTutor serves from a single
+    :meth:`upsert_learning_capture`) safe: Astitvam serves from a single
     process, so a sync call from an ``async def`` route holds the event loop for
     its whole duration and cannot interleave with another request.
 

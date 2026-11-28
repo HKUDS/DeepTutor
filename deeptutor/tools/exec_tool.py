@@ -1,4 +1,4 @@
-"""The single sandboxed execution tool exposed to DeepTutor agents."""
+"""The single sandboxed execution tool exposed to Astitvam agents."""
 
 from __future__ import annotations
 

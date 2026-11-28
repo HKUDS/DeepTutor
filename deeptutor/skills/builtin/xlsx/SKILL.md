@@ -24,7 +24,7 @@ finished file.
 
 Use **openpyxl** for cells, formulas, styles, charts, merged cells, multi-sheet
 workbooks, number formats, and streaming large sheets. It is declared by every
-supported DeepTutor installation. Do not assume pandas is installed: it exists
+supported Astitvam installation. Do not assume pandas is installed: it exists
 in the Docker runner but is not a direct dependency of every pip/source install.
 
 ## THE critical gotcha: openpyxl writes formulas but never computes them

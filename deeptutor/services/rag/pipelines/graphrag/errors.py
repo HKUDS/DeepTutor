@@ -179,7 +179,7 @@ class GraphRagEmbeddingDimensionError(GraphRagEmbeddingError, ValueError):
     def __init__(self, *, configured: int, actual: int) -> None:
         super().__init__(
             "The active embedding model returned "
-            f"{actual} dimensions, but DeepTutor is configured for {configured}. "
+            f"{actual} dimensions, but Astitvam is configured for {configured}. "
             "Correct the embedding dimension before indexing with GraphRAG."
         )
 

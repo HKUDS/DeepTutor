@@ -134,7 +134,7 @@ class DoclingParser:
                 ready=False,
                 reason="update_required",
                 message=(
-                    f"Docling {installed_version or 'unknown'} is too old. DeepTutor needs "
+                    f"Docling {installed_version or 'unknown'} is too old. Astitvam needs "
                     f"Docling >= {MIN_DOCLING_VERSION} for the current document formats. "
                     "Use the package update button below."
                 ),

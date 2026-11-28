@@ -52,7 +52,7 @@ def _find_duplicate_preference(doc: Document, section: str, text: str):
 
 
 _NO_MEMORY = (
-    "(No memory available — interact with DeepTutor and update from the Memory page to build one.)"
+    "(No memory available — interact with Astitvam and update from the Memory page to build one.)"
 )
 
 

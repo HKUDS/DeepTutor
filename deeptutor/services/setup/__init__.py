@@ -2,7 +2,7 @@
 Setup Service
 =============
 
-System setup and initialization for DeepTutor.
+System setup and initialization for Astitvam.
 
 Port configuration is done via data/user/settings/system.json.
 

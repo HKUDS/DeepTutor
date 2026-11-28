@@ -7,7 +7,7 @@ import { getTraceMeta } from "@/features/chat/trace";
 
 /**
  * A connected subagent's native run, rendered close to how its own CLI shows it:
- * each of DeepTutor's questions heads a round, then the agent's reply streams as
+ * each of Astitvam's questions heads a round, then the agent's reply streams as
  * "●"-bulleted steps — its messages in a neutral bullet, tool calls in an amber
  * bullet — with command output in a muted block (collapsed when long). Text and
  * reasoning stream token-by-token: deltas sharing a merge id collapse to one row
@@ -101,12 +101,12 @@ function SubagentLine({ channel, text }: { channel: string; text: string }) {
   switch (channel) {
     case "question":
     case "user_question":
-      // Heads each round: the question DeepTutor (or the user, from the sidebar)
+      // Heads each round: the question Astitvam (or the user, from the sidebar)
       // put to the agent.
       return (
         <div className="mt-1 border-t border-[var(--border)]/60 pt-2.5 first:mt-0 first:border-t-0 first:pt-0">
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--primary)]">
-            {channel === "user_question" ? t("You ask") : t("DeepTutor asks")}
+            {channel === "user_question" ? t("You ask") : t("Astitvam asks")}
           </div>
           <div className="whitespace-pre-wrap break-words leading-[1.6] text-[var(--foreground)]">
             {text}

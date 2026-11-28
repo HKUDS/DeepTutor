@@ -1,4 +1,4 @@
-# Python project configuration for DeepTutor
+# Python project configuration for Astitvam
 # This file configures Black, Ruff, and other Python tools
 
 [build-system]
@@ -8,7 +8,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deeptutor"
 dynamic = ["version", "optional-dependencies"]
-description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
+description = "Astitvam is an agent-native intelligent learning companion with multi-agent collaboration and RAG"
+authors = [{ name = "Sunil Kumar" }]
 # Python 3.14 is supported by the core app now that compiled base dependencies
 # such as FAISS publish compatible wheels. Keep a forward cap so a future
 # interpreter is not advertised before the compiled dependency stack is ready.

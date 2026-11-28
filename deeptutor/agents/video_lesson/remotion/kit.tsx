@@ -1,4 +1,4 @@
-// Lesson kit: the only building blocks a video lesson may use. DeepTutor's cream/terracotta palette,
+// Lesson kit: the only building blocks a video lesson may use. Astitvam's cream/terracotta palette,
 // Lora + Geist type, and restrained motion live here, so the model composes content instead of
 // inventing styling. Every component reads the frame from its enclosing <Sequence>.
 import React, {createContext, useContext} from "react";

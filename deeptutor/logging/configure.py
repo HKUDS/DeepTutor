@@ -1,4 +1,4 @@
-"""DeepTutor logging bootstrap."""
+"""Astitvam logging bootstrap."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _MANAGED_ATTR = "_deeptutor_managed"
 class TolerantRotatingFileHandler(RotatingFileHandler):
     """A ``RotatingFileHandler`` that keeps working when rollover fails.
 
-    Two DeepTutor processes (the CLI launcher and the uvicorn server) can
+    Two Astitvam processes (the CLI launcher and the uvicorn server) can
     install a handler for the same log file. On Windows, renaming a file that
     another process still holds open fails with ``WinError 32``, and the stock
     handler then raises on every subsequent emit: records are dropped and

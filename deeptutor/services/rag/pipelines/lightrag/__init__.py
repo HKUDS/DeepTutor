@@ -1,7 +1,7 @@
 """Native LightRAG knowledge-base engine.
 
 A graph-based RAG provider built directly on HKUDS/LightRAG. It consumes
-DeepTutor's shared parse layer for document parsing and exposes LightRAG's
+Astitvam's shared parse layer for document parsing and exposes LightRAG's
 native query modes (naive/local/global/hybrid/mix) through the per-KB
 ``search_mode``.
 

@@ -79,7 +79,7 @@ class SearchApiProvider(BaseSearchProvider):
             # The key travels only in the header, never in the URL.
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
-            "User-Agent": "DeepTutor",
+            "User-Agent": "Astitvam",
         }
         request_kwargs: dict[str, Any] = {"headers": headers, "params": params}
         if self.proxy:

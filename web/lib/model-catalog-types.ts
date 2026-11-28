@@ -16,7 +16,7 @@ export type Discovery = {
 };
 export type ServiceName =
   | "llm"
-  /** Same shape as `llm`; stands in for it on the calls DeepTutor makes itself. */
+  /** Same shape as `llm`; stands in for it on the calls Astitvam makes itself. */
   | "task"
   | "embedding"
   | "search"
@@ -27,7 +27,7 @@ export type ServiceName =
 
 /**
  * What the user declared about a model, overriding the built-in capability
- * tables. A missing key means "let DeepTutor decide".
+ * tables. A missing key means "let Astitvam decide".
  */
 export type ModelCapabilities = {
   tools?: boolean;
@@ -149,11 +149,11 @@ export type CatalogService = {
 };
 
 /**
- * One call DeepTutor makes on its own, as the backend enumerates them.
+ * One call Astitvam makes on its own, as the backend enumerates them.
  *
  * The list ships with the settings payload rather than being restated here:
  * every entry comes from a call site that names its `TaskKind`, so this page
- * cannot offer a task DeepTutor no longer runs, or miss one it just gained.
+ * cannot offer a task Astitvam no longer runs, or miss one it just gained.
  */
 export type TaskKindInfo = { id: string; group: string };
 

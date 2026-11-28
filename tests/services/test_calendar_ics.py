@@ -45,8 +45,8 @@ def vevents(text: str) -> list[dict[str, list[str]]]:
 
 def ics(store: CalendarStore, calendar_id: str | None = None) -> str:
     calendars, events = store.export(calendar_id)
-    name = calendars[0].name.strip() if len(calendars) == 1 else "DeepTutor"
-    return render_calendar(calendars, events, calendar_name=name or "DeepTutor")
+    name = calendars[0].name.strip() if len(calendars) == 1 else "Astitvam"
+    return render_calendar(calendars, events, calendar_name=name or "Astitvam")
 
 
 def create(store: CalendarStore, **changes):
@@ -70,9 +70,9 @@ def test_empty_calendar_is_valid_vcalendar(store):
     assert "\n" not in text.replace("\r\n", "")
     lines = unfold(text)
     assert "VERSION:2.0" in lines
-    assert "PRODID:-//HKUDS//DeepTutor//EN" in lines
+    assert "PRODID:-//HKUDS//Astitvam//EN" in lines
     assert "CALSCALE:GREGORIAN" in lines
-    assert "X-WR-CALNAME:DeepTutor" in lines
+    assert "X-WR-CALNAME:Astitvam" in lines
     assert not vevents(text)
 
 

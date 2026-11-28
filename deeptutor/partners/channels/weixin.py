@@ -347,7 +347,7 @@ class WeixinChannel(BaseChannel):
         self._load_state()
         if not self._token:
             # Authentication is an explicit WebUI onboarding action. Starting
-            # DeepTutor (or auto-starting a Partner) must never take over the
+            # Astitvam (or auto-starting a Partner) must never take over the
             # terminal with an interactive QR code.
             self.set_setup_state("action_required")
             self._running = False

@@ -155,7 +155,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
     key: "task-models",
     href: "/settings#task-models",
     label: "Task models",
-    blurb: "The model behind the calls DeepTutor makes on its own.",
+    blurb: "The model behind the calls Astitvam makes on its own.",
     icon: ListChecks,
     tile: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },

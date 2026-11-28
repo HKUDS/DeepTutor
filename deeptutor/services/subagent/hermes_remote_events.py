@@ -1,4 +1,4 @@
-"""Map Hermes gateway lifecycle events onto DeepTutor event channels."""
+"""Map Hermes gateway lifecycle events onto Astitvam event channels."""
 
 from __future__ import annotations
 

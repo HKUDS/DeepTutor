@@ -1,7 +1,7 @@
 """MinerU model-readiness probe — the "no silent download" gate.
 
 The MinerU CLI auto-downloads multi-GB model weights on first local parse, and
-DeepTutor cannot stop the CLI itself from doing so. So the gate lives one level
+Astitvam cannot stop the CLI itself from doing so. So the gate lives one level
 up: a local parse is only allowed to start when models are already present *or*
 the user explicitly enabled ``allow_local_model_download``. Detection is
 best-effort and **fail-closed** — if we cannot confirm models exist, we treat

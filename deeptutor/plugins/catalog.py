@@ -1,7 +1,7 @@
-"""Read and search DeepTutor's vendored official plugin catalog.
+"""Read and search Astitvam's vendored official plugin catalog.
 
 The catalog is an index, not an installer and not a live registry client. It is
-reviewed and pinned in the DeepTutor release, so browsing never depends on a
+reviewed and pinned in the Astitvam release, so browsing never depends on a
 third-party service being online.
 """
 

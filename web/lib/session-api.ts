@@ -113,7 +113,7 @@ export interface SessionPreferences {
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
   /** Who the conversation is handed to — `partner:<id>` / `subagent:<name>`;
-   *  "" / absent when DeepTutor answers. Rewritten with every turn. */
+   *  "" / absent when Astitvam answers. Rewritten with every turn. */
   answer_by?: string;
   /** What this conversation narrowed its skill / MCP reach to. Absent or empty
    *  means it inherits everything its workspace allows. */

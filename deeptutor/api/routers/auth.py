@@ -173,7 +173,7 @@ def _require_private_frontend(request: Request) -> None:
     )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Sign-in is only available from a private DeepTutor origin",
+        detail="Sign-in is only available from a private Astitvam origin",
     )
 
 
@@ -862,16 +862,16 @@ async def receive_codex_oauth_callback(
     except CodexAuthError as exc:
         return HTMLResponse(
             (
-                "<!doctype html><title>DeepTutor Codex</title>"
-                "<p>Authentication could not be received. Return to DeepTutor and try again.</p>"
+                "<!doctype html><title>Astitvam Codex</title>"
+                "<p>Authentication could not be received. Return to Astitvam and try again.</p>"
             ),
             status_code=exc.http_status,
             headers=headers,
         )
     return HTMLResponse(
         (
-            "<!doctype html><title>DeepTutor Codex</title>"
-            "<p>Authentication received. You can return to DeepTutor.</p>"
+            "<!doctype html><title>Astitvam Codex</title>"
+            "<p>Authentication received. You can return to Astitvam.</p>"
         ),
         headers=headers,
     )

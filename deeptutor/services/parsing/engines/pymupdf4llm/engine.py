@@ -74,7 +74,7 @@ class PyMuPDF4LLMParser:
                 ready=False,
                 reason="update_required",
                 message=(
-                    f"Installed PyMuPDF4LLM {version or 'unknown'} is too old. DeepTutor needs "
+                    f"Installed PyMuPDF4LLM {version or 'unknown'} is too old. Astitvam needs "
                     f"PyMuPDF4LLM >= {MIN_PYMUPDF4LLM_VERSION} for current layout, OCR, image "
                     "and multi-format support. Update it under Settings → Document Parsing."
                 ),
@@ -126,7 +126,7 @@ class PyMuPDF4LLMParser:
         """Return the current public converter.
 
         PyMuPDF4LLM 1.28's layout path now supports OCR and image extraction,
-        so DeepTutor should use it instead of pinning the legacy helper and
+        so Astitvam should use it instead of pinning the legacy helper and
         silently bypassing upstream improvements.
         """
         import pymupdf4llm

@@ -8,7 +8,7 @@ MIN_PYMUPDF4LLM_VERSION = "1.28.2"
 
 # PyMuPDF4LLM supports the formats opened by the bundled PyMuPDF runtime.
 # Office/HWP formats require the separately licensed PyMuPDF Pro product and
-# therefore are not advertised by DeepTutor's open-source extra.
+# therefore are not advertised by Astitvam's open-source extra.
 PYMUPDF4LLM_1_28_2_FORMATS = frozenset(
     {
         ".bmp",

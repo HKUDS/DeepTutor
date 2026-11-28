@@ -141,7 +141,7 @@ def prepare_multimodal_messages(
 
     Images are injected **optimistically for every provider/model** — this
     function does not consult ``supports_vision``. A model that natively
-    understands images therefore always receives them, even one DeepTutor has
+    understands images therefore always receives them, even one Astitvam has
     no capability entry for (the original Doubao/VolcEngine bug). When a model
     genuinely cannot handle images the request fails and the Stage-2 fallback
     (:func:`should_degrade_to_text` + :func:`strip_image_parts`, applied at

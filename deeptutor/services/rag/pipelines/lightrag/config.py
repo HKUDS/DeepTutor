@@ -1,15 +1,15 @@
-"""Bridge DeepTutor runtime configuration into the LightRAG 1.5 native SDK.
+"""Bridge Astitvam runtime configuration into the LightRAG 1.5 native SDK.
 
 This module is the decoupling seam: it exposes availability + mode helpers and
-builds the three adapters LightRAG needs from DeepTutor's already-resolved LLM,
+builds the three adapters LightRAG needs from Astitvam's already-resolved LLM,
 vision, and embedding clients. LightRAG imports remain lazy so every other RAG
 provider can import without the optional extra installed.
 
 Decoupling notes:
-* ``llm_model_func`` / ``vision_model_func`` wrap DeepTutor's unified model
+* ``llm_model_func`` / ``vision_model_func`` wrap Astitvam's unified model
   callables and DROP LightRAG's internal kwargs (``hashing_kv``,
   ``keyword_extraction``, …) so they never leak into ``factory.complete``.
-* ``embedding_func`` reuses DeepTutor's embedding client, wrapped in LightRAG's
+* ``embedding_func`` reuses Astitvam's embedding client, wrapped in LightRAG's
   ``EmbeddingFunc`` with the active model's dimension.
 """
 
@@ -63,7 +63,7 @@ class LightRagNotAvailableError(RuntimeError):
 
 
 class LightRagNotConfiguredError(RuntimeError):
-    """Raised when DeepTutor's LLM / embedding config can't back LightRAG."""
+    """Raised when Astitvam's LLM / embedding config can't back LightRAG."""
 
 
 def _http_status_code(exc: Exception) -> int | None:
@@ -258,13 +258,13 @@ def build_llm_model_func(
     llm_config: LLMConfig | None = None,
     owner: CurrentUser | None = None,
 ):
-    """Wrap DeepTutor's unified LLM callable for LightRAG.
+    """Wrap Astitvam's unified LLM callable for LightRAG.
 
     Preserve provider-facing structured-output requests while keeping
-    LightRAG's orchestration-only kwargs out of DeepTutor's provider layer.
+    LightRAG's orchestration-only kwargs out of Astitvam's provider layer.
 
     ``enable_cot`` is intentionally an output-formatting switch in LightRAG,
-    not a request to enable provider reasoning. DeepTutor controls reasoning
+    not a request to enable provider reasoning. Astitvam controls reasoning
     through the frozen role configuration and returns answer content without
     exposing provider reasoning text.
     """
@@ -321,7 +321,7 @@ def build_vision_model_func(
     llm_config: LLMConfig | None = None,
     owner: CurrentUser | None = None,
 ):
-    """Map rc2 ``image_inputs`` to DeepTutor's vision callable."""
+    """Map rc2 ``image_inputs`` to Astitvam's vision callable."""
     if llm_config is None:
         from deeptutor.services.llm import get_llm_client
 
@@ -378,7 +378,7 @@ def build_vision_model_func(
 
 
 def vision_model_available() -> bool:
-    """Return whether the active DeepTutor model is explicitly vision-capable."""
+    """Return whether the active Astitvam model is explicitly vision-capable."""
     try:
         from deeptutor.services.llm import get_llm_client
 

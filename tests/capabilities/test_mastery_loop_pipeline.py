@@ -44,14 +44,14 @@ def _mastery_context() -> UnifiedContext:
 @pytest.mark.parametrize(
     ("language", "tutor_phrase", "chat_phrase"),
     [
-        ("zh", "掌握式导师", "你是 DeepTutor"),
-        ("en", "mastery tutor", "You are DeepTutor"),
+        ("zh", "掌握式导师", "你是 Astitvam"),
+        ("en", "mastery tutor", "You are Astitvam"),
     ],
 )
 def test_tutor_identity_replaces_chat_identity(
     language: str, tutor_phrase: str, chat_phrase: str
 ) -> None:
-    """The prompt opens as a tutor, not as DeepTutor-behaving-like-a-tutor."""
+    """The prompt opens as a tutor, not as Astitvam-behaving-like-a-tutor."""
     prompt = MasteryLoopPipeline(language=language)._build_system_prompt([], _mastery_context())
 
     assert tutor_phrase in prompt

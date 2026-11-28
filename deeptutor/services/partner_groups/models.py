@@ -1,4 +1,4 @@
-"""Domain models for first-class groups of DeepTutor Partners."""
+"""Domain models for first-class groups of Astitvam Partners."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Private, generation-safe storage for DeepTutor Codex credentials."""
+"""Private, generation-safe storage for Astitvam Codex credentials."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 class CodexCredentialStore:
-    """Store credentials only below DeepTutor's explicitly supplied user root."""
+    """Store credentials only below Astitvam's explicitly supplied user root."""
 
     def __init__(self, user_root: Path) -> None:
         self.root = Path(user_root) / "private" / "openai-codex"

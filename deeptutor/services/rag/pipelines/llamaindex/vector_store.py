@@ -1,6 +1,6 @@
 """Vector-store backend selection for the LlamaIndex RAG pipeline.
 
-This module is the single seam between DeepTutor's LlamaIndex pipeline and the
+This module is the single seam between Astitvam's LlamaIndex pipeline and the
 concrete vector store implementation. It exists so the rest of the pipeline
 (ingestion, storage, retrieval) never has to know *how* vectors are stored.
 

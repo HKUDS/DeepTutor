@@ -110,7 +110,7 @@ function refineRow(
  * attention" and "model services" lists, so a service's model, its last test
  * result, and whether anything downstream depends on it are read off one row.
  *
- * The rule it is built on: optional capabilities are optional. DeepTutor ships
+ * The rule it is built on: optional capabilities are optional. Astitvam ships
  * with speech, image, and video services unset and their tools switched on —
  * flagging that as a fault trains people to ignore the whole panel. Only a
  * capability the install needs, or one that was configured and now fails, is

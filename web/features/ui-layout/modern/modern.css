@@ -253,11 +253,13 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-record-question:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 /* ---- Sidebar header: the workspace menu ------------------------------ */
-.dt-sidebar-header { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px; flex-shrink: 0; }
-.dt-sidebar-header > .dt-nav-icon { opacity: 0; transition: opacity 140ms, background-color 140ms, color 140ms; }
-.dt-product-sidebar:hover .dt-sidebar-header > .dt-nav-icon,
-.dt-sidebar-header > .dt-nav-icon:focus-visible { opacity: 1; }
-.dt-sidebar-header .dt-sidebar-search { opacity: 1; }
+.dt-sidebar-header { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-height: 84px; padding: 8px; flex-shrink: 0; }
+.dt-sidebar-brand { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px; }
+.dt-sidebar-header-controls { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dt-sidebar-header-controls > .dt-nav-icon { opacity: 0; transition: opacity 140ms, background-color 140ms, color 140ms; }
+.dt-product-sidebar:hover .dt-sidebar-header-controls > .dt-nav-icon,
+.dt-sidebar-header-controls > .dt-nav-icon:focus-visible { opacity: 1; }
+.dt-sidebar-header-controls .dt-sidebar-search { opacity: 1; }
 .dt-workspace-menu { position: relative; flex: 1; min-width: 0; }
 /* The collapsed rail: the open header stood on end (workspace, expand,
    search), the shelves, and a new conversation at the foot. The workspace

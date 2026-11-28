@@ -82,7 +82,7 @@ def export_ics(calendar_id: str | None = Query(default=None)):
     with errors():
         calendars, events = store.export(calendar_id)
     if calendar_id is None:
-        name = "DeepTutor"
+        name = "Astitvam"
         filename = "deeptutor.ics"
     else:
         name = calendars[0].name.strip() or "calendar"

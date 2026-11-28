@@ -205,5 +205,5 @@ def _default_client(timeout_seconds: float) -> _DownloadClient:
     return httpx.Client(
         timeout=timeout_seconds,
         follow_redirects=False,
-        headers={"User-Agent": "DeepTutor-plugin-catalog/2"},
+        headers={"User-Agent": "Astitvam-plugin-catalog/2"},
     )

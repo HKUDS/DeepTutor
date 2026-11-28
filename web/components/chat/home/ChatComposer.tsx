@@ -343,12 +343,12 @@ export default memo(function ChatComposer({
   onSelectPartner?: (id: string | null) => void;
   selectedPartnerGroup?: string | null;
   onSelectPartnerGroup?: (id: string | null) => void;
-  /** Who answers instead of DeepTutor: `partner:<id>`, `subagent:<name>`, or null. */
+  /** Who answers instead of Astitvam: `partner:<id>`, `subagent:<name>`, or null. */
   answerBy?: string | null;
   onAnswerByChange?: (value: string | null) => void;
   selectedAgent?: string | null;
   onSelectAgent?: (name: string | null) => void;
-  /** Max times DeepTutor may consult the selected agent this turn. */
+  /** Max times Astitvam may consult the selected agent this turn. */
   subagentBudget?: number | null;
   onSubagentBudgetChange?: (budget: number) => void;
   llmOptions: LLMOption[];
@@ -1199,7 +1199,7 @@ export default memo(function ChatComposer({
           onOpenChange: onPersonaSelectorOpenChange,
         }
       : undefined;
-  // Working with partners: DeepTutor still answers, having asked them first.
+  // Working with partners: Astitvam still answers, having asked them first.
   const partnerLinks: PartnerLinkProps | undefined =
     onSelectAgent || onSelectPartner || onSelectPartnerGroup
       ? {

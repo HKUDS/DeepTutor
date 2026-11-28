@@ -2,7 +2,7 @@
 Services Layer
 ==============
 
-Unified service layer for DeepTutor providing:
+Unified service layer for Astitvam providing:
 - LLM client and configuration
 - Embedding client and configuration
 - RAG pipelines and components

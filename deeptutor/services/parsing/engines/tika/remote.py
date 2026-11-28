@@ -83,7 +83,7 @@ def verify_remote(config: TikaConfig, timeout: float = _HEALTH_TIMEOUT_SECONDS) 
     if not tika_version_is_current(version):
         return (
             False,
-            f"{version}. DeepTutor recommends Apache Tika >= {MIN_TIKA_VERSION}; "
+            f"{version}. Astitvam recommends Apache Tika >= {MIN_TIKA_VERSION}; "
             "update the remote server to enable the current parser and format set.",
         )
     return True, version

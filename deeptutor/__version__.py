@@ -1,4 +1,4 @@
-"""Single source of truth for the DeepTutor version.
+"""Single source of truth for the Astitvam version.
 
 To cut a release, bump ``__version__`` here, commit, and tag the commit with
 ``v<__version__>`` (e.g. ``v1.4.0``). CI verifies the tag matches this value

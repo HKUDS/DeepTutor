@@ -608,7 +608,7 @@ export default function ChatWorkspace() {
     prefillInputRef.current?.(text);
   }, []);
 
-  // A message handed over by another page (Settings' "set up with DeepTutor"
+  // A message handed over by another page (Settings' "set up with Astitvam"
   // button). Prefilled rather than sent: the user reads what will be asked and
   // presses enter themselves. Consumed once, so a refresh does not retype it.
   //
@@ -1980,12 +1980,12 @@ export default function ChatWorkspace() {
     () => state.knowledgeBases.find((name) => agentNameSet.has(name)) ?? null,
     [state.knowledgeBases, agentNameSet],
   );
-  // How many times DeepTutor may consult the selected agent this turn. Seeded
+  // How many times Astitvam may consult the selected agent this turn. Seeded
   // from the configured default; the composer's stepper overrides it per turn.
   const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
   const [selectedPartnerGroup, setSelectedPartnerGroup] = useState<string | null>(null);
-  // Who answers instead of DeepTutor. The conversation holds it, so a
+  // Who answers instead of Astitvam. The conversation holds it, so a
   // hand-over lasts until the learner takes it back, survives the draft
   // becoming a session, and never follows them to another chat.
   const answerBy = state.answerBy;
@@ -2136,7 +2136,7 @@ export default function ChatWorkspace() {
         config = buildResearchWSConfig(researchConfig);
       }
       // When a connected agent is selected, carry the per-turn consult budget
-      // (how many times DeepTutor may ask it) so the subagent capability uses it.
+      // (how many times Astitvam may ask it) so the subagent capability uses it.
       if (selectedAgent && subagentBudget) {
         config = { ...(config ?? {}), subagent_consult_budget: subagentBudget };
       }
@@ -2760,7 +2760,7 @@ export default function ChatWorkspace() {
                   <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                     <img
                       src="/brand/black-logo.png"
-                      alt="DeepTutor"
+                      alt="Astitvam"
                       width={40}
                       height={40}
                       className="h-10 w-10 select-none dark:invert"
@@ -3237,7 +3237,7 @@ function SubagentTabWatcher({
   viewerPanelRef: React.MutableRefObject<SessionViewerPanelHandle | null>;
 }) {
   useEffect(() => {
-    // Group by turn so all of one turn's consults (DeepTutor may ask the agent
+    // Group by turn so all of one turn's consults (Astitvam may ask the agent
     // several questions in a row, each its own tool call) land in one tab as a
     // single running dialogue; fall back to the call id when no turn is set.
     const groups = new Map<string, { label: string; events: StreamEvent[] }>();

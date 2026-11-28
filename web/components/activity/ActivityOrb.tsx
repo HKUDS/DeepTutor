@@ -54,13 +54,13 @@ const ORB_SUPERSAMPLE = 3;
  * `brand` is the default and follows `--primary`, which is right for a status
  * header speaking for the product. `live` is the same blue the status dots
  * use for work in flight — for orbs that mean "this is running *now*" rather
- * than "this is DeepTutor thinking", where the signal has to read the same
+ * than "this is Astitvam thinking", where the signal has to read the same
  * on every theme.
  */
 export type OrbTone = "brand" | "live";
 
 /**
- * A thought-orb at DeepTutor's house settings.
+ * A thought-orb at Astitvam's house settings.
  *
  * Every surface that shows one goes through here, so the size, resolution,
  * ink and pause behaviour cannot drift between chat, books and the rest.

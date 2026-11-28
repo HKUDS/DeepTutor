@@ -1,4 +1,4 @@
-"""Formatters for DeepTutor's stdlib logging pipeline."""
+"""Formatters for Astitvam's stdlib logging pipeline."""
 
 from __future__ import annotations
 

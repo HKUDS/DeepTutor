@@ -1,4 +1,4 @@
-"""DeepTutor Logging 2.0: stdlib core plus structured process-log events."""
+"""Astitvam Logging 2.0: stdlib core plus structured process-log events."""
 
 from .config import LoggingConfig, get_default_log_dir, get_global_log_level, load_logging_config
 from .configure import configure_logging

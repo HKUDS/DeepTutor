@@ -154,7 +154,7 @@ async def list_skills() -> dict[str, list[dict[str, object]]]:
 async def hub_catalog(hub: str = "eduhub", q: str = "", limit: int = 50) -> dict[str, object]:
     """Proxy a skill hub's public catalog for the in-app browser.
 
-    The web "Import from EduHub" panel renders these rows in DeepTutor's own
+    The web "Import from EduHub" panel renders these rows in Astitvam's own
     UI — no embedded iframe, no login — so users can browse, search, and
     one-click download skills. Returns ``web_url`` (the hub's site origin) so
     the panel can offer a "view on EduHub" link out.

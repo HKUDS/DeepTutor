@@ -1,4 +1,4 @@
-"""Freeze DeepTutor parse results into version-local LightRAG ingress bundles."""
+"""Freeze Astitvam parse results into version-local LightRAG ingress bundles."""
 
 from __future__ import annotations
 

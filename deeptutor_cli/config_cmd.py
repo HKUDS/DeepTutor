@@ -2,7 +2,7 @@
 CLI Config Command
 ==================
 
-View and update DeepTutor configuration.
+View and update Astitvam configuration.
 """
 
 from __future__ import annotations

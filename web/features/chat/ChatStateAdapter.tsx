@@ -244,8 +244,8 @@ export interface ChatState {
   /** Session-level persona preference; "" = Default (no persona). Applies
    *  to every following message until changed (persisted on the session). */
   personaSelection: string;
-  /** Who answers this conversation instead of DeepTutor — `partner:<id>` or
-   *  `subagent:<name>`; null when DeepTutor does. Sent with every turn and
+  /** Who answers this conversation instead of Astitvam — `partner:<id>` or
+   *  `subagent:<name>`; null when Astitvam does. Sent with every turn and
    *  kept on the session, so it holds until the learner hands it back. */
   answerBy: string | null;
   /** Skills and MCP servers this conversation narrowed itself to. Empty means

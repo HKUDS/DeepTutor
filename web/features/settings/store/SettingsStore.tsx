@@ -550,7 +550,7 @@ export type SettingsContextValue = {
 
   // Connections + task models
   connectionTargets: ConnectionTarget[];
-  /** The calls DeepTutor makes on its own, in the order the backend lists them. */
+  /** The calls Astitvam makes on its own, in the order the backend lists them. */
   taskKinds: TaskKindInfo[];
   connectionTarget: (provider: string) => ConnectionTarget | null;
   addConnection: (input: {

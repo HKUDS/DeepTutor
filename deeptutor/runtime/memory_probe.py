@@ -1,10 +1,10 @@
-"""Resident-memory snapshot of the running DeepTutor process tree.
+"""Resident-memory snapshot of the running Astitvam process tree.
 
 The counterpart to :mod:`deeptutor.runtime.memory_reclaim`: that module *acts*
 on memory (cycle collection, ``malloc_trim``), this one *observes* it so the
 settings status strip can show what the app actually costs.
 
-Two things make "how much memory does DeepTutor use" more than one ``getrusage``
+Two things make "how much memory does Astitvam use" more than one ``getrusage``
 call:
 
 * The backend is only one of the processes. ``deeptutor.runtime.launcher``
@@ -31,7 +31,7 @@ import sys
 from typing import Any
 
 # Stamped by the launcher onto every child's environment so the backend can
-# find the root of the DeepTutor process tree it belongs to.
+# find the root of the Astitvam process tree it belongs to.
 SUPERVISOR_PID_ENV = "DEEPTUTOR_SUPERVISOR_PID"
 
 _CGROUP_V2_CURRENT = Path("/sys/fs/cgroup/memory.current")
@@ -50,7 +50,7 @@ MAX_REPORTED_PROCESSES = 12
 
 @dataclass(frozen=True, slots=True)
 class ProcessMemory:
-    """One process in the DeepTutor tree."""
+    """One process in the Astitvam tree."""
 
     pid: int
     label: str
@@ -236,7 +236,7 @@ def _proc_rss(pid: int) -> int | None:
 
 
 def _scan_proc() -> tuple[list[ProcessMemory], bool]:
-    """psutil-free fallback for Linux — the platform DeepTutor ships in Docker on."""
+    """psutil-free fallback for Linux — the platform Astitvam ships in Docker on."""
     children: dict[int, list[int]] = {}
     meta: dict[int, tuple[str, str]] = {}
     for entry in Path("/proc").iterdir():

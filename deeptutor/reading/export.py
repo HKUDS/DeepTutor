@@ -5,7 +5,7 @@ Two shapes, because they answer different needs:
 * **PDF** (``fmt="pdf"``) — the original file with *real* PDF annotations written
   in via PyMuPDF. The point is portability: the result opens in Preview, Acrobat
   or Chrome with the highlights and notes intact, so a user's reading survives
-  leaving DeepTutor. Only available for materials that kept their raw bytes.
+  leaving Astitvam. Only available for materials that kept their raw bytes.
 * **Markdown** (``fmt="markdown"``) — the marks themselves, in locator order,
   each with its quote and note. Works for every format, and is what a user
   actually wants to paste into their own notes.

@@ -40,7 +40,7 @@ class PerplexityProvider(BaseSearchProvider):
                     "perplexityai module is not installed. To use Perplexity search, please install: "
                     "pip install perplexityai"
                 ) from e
-            # Identify DeepTutor traffic to the Perplexity API for attribution.
+            # Identify Astitvam traffic to the Perplexity API for attribution.
             self._client = Perplexity(
                 api_key=self.api_key,
                 default_headers={"X-Pplx-Integration": "deeptutor"},

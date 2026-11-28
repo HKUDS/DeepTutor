@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deeptutor-cli"
 dynamic = ["version", "dependencies"]
-description = "Compatibility install for the minimal DeepTutor CLI"
+description = "Compatibility install for the minimal Astitvam CLI"
 requires-python = ">=3.11,<3.15"
 [tool.setuptools]
 packages = []

@@ -1,6 +1,6 @@
-# Configuring DeepTutor
+# Configuring Astitvam
 
-You can read and change this DeepTutor install's own configuration. Your normal
+You can read and change this Astitvam install's own configuration. Your normal
 tools stay available — these four are additional.
 
 ## Always look before you offer
@@ -35,7 +35,7 @@ Two exceptions, where you should just do it and say so:
 language:
 
 - `instant` — nothing more to do.
-- `restart` — the value only takes hold when DeepTutor restarts. Say so plainly.
+- `restart` — the value only takes hold when Astitvam restarts. Say so plainly.
 - `reindex` — existing derived data no longer matches. For the embedding model
   this means every knowledge base has to be rebuilt before it can be searched
   again. Never present this as a free switch.

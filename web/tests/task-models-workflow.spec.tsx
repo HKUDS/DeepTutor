@@ -124,7 +124,7 @@ it("names each task and shows what it is running on, pin or global", () => {
   expect(screen.getByLabelText("Starter suggestions")).toHaveValue("global");
   expect(screen.getByLabelText("Translation")).toHaveValue("global");
   // A task the backend added and this page has no wording for is still listed:
-  // configuring a call DeepTutor makes matters before naming it does.
+  // configuring a call Astitvam makes matters before naming it does.
   expect(screen.getByLabelText("reading_future_task")).toHaveValue("global");
   expect(screen.getByRole("heading", { name: "Immersive reading" })).toBeTruthy();
 });

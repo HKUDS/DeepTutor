@@ -29,7 +29,7 @@ class VisualizerManifest(BaseModel):
     version: str = Field(default="1.0.0", min_length=1, max_length=32)
     display_name: str = Field(min_length=1, max_length=80)
     description: str = Field(min_length=1, max_length=1_000)
-    author: str = Field(default="DeepTutor", min_length=1, max_length=120)
+    author: str = Field(default="Astitvam", min_length=1, max_length=120)
     subjects: list[str] = Field(default_factory=list, max_length=32)
     intents: list[str] = Field(default_factory=list, max_length=32)
     render_target: Literal["native", "iframe", "artifact"] = "native"

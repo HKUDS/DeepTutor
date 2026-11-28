@@ -147,7 +147,7 @@ def parse_manifest(raw: Mapping[str, Any] | None) -> PluginManifestData:
     Unknown top-level fields are rejected rather than silently ignored. This is
     the compatibility contract third-party packages will build against, so a
     typo such as ``entryPoints`` must fail during review instead of changing
-    behavior between DeepTutor releases.
+    behavior between Astitvam releases.
     """
     if not isinstance(raw, Mapping):
         raise ManifestValidationError("manifest must be a JSON object")

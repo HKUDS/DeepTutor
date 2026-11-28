@@ -6,14 +6,14 @@ import { agentMarker, edition, runtimeLayout, runtimePath, targetId } from '../s
 import { canonicalManifest, verifyManifest } from '../src/bundles.mjs';
 
 test('each build target is named in full and in short', () => {
-  assert.deepEqual(edition('darwin', 'arm64'), { full: 'Open DeepTutor for MacOS with Apple Silicon', short: 'MacOS (Apple Silicon)' });
-  assert.deepEqual(edition('darwin', 'x64'), { full: 'Open DeepTutor for MacOS with Intel Silicon', short: 'MacOS (Intel)' });
-  assert.deepEqual(edition('win32', 'x64'), { full: 'Open DeepTutor for Windows', short: 'Windows' });
+  assert.deepEqual(edition('darwin', 'arm64'), { full: 'Astitvam for MacOS with Apple Silicon', short: 'MacOS (Apple Silicon)' });
+  assert.deepEqual(edition('darwin', 'x64'), { full: 'Astitvam for MacOS with Intel Silicon', short: 'MacOS (Intel)' });
+  assert.deepEqual(edition('win32', 'x64'), { full: 'Astitvam for Windows', short: 'Windows' });
 });
 
 test('the user agent marker carries platform and architecture for the web UI', () => {
-  assert.equal(agentMarker('1.7.1', 'darwin', 'x64'), 'OpenDeepTutor/1.7.1 (macOS; x64)');
-  assert.equal(agentMarker('1.7.1', 'win32', 'x64'), 'OpenDeepTutor/1.7.1 (Windows; x64)');
+  assert.equal(agentMarker('1.7.1', 'darwin', 'x64'), 'AstitvamDesktop/1.7.1 (macOS; x64)');
+  assert.equal(agentMarker('1.7.1', 'win32', 'x64'), 'AstitvamDesktop/1.7.1 (Windows; x64)');
 });
 
 test('every platform folder is a known target with a runtime layout', async () => {

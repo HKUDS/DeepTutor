@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -83,6 +83,8 @@ it("disables viewport prefetch for expanded sidebar navigation", () => {
   fixture.collapsed = false;
   render(<SidebarShell />);
 
+  expect(screen.getByRole("link", { name: "Astitvam" })).toHaveAttribute("href", "/");
+  expect(screen.getByText("Astitvam")).toBeInTheDocument();
   expectSidebarLinksToDisablePrefetch();
 });
 

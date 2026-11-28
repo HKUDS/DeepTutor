@@ -1,6 +1,6 @@
 """Offline installation guidance and background model downloads for parsers.
 
-Optional packages must be installed while DeepTutor is stopped, using the
+Optional packages must be installed while Astitvam is stopped, using the
 installation path appropriate to the deployment. Only model downloads run as
 background subprocesses, with fixed downloader arguments and cursor-based logs.
 """
@@ -129,10 +129,10 @@ class BackgroundJobManager:
                 "preserving other extras; recreate the same service with its existing "
                 "configuration and mounts. Startup reapplies extras; inspect startup "
                 "logs for installation failures, then recheck availability. "
-                "Source checkout: stop DeepTutor, run `python scripts/install_extras.py parse-"
+                "Source checkout: stop Astitvam, run `python scripts/install_extras.py parse-"
                 + engine
                 + "` from the checkout in the server's Python environment, then restart. "
-                "Wheel installation: stop DeepTutor, run `deeptutor module install parser-"
+                "Wheel installation: stop Astitvam, run `deeptutor module install parser-"
                 + engine
                 + "` in the server's Python environment, then restart. "
                 "Data mounts preserve user data, not installed Python packages."

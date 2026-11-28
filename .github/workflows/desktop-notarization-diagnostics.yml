@@ -1,7 +1,7 @@
 name: Desktop Notarization Diagnostics
 
 # Read the latest Apple result for each Mac edition without rebuilding or
-# publishing. Only DeepTutor submissions are included in the saved reports.
+# publishing. Only Astitvam submissions are included in the saved reports.
 on:
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 10
     steps:
-      - name: Fetch the latest DeepTutor notarization reports
+      - name: Fetch the latest Astitvam notarization reports
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -43,7 +43,7 @@ jobs:
           reports = Path(os.environ["RUNNER_TEMP"]) / "notarization-reports"
           reports.mkdir()
           for edition in ("Apple-Silicon", "Intel"):
-              prefix = f"Open-DeepTutor-MacOS-{edition}-v"
+              prefix = f"Astitvam-MacOS-{edition}-v"
               matches = [item for item in history if item["name"].startswith(prefix)]
               if not matches:
                   print(f"No submission found for {edition}.")

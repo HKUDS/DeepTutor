@@ -74,7 +74,7 @@ const PALETTES: Record<Theme, Palette> = {
   },
 };
 
-// Renders a miniature DeepTutor UI mockup in the given theme's palette —
+// Renders a miniature Astitvam UI mockup in the given theme's palette —
 // a left sidebar with one highlighted nav row, a content area with two
 // text lines and an accent button. Pure SVG so it stays crisp at any
 // device pixel ratio without leaking real interactive controls.

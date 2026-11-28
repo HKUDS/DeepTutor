@@ -1,7 +1,7 @@
 """OpenClaw backend — run one persistent Gateway-backed agent turn.
 
 The official ``openclaw agent --json`` command reserves stdout for one final
-Gateway response and sends diagnostics to stderr.  A DeepTutor-owned explicit
+Gateway response and sends diagnostics to stderr.  A Astitvam-owned explicit
 session key makes follow-up consults deterministic; operators can add
 ``--local`` through ``extra_args`` when they prefer the embedded runtime.
 """

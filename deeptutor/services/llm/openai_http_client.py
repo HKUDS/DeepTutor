@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # endpoint is theirs, whatever binding the profile was typed under.
 OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
-    "X-OpenRouter-Title": "DeepTutor",
+    "X-OpenRouter-Title": "Astitvam",
 }
 
 _warning_lock = threading.Lock()
@@ -126,7 +126,7 @@ def openai_sdk_client_kwargs(
 ) -> dict[str, Any]:
     """Constructor kwargs for ``AsyncOpenAI`` / ``AsyncAzureOpenAI``.
 
-    The one place that decides what every OpenAI-SDK client DeepTutor builds
+    The one place that decides what every OpenAI-SDK client Astitvam builds
     looks like on the wire: default headers (session affinity, OpenRouter
     attribution, the profile's extra headers), the SDK retry budget, and the
     TLS-verification bypass. ``disable_ssl_verify=None`` reads the system

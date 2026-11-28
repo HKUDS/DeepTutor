@@ -274,11 +274,11 @@ class WorkspaceExportTool(BaseTool):
         deny_label = "拒绝" if chinese else "Deny"
         action = "覆盖" if request["overwrite"] else "复制"
         prompt = (
-            f"DeepTutor 请求将 `{request['source_path']}` {action}到 "
+            f"Astitvam 请求将 `{request['source_path']}` {action}到 "
             f"`{request['destination_path']}`。是否仅允许这一次写入？"
             if chinese
             else (
-                f"DeepTutor requests one {'overwrite' if request['overwrite'] else 'copy'} from "
+                f"Astitvam requests one {'overwrite' if request['overwrite'] else 'copy'} from "
                 f"`{request['source_path']}` to `{request['destination_path']}`. Allow this "
                 "single write?"
             )

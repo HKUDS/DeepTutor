@@ -247,7 +247,7 @@ class TurnRequest(BaseModel):
     subagent_consult_budget: int | None = Field(default=None, ge=0)
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None
-    # Who answers this turn when it is not DeepTutor: ``partner:<id>`` or
+    # Who answers this turn when it is not Astitvam: ``partner:<id>`` or
     # ``subagent:<connection>``. The turn is handed over whole — see
     # ``deeptutor.capabilities.handoff``.
     answer_by: str | None = Field(default=None, pattern=r"^(partner|subagent):\S.*$")
@@ -262,7 +262,7 @@ class TurnRequest(BaseModel):
     @classmethod
     def _blank_answer_by_hands_back(cls, value: Any) -> Any:
         # Clients restate ``answer_by`` every turn and send "" to hand the
-        # thread back to DeepTutor; the field stays set, so that still clears it.
+        # thread back to Astitvam; the field stays set, so that still clears it.
         if isinstance(value, str) and not value.strip():
             return None
         return value

@@ -55,7 +55,7 @@ def is_supported_file(path: str | Path, provider: str = storage.CLOUD_PROVIDER) 
 
 
 class PageIndexPipeline:
-    """Manage one PageIndex provider while preserving DeepTutor's RAG contract."""
+    """Manage one PageIndex provider while preserving Astitvam's RAG contract."""
 
     def __init__(
         self,

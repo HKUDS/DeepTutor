@@ -188,7 +188,7 @@ class DocumentAdder:
         # check, which otherwise hides Unraid bind-mount permission errors.
         ensure_data_volume_writable(self.kb_dir)
 
-        # Incremental adds must use the engine DeepTutor has bound to this KB. An
+        # Incremental adds must use the engine Astitvam has bound to this KB. An
         # explicit rag_provider (from the API, already matched against the KB)
         # wins; otherwise use the shared binding resolver.
         if rag_provider:

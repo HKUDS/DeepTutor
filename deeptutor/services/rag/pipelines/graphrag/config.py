@@ -1,10 +1,10 @@
-"""Bridge DeepTutor's runtime config into a GraphRAG ``settings.yaml``.
+"""Bridge Astitvam's runtime config into a GraphRAG ``settings.yaml``.
 
 GraphRAG (microsoft/graphrag, 3.x) is a config-file-driven engine: it reads a
 ``settings.[yaml|json]`` from a project root and wires its own LiteLLM-backed
 model clients from it. Rather than hand-build the deeply nested
 ``GraphRagConfig`` pydantic model, we generate a minimal ``settings.yaml`` from
-DeepTutor's already-resolved LLM + embedding runtime config and let
+Astitvam's already-resolved LLM + embedding runtime config and let
 ``graphrag.config.load_config`` validate it.
 
 Decoupling notes:
@@ -14,7 +14,7 @@ Decoupling notes:
   model id, so the workflow/search sections pick it up automatically.
 * Built-in prompts are used (every ``prompt`` field defaults to ``None`` in
   GraphRAG), so we never scaffold prompt files.
-* Completion calls use DeepTutor's registered GraphRAG compatibility adapter,
+* Completion calls use Astitvam's registered GraphRAG compatibility adapter,
   while embeddings retain GraphRAG's stock LiteLLM path.
 
 This is the single spot to touch if GraphRAG's config schema shifts between
@@ -55,7 +55,7 @@ SUPPORTED_MODES = ("local", "global", "drift", "basic")
 DEFAULT_MODE = "local"
 
 # GraphRAG's stock LiteLLM embedding client uses an OpenAI-style transport and
-# appends the ``/embeddings`` operation path to ``api_base``. DeepTutor stores a
+# appends the ``/embeddings`` operation path to ``api_base``. Astitvam stores a
 # complete operation URL for these bindings, so only this explicitly compatible
 # set can be translated safely. Native Cohere, Ollama, DashScope, and Azure
 # transports require separate provider adapters and must not be guessed here.
@@ -79,7 +79,7 @@ class GraphRagNotAvailableError(RuntimeError):
 
 
 class GraphRagNotConfiguredError(RuntimeError):
-    """Raised when DeepTutor's LLM / embedding config can't back GraphRAG."""
+    """Raised when Astitvam's LLM / embedding config can't back GraphRAG."""
 
 
 def is_graphrag_available() -> bool:
@@ -106,9 +106,9 @@ def normalize_mode(mode: str | None) -> str:
 
 
 def graphrag_embedding_api_base(binding: str | None, endpoint: str | None) -> str:
-    """Translate a DeepTutor embedding endpoint into GraphRAG ``api_base``.
+    """Translate an Astitvam embedding endpoint into GraphRAG ``api_base``.
 
-    DeepTutor's public embedding contract stores and calls the complete
+    Astitvam's public embedding contract stores and calls the complete
     operation URL. GraphRAG's LiteLLM client expects the API root and appends
     ``/embeddings`` itself. Strip exactly one terminal path segment only for
     known OpenAI-compatible transports. Query-bearing URLs are left untouched
@@ -116,7 +116,7 @@ def graphrag_embedding_api_base(binding: str | None, endpoint: str | None) -> st
     query parameters are embedded in ``base_url``.
 
     Args:
-        binding: Active DeepTutor embedding binding.
+        binding: Active Astitvam embedding binding.
         endpoint: Fully qualified endpoint saved in the model catalog.
 
     Returns:
@@ -149,7 +149,7 @@ def ensure_graphrag_embedding_transport(
     provider = canonical_embedding_provider_name(binding)
     if provider not in OPENAI_COMPATIBLE_EMBEDDING_BINDINGS:
         raise GraphRagEmbeddingProviderUnsupportedError()
-    # Gemini can use either DeepTutor's native ``batchEmbedContents`` adapter
+    # Gemini can use either Astitvam's native ``batchEmbedContents`` adapter
     # or its legacy OpenAI-compatible endpoint. GraphRAG only supports the
     # latter; a provider name alone is no longer enough after Gemini 2 support.
     if provider == "gemini" and not urlsplit(str(endpoint or "")).path.rstrip("/").endswith(
@@ -237,10 +237,10 @@ def _completion_model_entry(llm_cfg: Any, *, api_base: str | None) -> dict[str, 
 
 
 def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[str, Any]:
-    """Assemble the GraphRAG ``settings.yaml`` payload from DeepTutor config.
+    """Assemble the GraphRAG ``settings.yaml`` payload from Astitvam config.
 
     ``llm_cfg`` / ``embedding_cfg`` are injectable for tests; in production they
-    are resolved from DeepTutor's catalog. Raises
+    are resolved from Astitvam's catalog. Raises
     :class:`GraphRagNotConfiguredError` if either side has no usable model.
     """
     if llm_cfg is None:
@@ -294,7 +294,7 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
                 extra_headers=getattr(embedding_cfg, "extra_headers", None),
             ),
         },
-        # Plain-text input: DeepTutor's ingestion writes parsed ``.txt`` files
+        # Plain-text input: Astitvam's ingestion writes parsed ``.txt`` files
         # into ``input/`` (see ``ingestion.py``) so GraphRAG never parses
         # documents itself. The ``$`` is escaped as ``$$`` because GraphRAG's
         # loader treats the whole config text as a ``string.Template`` and does
@@ -308,7 +308,7 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
         # type, and is rejected the first time the pipeline builds a cache.
         "cache": {"type": "json", "storage": {"type": "file", "base_dir": "cache"}},
         "reporting": {"type": "file", "base_dir": "logs"},
-        # GraphRAG/LanceDB defaults to 3072 dimensions; DeepTutor must stamp the
+        # GraphRAG/LanceDB defaults to 3072 dimensions; Astitvam must stamp the
         # active embedding dimension so Qwen-4096 and other non-default models work.
         "vector_store": {
             "type": "lancedb",

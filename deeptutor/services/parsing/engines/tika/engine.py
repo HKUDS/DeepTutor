@@ -29,7 +29,7 @@ class TikaParser:
     def supported_formats(self) -> frozenset[str]:
         # Tika content-sniffs more than a thousand formats and deployments may
         # add custom parsers. Empty means “delegate support detection to the
-        # engine” in the Parser protocol, avoiding a stale DeepTutor whitelist.
+        # engine” in the Parser protocol, avoiding a stale Astitvam whitelist.
         return frozenset()
 
     def signature(self, config: TikaConfig) -> ParserSignature:

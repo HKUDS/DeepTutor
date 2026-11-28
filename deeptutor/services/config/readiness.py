@@ -5,7 +5,7 @@ only.  Provider URLs, model names, credentials, and exception text stay on the
 server.  Network probes are limited to configured infrastructure backends and
 selected remote document parsers; model providers are never called here.
 
-Readiness is not the same thing as correctness.  Most of what DeepTutor can be
+Readiness is not the same thing as correctness.  Most of what Astitvam can be
 configured with is optional: nobody has to own a video model, and a parser that
 is not installed is not a fault.  Every row therefore carries ``required`` --
 whether the install genuinely depends on it -- and the snapshot grades what it

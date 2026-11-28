@@ -1,4 +1,4 @@
-"""Setup diagnostics for the DeepTutor CLI."""
+"""Setup diagnostics for the Astitvam CLI."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .common import console
 
 
 def _render_rich(report: DoctorReport) -> None:
-    table = Table(title="DeepTutor setup diagnostics")
+    table = Table(title="Astitvam setup diagnostics")
     table.add_column("Status", no_wrap=True)
     table.add_column("Check")
     table.add_column("Details")
@@ -58,7 +58,7 @@ def register(app: typer.Typer) -> None:
             help="Output format: rich | json.",
         ),
     ) -> None:
-        """Check whether DeepTutor is ready to start a session."""
+        """Check whether Astitvam is ready to start a session."""
         if fmt not in {"rich", "json"}:
             raise typer.BadParameter("must be 'rich' or 'json'", param_hint="--format")
 

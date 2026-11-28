@@ -50,7 +50,7 @@ class _CodeBuddySession:
     """Stateful CodeBuddy CLI session with task-bound SDK ownership.
 
     The CodeBuddy Agent SDK enters anyio cancel scopes / TaskGroups during
-    ``connect()`` and must exit them from the same task. DeepTutor chat turns
+    ``connect()`` and must exit them from the same task. Astitvam chat turns
     run in fresh ``_ProviderOpenAIStream`` tasks, so this session keeps a
     dedicated owner task for connect / query / receive / disconnect.
     """
@@ -157,9 +157,9 @@ class CodeBuddyProvider(LLMProvider):
     """Provider backed by the CodeBuddy Agent SDK.
 
     CodeBuddy is exposed as an agent SDK instead of an OpenAI-compatible chat
-    endpoint. This adapter keeps one stateful CLI process per DeepTutor session
-    and exposes DeepTutor's tool schemas through an in-process SDK MCP server.
-    Tool execution remains owned by DeepTutor's existing dispatcher.
+    endpoint. This adapter keeps one stateful CLI process per Astitvam session
+    and exposes Astitvam's tool schemas through an in-process SDK MCP server.
+    Tool execution remains owned by Astitvam's existing dispatcher.
     """
 
     def __init__(
@@ -480,7 +480,7 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
                     {
                         "type": "text",
                         "text": (
-                            "DeepTutor accepted this tool call and will provide its result next."
+                            "Astitvam accepted this tool call and will provide its result next."
                         ),
                     }
                 ]

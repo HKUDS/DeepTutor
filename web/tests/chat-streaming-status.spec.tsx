@@ -27,7 +27,7 @@ describe("chat activity status", () => {
     );
 
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("DeepTutor Exploring");
+    expect(status).toHaveTextContent("Astitvam Exploring");
     expect(status).not.toHaveTextContent("Responding");
   });
 
@@ -101,6 +101,6 @@ describe("chat activity status", () => {
         content="Acting now"
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("DeepTutor Exploring");
+    expect(screen.getByRole("status")).toHaveTextContent("Astitvam Exploring");
   });
 });

@@ -44,7 +44,7 @@ export default function MemoryArchivedBanner({
           </p>
           <p className="mt-0.5 text-[var(--muted-foreground)]">
             {t(
-              "Stored at memory/backup/{{name}}. v2 starts fresh — interact with DeepTutor and click Update on each doc to build memory.",
+              "Stored at memory/backup/{{name}}. v2 starts fresh — interact with Astitvam and click Update on each doc to build memory.",
               { name: latestBackup },
             )}
           </p>
@@ -81,7 +81,7 @@ export default function MemoryArchivedBanner({
       {expanded && (
         <div className="relative border-t border-[var(--border)] px-4 py-3 pr-10 text-[var(--muted-foreground)]">
           {t(
-            "Stored at memory/backup/{{name}}. v2 starts fresh — interact with DeepTutor and click Update on each doc to build memory.",
+            "Stored at memory/backup/{{name}}. v2 starts fresh — interact with Astitvam and click Update on each doc to build memory.",
             { name: latestBackup },
           )}
           <button

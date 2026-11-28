@@ -26,7 +26,7 @@ class SubmitVisualizationTool(BaseTool):
         return ToolDefinition(
             name="submit_visualization",
             description=(
-                "Validate and submit one complete visualization to DeepTutor's canvas. "
+                "Validate and submit one complete visualization to Astitvam's canvas. "
                 "Call this after choosing an installed visualizer and generating its exact "
                 "payload. If validation fails, repair the payload and call again."
             ),

@@ -247,7 +247,7 @@ function ProbeForm({
           )}
           {input.binding === "searxng" && result.status !== "connected" && usesLoopbackAddress(input.base_url) && (
             <p className="mt-2">
-              {t("This test runs from the DeepTutor backend. In Docker, localhost points to the DeepTutor container. Use a shared-network service name and container port, or host.docker.internal and the published host port.")}
+              {t("This test runs from the Astitvam backend. In Docker, localhost points to the Astitvam container. Use a shared-network service name and container port, or host.docker.internal and the published host port.")}
             </p>
           )}
           {result.status === "connected" &&

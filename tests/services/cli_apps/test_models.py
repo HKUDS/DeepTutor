@@ -129,7 +129,7 @@ def test_an_app_that_ships_with_its_host_says_so() -> None:
     plan = _plan("")
 
     assert plan.kind is InstallKind.UNSUPPORTED
-    assert "nothing for DeepTutor to install" in plan.reason
+    assert "nothing for Astitvam to install" in plan.reason
 
 
 # ── names that become paths ───────────────────────────────────────────────

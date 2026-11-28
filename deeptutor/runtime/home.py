@@ -1,4 +1,4 @@
-"""Runtime home resolution for installed and source DeepTutor runs."""
+"""Runtime home resolution for installed and source Astitvam runs."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ def validate_runtime_home(home: str | Path) -> None:
     }
     if resolved in invalid_homes:
         raise ValueError(
-            f"Invalid DeepTutor runtime home: {resolved}. Runtime data must live under "
-            f"{PACKAGE_ROOT / 'data'} without nesting. Start DeepTutor with "
+            f"Invalid Astitvam runtime home: {resolved}. Runtime data must live under "
+            f"{PACKAGE_ROOT / 'data'} without nesting. Start Astitvam with "
             f"DEEPTUTOR_HOME={PACKAGE_ROOT} from {PACKAGE_ROOT}."
         )
 

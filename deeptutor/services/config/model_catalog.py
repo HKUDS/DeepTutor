@@ -220,7 +220,7 @@ def _normalize_profile_api_format(profile: dict[str, Any]) -> bool:
     Files written before ``api_format`` existed carry only ``wire_api`` (and,
     for Anthropic endpoints, one of the legacy ``*_anthropic`` bindings); the
     format is derived from those so behaviour is unchanged. ``wire_api`` is
-    still written because a downgraded DeepTutor reads only that field, and
+    still written because a downgraded Astitvam reads only that field, and
     ``binding`` is deliberately left alone for the same reason.
     """
     spec = find_by_name(profile.get("binding"))

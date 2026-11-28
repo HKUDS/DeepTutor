@@ -18,7 +18,7 @@ if (target.arch !== process.arch) {
   const result = spawnSync(target.nodeBin, [fileURLToPath(import.meta.url), '--target', target.id], { stdio: 'inherit' });
   process.exit(result.status ?? 1);
 }
-const home = await mkdtemp(path.join(os.tmpdir(), 'Open DeepTutor 核心 smoke '));
+const home = await mkdtemp(path.join(os.tmpdir(), 'Astitvam core smoke '));
 const log = createWriteStream(path.join(target.local, 'smoke.log'));
 const runtime = new SourceRuntime({ log: chunk => log.write(chunk) });
 runtime.on('status', state => console.log(`${state.phase}: ${state.step ?? state.message}`));
@@ -33,7 +33,7 @@ try {
   assert.equal(await probe(`${backendURL}/health/ready`), true);
   const page = await fetch(url);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /DeepTutor/);
+  assert.match(await page.text(), /Astitvam/);
   const response = await fetch(`${url}/api/settings/ui`);
   assert.equal(response.status, 200, await response.text());
   await runtime.stop();

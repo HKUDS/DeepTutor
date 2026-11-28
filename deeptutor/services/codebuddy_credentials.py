@@ -2,7 +2,7 @@
 
 CodeBuddy's IDE plugin and CLI share a single OAuth session file whose name
 matches ``authentication.id`` in the CLI's ``product.json``
-(``Tencent-Cloud.coding-copilot``). Reading it lets DeepTutor call the
+(``Tencent-Cloud.coding-copilot``). Reading it lets Astitvam call the
 CodeBuddy cloud over plain HTTP the same way the Codex and Copilot providers
 do, which keeps the ~130 MB Agent SDK (a bundled headless CLI binary) optional.
 

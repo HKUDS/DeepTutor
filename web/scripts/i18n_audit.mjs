@@ -28,7 +28,7 @@ function auditFile(content, file) {
   const attrs = new Set(["title", "placeholder", "alt", "aria-label"]);
   function add(kind, raw) {
     const text = raw.replace(/\s+/g, " ").trim();
-    if (text.length > 1 && hasUiText(text) && text !== "DeepTutor") {
+    if (text.length > 1 && hasUiText(text) && text !== "Astitvam") {
       findings.push({ kind, text });
     }
   }

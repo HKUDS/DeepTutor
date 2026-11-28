@@ -35,19 +35,19 @@ export function runtimeLayout(platform = process.platform) {
  * the same table in web/lib/version.ts.
  */
 const EDITIONS = {
-  'macos-arm64': { full: 'Open DeepTutor for MacOS with Apple Silicon', short: 'MacOS (Apple Silicon)' },
-  'macos-x64': { full: 'Open DeepTutor for MacOS with Intel Silicon', short: 'MacOS (Intel)' },
-  'windows-x64': { full: 'Open DeepTutor for Windows', short: 'Windows' },
+  'macos-arm64': { full: 'Astitvam for MacOS with Apple Silicon', short: 'MacOS (Apple Silicon)' },
+  'macos-x64': { full: 'Astitvam for MacOS with Intel Silicon', short: 'MacOS (Intel)' },
+  'windows-x64': { full: 'Astitvam for Windows', short: 'Windows' },
 };
 
 export function edition(platform = process.platform, arch = process.arch) {
   return EDITIONS[targetId(platform, arch)]
-    ?? (platform === 'win32' ? EDITIONS['windows-x64'] : { full: 'Open DeepTutor for MacOS', short: 'MacOS' });
+    ?? (platform === 'win32' ? EDITIONS['windows-x64'] : { full: 'Astitvam for MacOS', short: 'MacOS' });
 }
 
-/** The marker the web UI reads from the user agent: OpenDeepTutor/1.7.1 (macOS; arm64). */
+/** The marker the web UI reads from the user agent: AstitvamDesktop/1.7.1 (macOS; arm64). */
 export function agentMarker(version, platform = process.platform, arch = process.arch) {
-  return `OpenDeepTutor/${version} (${platform === 'win32' ? 'Windows' : 'macOS'}; ${arch})`;
+  return `AstitvamDesktop/${version} (${platform === 'win32' ? 'Windows' : 'macOS'}; ${arch})`;
 }
 
 /** The system tar: bsdtar on both macOS and Windows 10+, which also reads zip. */

@@ -1,16 +1,16 @@
-"""Hand the turn over: a partner or a connected agent answers it, not DeepTutor.
+"""Hand the turn over: a partner or a connected agent answers it, not Astitvam.
 
-Consulting (``deeptutor.capabilities.subagent``) keeps DeepTutor in charge: its
+Consulting (``deeptutor.capabilities.subagent``) keeps Astitvam in charge: its
 own chat loop calls the agent as a tool, then answers in its own voice, and the
 agent's run is shown in a side panel. Handing over is the other choice a
 learner can make — "let them answer this". The user's message goes to the
 partner or agent unchanged, their reply *is* the answer, and their work is
-written into the conversation the way DeepTutor's own is: each stretch of
+written into the conversation the way Astitvam's own is: each stretch of
 writing a round, each tool a row between rounds, the last round the finish.
 
 The two kinds of target arrive differently:
 
-* A **partner** runs DeepTutor's chat loop under its own soul, library and
+* A **partner** runs Astitvam's chat loop under its own soul, library and
   memory, so its events are already in this protocol. They are forwarded as
   they are, minus the frames that belong to its own turn (stages, its result,
   its done), and tagged with who wrote them.
@@ -19,7 +19,7 @@ The two kinds of target arrive differently:
   into rounds and tool rows here.
 
 Continuity reuses the consult registry: one partner session, or one agent
-session, per DeepTutor conversation — shared with consulting, so switching
+session, per Astitvam conversation — shared with consulting, so switching
 between asking and handing over keeps a single thread on their side.
 """
 
@@ -57,9 +57,9 @@ _PARTNER_DROPPED = frozenset(
 
 # Instruction for an agent answering in the learner's conversation, when the
 # user has not written their own in /settings. The consult default tells the
-# agent it is being questioned by DeepTutor; here it is talking to the user.
+# agent it is being questioned by Astitvam; here it is talking to the user.
 _HANDOFF_INSTRUCTION = (
-    "You are answering the user directly inside their DeepTutor conversation, "
+    "You are answering the user directly inside their Astitvam conversation, "
     "not in an interactive terminal. Your reply is shown to them as the answer. "
     "Work the request through, then answer clearly and completely. Do not wait "
     "for input; if something is ambiguous, state your assumption and proceed."
@@ -218,7 +218,7 @@ class _Writer:
 class HandoffCapability(TurnCapability):
     manifest = CapabilityManifest(
         name=SOURCE,
-        description="A partner or a connected agent answers the turn in DeepTutor's place.",
+        description="A partner or a connected agent answers the turn in Astitvam's place.",
         stages=[STAGE],
     )
 

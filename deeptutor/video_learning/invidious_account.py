@@ -1,6 +1,6 @@
 """Secure per-owner Invidious account connections.
 
-Invidious token authorization is deliberately small: DeepTutor sends the learner
+Invidious token authorization is deliberately small: Astitvam sends the learner
 to the instance's consent page, receives a signed token through a one-time
 callback, verifies it by reading preferences, and stores only that token in the
 owner-private secrets tree. No password or browser cookie is handled here.

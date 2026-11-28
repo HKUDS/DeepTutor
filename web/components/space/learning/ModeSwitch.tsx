@@ -18,7 +18,7 @@ import {
  * modes exist. Naming only the current one made the mode look like a status
  * readout instead of a control.
  *
- * The mark is a ring that fills, not an orb. An orb means *DeepTutor is
+ * The mark is a ring that fills, not an orb. An orb means *Astitvam is
  * working*; there are two on this screen already (the header's activity line
  * and every assistant turn), and a third one that meant "you are here" would
  * be the same glyph saying two different things. A ring is the same visual

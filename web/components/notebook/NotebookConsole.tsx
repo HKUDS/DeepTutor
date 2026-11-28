@@ -316,7 +316,7 @@ function NotebookList({
                 </p>
                 <p>
                   {t(
-                    "Save a conversation, a research report or a question from anywhere in DeepTutor, and file it in a folder here.",
+                    "Save a conversation, a research report or a question from anywhere in Astitvam, and file it in a folder here.",
                   )}
                 </p>
                 <button

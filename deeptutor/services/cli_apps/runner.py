@@ -4,7 +4,7 @@ Arguments come from the model, so they are passed as an **argument vector** and
 never as a shell string: :meth:`ExecRequest.of_argv` derives the shell form for
 older runner images, and every backend that understands ``argv`` execs it
 directly. That is the whole reason ``argv`` exists — an app invocation is the one
-exec path in DeepTutor whose arguments are model-authored *and* whose program is
+exec path in Astitvam whose arguments are model-authored *and* whose program is
 fixed, so there is nothing to gain from a shell and a lot to lose.
 
 The app's own ``bin`` directory goes on ``PATH`` and nothing else does: a Python

@@ -1,6 +1,6 @@
 """ACP backend — drive an Agent Client Protocol (ACP) agent as a subagent.
 
-Part of #1028 (stage 1): DeepTutor plays the ACP *client* side — JSON-RPC 2.0
+Part of #1028 (stage 1): Astitvam plays the ACP *client* side — JSON-RPC 2.0
 over newline-delimited stdio — against a spawnable ACP *agent* process. The
 agent command is not hard-coded (ACP is a transport standard, not one binary):
 it comes from the ``DEEPTUTOR_ACP_COMMAND`` environment variable (a JSON array

@@ -61,7 +61,7 @@ class ConsultResult:
 
     ``session_id`` is the backend's own session/thread id, threaded back into
     the next consult of the same turn so the subagent keeps its context across
-    DeepTutor's successive questions.
+    Astitvam's successive questions.
     """
 
     final_text: str = ""

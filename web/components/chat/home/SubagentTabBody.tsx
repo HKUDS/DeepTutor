@@ -12,7 +12,7 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
 /**
  * A connected subagent's run tab: the streamed transcript plus an input box to
  * message the agent directly. Sent messages resume the SAME live session
- * DeepTutor consults (shared via the cross-turn registry), so the agent keeps
+ * Astitvam consults (shared via the cross-turn registry), so the agent keeps
  * full context — the sidebar and the chat loop talk to one agent session.
  *
  * Events from the chat loop arrive as ``tabEvents`` (refreshed by the parent);

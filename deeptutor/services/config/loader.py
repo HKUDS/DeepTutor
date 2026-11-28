@@ -3,7 +3,7 @@
 Configuration Loader
 ====================
 
-Unified configuration loading for all DeepTutor modules.
+Unified configuration loading for all Astitvam modules.
 Provides YAML configuration loading, path resolution, and language parsing.
 """
 

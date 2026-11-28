@@ -1,4 +1,4 @@
-"""Nanobot-style normalized runtime configuration for DeepTutor."""
+"""Nanobot-style normalized runtime configuration for Astitvam."""
 
 from __future__ import annotations
 
@@ -979,7 +979,7 @@ def resolve_llm_runtime_config(
 
     ``service_name`` selects which catalog service supplies the profile and
     model. It is ``llm`` for everything the user drives; the ``task`` service
-    is the same shape and stands in for it on the calls DeepTutor makes on its
+    is the same shape and stands in for it on the calls Astitvam makes on its
     own. The provider pool it falls back to stays the LLM one either way —
     a task profile that names a bare model still resolves against the
     credentials configured for chat.

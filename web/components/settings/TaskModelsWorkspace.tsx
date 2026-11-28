@@ -10,7 +10,7 @@ import { SettingRow, SettingSection, selectClass } from "./shared";
 /**
  * The background task model, and the tasks that run on it.
  *
- * DeepTutor makes a dozen small calls nobody asked for — a conversation title,
+ * Astitvam makes a dozen small calls nobody asked for — a conversation title,
  * the starter chips, a composer hint, a vocabulary lookup. They used to share a
  * single selector tucked under the language model list, which said nothing about
  * *what* it governed: the page named one model and left the reader to guess
@@ -37,7 +37,7 @@ const INHERIT = "inherit";
 /**
  * How each task reads on screen. Keyed by the backend's `TaskKind`; the backend
  * owns *which* tasks exist, this owns how to say them. A kind with no entry here
- * still gets a row (its id), because a task DeepTutor runs is worth configuring
+ * still gets a row (its id), because a task Astitvam runs is worth configuring
  * before it is worth naming.
  */
 const TASK_TEXT: Record<string, { label: string; detail: string }> = {
@@ -226,7 +226,7 @@ export function TaskModelsWorkspace() {
       <SettingSection
         title={t("Global task model")}
         description={t(
-          "Every call DeepTutor makes on its own runs here unless the task below names its own model.",
+          "Every call Astitvam makes on its own runs here unless the task below names its own model.",
         )}
       >
         <SettingRow

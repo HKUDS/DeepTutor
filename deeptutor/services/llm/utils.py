@@ -106,7 +106,7 @@ def unreachable_endpoint_hint(base_url: str | None) -> str:
     "Unable to reach the model provider" is the whole story for a cloud
     endpoint, and no story at all for a self-hosted one: the two ways a local
     Ollama / LM Studio / vLLM base URL fails are that nothing is listening on
-    it, or that DeepTutor is in a container where ``localhost`` resolves to the
+    it, or that Astitvam is in a container where ``localhost`` resolves to the
     container itself rather than the host running the model. Both are the
     user's to fix, and neither is guessable from a bare ``ConnectError`` —
     which is what the traceback in the report showed and all it showed.
@@ -121,7 +121,7 @@ def unreachable_endpoint_hint(base_url: str | None) -> str:
 
     if loopback and running_in_container():
         return (
-            f"DeepTutor is running in a container, where {hostname}{port} is the container "
+            f"Astitvam is running in a container, where {hostname}{port} is the container "
             "itself — not the machine serving the model. Point the provider's Base URL at "
             f"host.docker.internal{port} (start the container with "
             "--add-host=host.docker.internal:host-gateway on Linux)."

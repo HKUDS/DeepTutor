@@ -435,7 +435,7 @@ class PluginRegistry:
 
     def _compatible(self, manifest: PluginManifestData) -> tuple[bool, str]:
         if not version_matches(self.deeptutor_version, manifest.compatibility.deeptutor):
-            return False, f"requires DeepTutor {manifest.compatibility.deeptutor}"
+            return False, f"requires Astitvam {manifest.compatibility.deeptutor}"
         for extension in manifest.extensions:
             required = manifest.compatibility.api.get(extension.type)
             supported = HOST_API_VERSIONS.get(extension.type)
@@ -595,7 +595,7 @@ def _now() -> str:
 
 
 def _manifest_files(dist: Distribution) -> list[tuple[Path, Any, str]]:
-    # Most distributions contain no DeepTutor plugin. Materializing dist.files
+    # Most distributions contain no Astitvam plugin. Materializing dist.files
     # parses every RECORD row into a PackagePath/hash/size object (~176k files
     # in a typical dev environment). A negative text check is sufficient to
     # skip those packages without importing them or caching approval state.

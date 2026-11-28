@@ -17,7 +17,7 @@ async function findMakensis() {
 /** Windows file versions are four numbers; 1.7.1rc2 becomes 1.7.1.0. */
 const fileVersion = version => [...(version.match(/^\d+\.\d+\.\d+/)?.[0] ?? '0.0.0').split('.'), '0'].join('.');
 
-// Open-DeepTutor-Windows-v<version>-Setup.exe and Open-DeepTutor-Windows-v<version>-Portable.zip
+// Astitvam-Windows-v<version>-Setup.exe and Astitvam-Windows-v<version>-Portable.zip
 export default async function packageWindows(target) {
   const { stage, version, pkg, out } = await stageApp(target);
   const [built] = await packager({
@@ -27,9 +27,9 @@ export default async function packageWindows(target) {
     extraResource: [target.seed],
     appCopyright: 'Copyright HKUDS. Licensed under Apache-2.0.',
     win32metadata: {
-      CompanyName: 'HKUDS', ProductName: 'Open DeepTutor',
-      FileDescription: 'Open DeepTutor for Windows', InternalName: 'Open DeepTutor',
-      OriginalFilename: 'Open DeepTutor.exe', 'requested-execution-level': 'asInvoker',
+      CompanyName: 'Sunil Kumar', ProductName: 'Astitvam',
+      FileDescription: 'Astitvam for Windows', InternalName: 'Astitvam',
+      OriginalFilename: 'Astitvam.exe', 'requested-execution-level': 'asInvoker',
     },
   });
 

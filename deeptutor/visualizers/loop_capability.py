@@ -41,7 +41,7 @@ class VisualizationLoopCapability:
         catalog = get_visualizer_registry().prompt_catalog(requested)
         if language.startswith("zh"):
             preamble = f"""
-你正在执行 DeepTutor 的可视化生成任务，而不是普通聊天回答。
+你正在执行 Astitvam 的可视化生成任务，而不是普通聊天回答。
 
 工作协议：
 1. 理解学习目标、用户意图、附件和上下文。必要时可以使用本轮已提供的检索或分析工具。
@@ -56,7 +56,7 @@ class VisualizationLoopCapability:
 """
         else:
             preamble = f"""
-You are executing DeepTutor's visualization generation mode, not writing a
+You are executing Astitvam's visualization generation mode, not writing a
 normal chat answer.
 
 Protocol:

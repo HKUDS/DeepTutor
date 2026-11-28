@@ -1,11 +1,11 @@
 ---
 name: skill-creator
-description: Design and author DeepTutor skills (SKILL.md packages). Use when the user wants to create a new skill, improve an existing skill, or asks how skills work.
+description: Design and author Astitvam skills (SKILL.md packages). Use when the user wants to create a new skill, improve an existing skill, or asks how skills work.
 ---
 
 # Skill Creator
 
-Guidance for authoring effective DeepTutor skills.
+Guidance for authoring effective Astitvam skills.
 
 ## What a skill is
 

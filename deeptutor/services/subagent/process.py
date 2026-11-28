@@ -7,7 +7,7 @@ guarantee the process is torn down when the consumer stops early or the turn is
 cancelled.
 
 There is deliberately **no timeout** on the wait: per the product contract,
-DeepTutor waits unconditionally for the subagent's own logic to finish; only the
+Astitvam waits unconditionally for the subagent's own logic to finish; only the
 subagent exiting (cleanly or with an error) ends the stream. Cancellation (the
 user aborting the turn) propagates as ``CancelledError`` and the ``finally``
 block terminates the child so no orphaned agent process is left behind.

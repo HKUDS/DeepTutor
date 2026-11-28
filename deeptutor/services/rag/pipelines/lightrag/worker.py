@@ -53,7 +53,7 @@ def _worker_loop() -> asyncio.AbstractEventLoop:
             _WORKER_THREAD = thread
         elif _WORKER_THREAD is None or not _WORKER_THREAD.is_alive():
             # A new loop in this process would reuse locks bound to the old one.
-            raise RuntimeError("LightRAG worker loop stopped; restart DeepTutor.")
+            raise RuntimeError("LightRAG worker loop stopped; restart Astitvam.")
         return _WORKER_LOOP
 
 

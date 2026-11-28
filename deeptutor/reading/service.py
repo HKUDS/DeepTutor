@@ -112,7 +112,7 @@ def render_units(
     """Read the requested units and render them with locator headers.
 
     The header format matches what the shared text extractor already emits
-    (``--- Page 12 ---``), so a model that has seen a DeepTutor attachment
+    (``--- Page 12 ---``), so a model that has seen an Astitvam attachment
     recognises the shape without being taught twice.
     """
     manifest = store.manifest(material_id)

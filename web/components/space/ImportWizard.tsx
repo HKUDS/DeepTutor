@@ -311,7 +311,7 @@ function IntroView() {
         <div className="min-w-0 space-y-1">
           <p className="text-[13px] leading-relaxed text-[var(--foreground)]">
             {t(
-              "Import a local Claude Code or Codex folder, or choose the conversations.json file from an official ChatGPT data export. DeepTutor parses it in your browser before saving the conversations you import.",
+              "Import a local Claude Code or Codex folder, or choose the conversations.json file from an official ChatGPT data export. Astitvam parses it in your browser before saving the conversations you import.",
             )}
           </p>
           <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">

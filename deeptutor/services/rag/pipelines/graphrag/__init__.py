@@ -2,7 +2,7 @@
 
 A KB indexed with the ``graphrag`` provider builds a local knowledge graph
 (entities, relationships, communities, community reports) from text and serves
-GraphRAG's global/local/drift/basic retrieval. DeepTutor parses documents to
+GraphRAG's global/local/drift/basic retrieval. Astitvam parses documents to
 text first and bridges its own LLM/embedding config into GraphRAG's settings, so
 GraphRAG never parses documents or owns model credentials of its own.
 

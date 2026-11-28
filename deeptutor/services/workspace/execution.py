@@ -82,7 +82,7 @@ def prepare_workspace_execution_env(
         "XDG_CACHE_HOME": str(locations["cache"]),
         "PIP_CACHE_DIR": str(locations["cache"] / "pip"),
         # PIP_TARGET makes a plain `pip install package` workspace-local even
-        # when a source install is running DeepTutor from a writable venv.
+        # when a source install is running Astitvam from a writable venv.
         "PIP_TARGET": python_path,
         "PYTHONPATH": python_path,
         "PYTHONUSERBASE": str(root / "python-user"),

@@ -78,7 +78,7 @@ export function BilibiliReadingPlayer({
     const timer = window.setTimeout(() => {
       onError(
         t(
-          'This Bilibili video would not load in an embedded player. Open it on Bilibili; DeepTutor can still use its captions.'
+          'This Bilibili video would not load in an embedded player. Open it on Bilibili; Astitvam can still use its captions.'
         )
       )
     }, EMBED_LOAD_TIMEOUT_MS)

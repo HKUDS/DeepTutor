@@ -1,4 +1,4 @@
-"""Unified embedding client and adapters for all DeepTutor modules.
+"""Unified embedding client and adapters for all Astitvam modules.
 
 Supported bindings are resolved by ``services.config.provider_runtime`` and
 currently include openai, custom, azure_openai, cohere, jina, ollama, vllm,

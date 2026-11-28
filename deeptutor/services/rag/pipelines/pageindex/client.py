@@ -30,7 +30,7 @@ def _prefixed_model(prefix: str, model: str) -> str:
 
 
 def resolve_oss_sdk_config() -> tuple[str, dict[str, Any]]:
-    """Translate DeepTutor's indexing model into PageIndex's indexing lane.
+    """Translate Astitvam's indexing model into PageIndex's indexing lane.
 
     Indexing is background work, so it runs on the Task model when one is
     configured and otherwise on the active chat LLM.
@@ -105,7 +105,7 @@ def resolve_oss_sdk_config() -> tuple[str, dict[str, Any]]:
 
 
 class PageIndexClient:
-    """Small async facade used by the DeepTutor RAG lifecycle."""
+    """Small async facade used by the Astitvam RAG lifecycle."""
 
     def __init__(self, sdk_client: Any) -> None:
         self.sdk_client = sdk_client

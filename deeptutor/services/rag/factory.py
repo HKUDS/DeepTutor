@@ -77,7 +77,7 @@ def normalize_provider_name(name: Optional[str] = None) -> str:
 def provider_uses_embedding_versions(provider: Optional[str]) -> bool:
     """Whether this provider's index versions are keyed by embedding signature.
 
-    Today only the LlamaIndex pipeline uses DeepTutor's active embedding
+    Today only the LlamaIndex pipeline uses Astitvam's active embedding
     signature to select/read index versions. PageIndex, GraphRAG and LightRAG
     write synthetic provider signatures (``pageindex``/``graphrag``/``lightrag``)
     and should not be marked stale merely because the active embedding profile

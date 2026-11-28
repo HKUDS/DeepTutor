@@ -121,7 +121,7 @@ export interface TrayCreate {
  * each list is "everything this workspace allows", and picking some limits
  * the conversation to those. What is picked shows at the start of the
  * message itself, so the tray only has to say how many. The far side is
- * about people, not tools: who DeepTutor works with (partners) and who
+ * about people, not tools: who Astitvam works with (partners) and who
  * answers at all.
  *
  * A grip at the middle of its lower edge folds it up behind the box, by a

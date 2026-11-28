@@ -1,4 +1,4 @@
-"""Setup loop capability — DeepTutor configuring its own install.
+"""Setup loop capability — Astitvam configuring its own install.
 
 A *plain* :class:`~deeptutor.capabilities.protocol.LoopExtension`, not a
 :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`: configuring the
@@ -37,7 +37,7 @@ from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 
 class SetupCapability:
-    """Turn-scoped ability to inspect and change DeepTutor's own configuration."""
+    """Turn-scoped ability to inspect and change Astitvam's own configuration."""
 
     name = SETUP_CAPABILITY_NAME
     owned_tools = SETUP_TOOL_NAMES

@@ -30,7 +30,7 @@ export const LEARNING_SURFACES: readonly LearningSurface[] = [
     title: 'Books',
     description: 'Generate, browse and study your AI-authored books.',
     intro:
-      'Name a subject and DeepTutor writes you a book on it — a spine of chapters first, then each page written out in full.',
+      'Name a subject and Astitvam writes you a book on it — a spine of chapters first, then each page written out in full.',
     highlights: [
       'Edit the chapter spine before a word is written',
       'Pages carry figures, timelines, quizzes and flash cards',

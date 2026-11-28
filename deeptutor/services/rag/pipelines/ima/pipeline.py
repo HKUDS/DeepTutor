@@ -8,7 +8,7 @@ matching passages, tops the thin ones up with real source text, and shapes them
 for the ``rag`` tool. Documents are added in IMA (or through the IMA capability's
 own tools), so :meth:`initialize` / :meth:`add_documents` are not part of this
 engine's job and fail with a clear message; :meth:`delete` is a no-op because
-deleting the KB only drops DeepTutor's pointer (handled by the manager) and must
+deleting the KB only drops Astitvam's pointer (handled by the manager) and must
 never touch the user's IMA library.
 
 The retrieval *policy* — which matches deserve a full-text fetch — lives in
@@ -241,7 +241,7 @@ class ImaPipeline:
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         raise RuntimeError(
-            "Tencent IMA knowledge bases are indexed by IMA; DeepTutor does not "
+            "Tencent IMA knowledge bases are indexed by IMA; Astitvam does not "
             "build or store their index. Add documents in IMA directly."
         )
 

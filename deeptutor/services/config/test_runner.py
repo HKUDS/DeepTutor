@@ -330,7 +330,7 @@ class ConfigTestRunner:
             llm_config,
             prompt=(
                 "Write a title of at most four words for a conversation about: "
-                '"DeepTutor configuration health check".'
+                '"Astitvam configuration health check".'
             ),
             system_prompt="You write very short conversation titles.",
             **token_kwargs,
@@ -389,8 +389,8 @@ class ConfigTestRunner:
         )
         client = EmbeddingClient(config)
         probe_texts = [
-            "DeepTutor embedding smoke test",
-            "DeepTutor retrieval batch probe",
+            "Astitvam embedding smoke test",
+            "Astitvam retrieval batch probe",
         ]
         vectors = await client.embed(probe_texts)
         if len(vectors) != len(probe_texts):
@@ -516,7 +516,7 @@ class ConfigTestRunner:
             f"voice `{resolved.voice or '(default)'}`).",
         )
         run.emit("info", f"Request target: {resolved.base_url}")
-        sample = "DeepTutor voice check. 这是一段语音合成测试。"
+        sample = "Astitvam voice check. 这是一段语音合成测试。"
         run.emit("info", "Synthesizing a short sample clip.")
         audio, content_type = await synthesize_speech(sample, catalog=catalog)
         run.emit(
