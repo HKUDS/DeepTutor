@@ -70,6 +70,9 @@ loop:
     Preloaded source texts by ID:
     {sources}
 
+    The full text of every source above is already here. Use it directly and do
+    not call read_source for these IDs.
+
   question_template: |
     Current mode: {mode}
 

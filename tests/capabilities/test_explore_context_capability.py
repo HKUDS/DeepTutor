@@ -614,6 +614,9 @@ def test_preloaded_source_text_stays_in_the_shared_prefix(language: str) -> None
 
     assert upload[0] == followup[0]
     assert source_text in upload[0]["content"]
+    # Without this the model re-reads the preloaded text with read_source on
+    # every turn, sending the whole lecture a second time.
+    assert "read_source" in upload[0]["content"]
     for messages, mode, manifest, question in (
         (upload, "chat", fresh, "What is the theorem?"),
         (followup, "deep_solve", previous, "Can you prove it?"),

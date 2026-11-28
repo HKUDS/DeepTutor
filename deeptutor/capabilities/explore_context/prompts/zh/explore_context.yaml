@@ -52,6 +52,8 @@ loop:
     已预读的来源全文（按来源 ID 列出）：
     {sources}
 
+    以上来源的全文已经完整给出，直接使用，不要再对这些 ID 调用 read_source。
+
   question_template: |
     当前模式：{mode}
 
