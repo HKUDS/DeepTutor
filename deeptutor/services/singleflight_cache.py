@@ -61,8 +61,15 @@ class AsyncSingleFlightTTLCache(Generic[K, V]):
             return cached
 
         pending = self.inflight.get(key)
-        if pending is None or pending.done():
-            pending = asyncio.ensure_future(factory())
+        if pending is None:
+
+            async def produce() -> V:
+                value = await factory()
+                if cache_when(value):
+                    self.remember(key, value)
+                return value
+
+            pending = asyncio.create_task(produce())
             self.inflight[key] = pending
 
             def producer_done(completed: asyncio.Future[V]) -> None:
@@ -75,11 +82,7 @@ class AsyncSingleFlightTTLCache(Generic[K, V]):
                     completed.exception()
 
             pending.add_done_callback(producer_done)
-        value = await asyncio.shield(pending)
-
-        if cache_when(value):
-            self.remember(key, value)
-        return value
+        return await asyncio.shield(pending)
 
 
 __all__ = ["AsyncSingleFlightTTLCache"]
