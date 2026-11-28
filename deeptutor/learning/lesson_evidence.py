@@ -426,12 +426,21 @@ def validate_evidence(
     # Legacy packets were published only after the complete-objective gate.
     # New partial packets permit supported explanation, not an arbitrary quiz.
     coverage = evidence.get("coverage", {})
-    if not allow_partial and (
-        coverage.get("complete", True) is not True or coverage.get("scope") == "focus"
-    ):
-        raise LessonUnavailable(
-            "This packet supports a teaching slice, not an arbitrary assessment. Prepare assessment-bound source evidence before grading."
-        )
+    if not allow_partial:
+        if coverage.get("scope") == "focus":
+            raise LessonUnavailable(
+                "This packet supports a teaching slice, not an arbitrary assessment. Prepare "
+                "assessment-bound source evidence before grading: call mastery_prepare_lesson for "
+                "this objective without a focus, since only an objective-scoped packet is kept for "
+                "grading; a focused packet stays usable for teaching and for questions it covers."
+            )
+        if coverage.get("complete", True) is not True:
+            missing = str(coverage.get("missing") or "").strip()
+            detail = f" Missing coverage: {missing}" if missing else ""
+            raise LessonUnavailable(
+                "This objective's source packet is incomplete and cannot authorize an arbitrary "
+                "assessment." + detail
+            )
 
 
 def assessment_evidence(progress: Any, kp_id: str) -> dict[str, Any]:
