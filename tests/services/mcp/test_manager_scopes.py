@@ -273,3 +273,54 @@ async def test_shutdown_closes_every_scope(manager: MCPConnectionManager) -> Non
 
     assert manager._connections == {}
     assert manager.adapters_for("u_ada") == []
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_warm_up_still_settles_the_connection_status(
+    manager: MCPConnectionManager,
+) -> None:
+    """Issue #2706: the servers page bounds ``ensure_scope`` with ``wait_for``.
+
+    When that bound fires mid-handshake the caller is cancelled, but the
+    connection task keeps going and goes live. The row must still converge to
+    ``connected`` (with its tools registered) instead of staying on
+    ``connecting`` forever.
+    """
+    _write_user_servers("u_ada", notion="https://ada.example/mcp")
+    manager._test_delay["seconds"] = 0.2  # type: ignore[attr-defined]
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(manager.ensure_scope("u_ada"), timeout=0.05)
+
+    await asyncio.sleep(0.4)
+    [row] = manager.status("u_ada")
+    assert row["status"] == "connected"
+    assert [tool.name for tool in manager.adapters_for("u_ada")] == ["mcp_notion_ping"]
+
+    await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_warm_up_still_records_a_later_connect_failure(
+    manager: MCPConnectionManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same cancellation must not swallow a handshake that then fails:
+    the row has to reach ``error`` so the retry path can pick it up."""
+
+    async def _slow_failure(self, conn, ready) -> None:  # type: ignore[no-untyped-def]
+        await asyncio.sleep(0.2)
+        if not ready.done():
+            ready.set_exception(RuntimeError("handshake refused"))
+
+    monkeypatch.setattr(MCPConnectionManager, "_run_server", _slow_failure)
+    _write_user_servers("u_ada", notion="https://ada.example/mcp")
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(manager.ensure_scope("u_ada"), timeout=0.05)
+
+    await asyncio.sleep(0.4)
+    [row] = manager.status("u_ada")
+    assert row["status"] == "error"
+    assert "handshake refused" in row["error"]
+
+    await manager.shutdown()
