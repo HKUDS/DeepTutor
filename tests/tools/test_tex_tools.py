@@ -309,12 +309,26 @@ class TestFindMainTex:
         found = downloader._find_main_tex(tmp_path)
         assert found is not None and found.name == "Main.tex"
 
+    @pytest.mark.parametrize("case_insensitive_glob", [False, True])
     def test_uppercase_extension_file_is_invisible(
-        self, downloader: TexDownloader, tmp_path: Path
+        self,
+        downloader: TexDownloader,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        case_insensitive_glob: bool,
     ) -> None:
-        # Known limitation: discovery globs "*.tex" case-sensitively, so a file
-        # named MAIN.TEX is never even considered a candidate.
-        (tmp_path / "MAIN.TEX").write_text("upper", encoding="utf-8")
+        uppercase = tmp_path / "MAIN.TEX"
+        uppercase.write_text("upper", encoding="utf-8")
+        if case_insensitive_glob:
+            rglob = Path.rglob
+
+            def glob_with_uppercase(path: Path, pattern: str):
+                if path == tmp_path and pattern == "*.tex":
+                    return iter([uppercase])
+                return rglob(path, pattern)
+
+            monkeypatch.setattr(Path, "rglob", glob_with_uppercase)
+
         assert downloader._find_main_tex(tmp_path) is None
 
 

@@ -189,7 +189,8 @@ class TexDownloader:
         3. Tex file containing \\documentclass
         4. Largest tex file
         """
-        tex_files = list(directory.rglob("*.tex"))
+        # Windows globbing also returns uppercase extensions.
+        tex_files = [path for path in directory.rglob("*.tex") if path.name.endswith(".tex")]
 
         if not tex_files:
             return None
