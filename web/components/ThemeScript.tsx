@@ -51,6 +51,11 @@ export default function ThemeScript() {
       } catch (e) {
         document.documentElement.setAttribute('${UI_LAYOUT_ATTRIBUTE}', '${DEFAULT_UI_LAYOUT}');
       }
+      // Paint the Windows desktop frame before hydration and keep its marker
+      // on the document root across navigations.
+      if (/\\bOpenDeepTutor\\/\\S+\\s+\\(Windows(?:;|\\))/i.test(navigator.userAgent)) {
+        document.documentElement.dataset.desktopFrame = 'windows';
+      }
     })();
   `;
 

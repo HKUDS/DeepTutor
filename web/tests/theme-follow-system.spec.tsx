@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ThemeScript from "@/components/ThemeScript";
 import {
@@ -82,6 +82,8 @@ function runThemeScript() {
 afterEach(() => {
   localStorage.clear();
   document.documentElement.className = "";
+  delete document.documentElement.dataset.desktopFrame;
+  vi.restoreAllMocks();
 });
 
 describe("system theme follows the OS", () => {
@@ -180,6 +182,34 @@ describe("theme script before hydration", () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("glass");
     expect(document.documentElement.classList.contains("theme-glass")).toBe(true);
     expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+
+  it.each([
+    ["Mozilla/5.0 (Windows NT 10.0) OpenDeepTutor/1.7.4 (Windows; x64)", "windows"],
+    ["Mozilla/5.0 OpenDeepTutor/1.7.0 (Windows)", "windows"],
+    ["Mozilla/5.0 (Windows NT 10.0) Chrome/131.0.0.0", undefined],
+    ["Mozilla/5.0 OpenDeepTutor/1.7.4 (macOS; arm64)", undefined],
+  ])("sets the desktop frame for the matching user agent: %s", (ua, frame) => {
+    installColorScheme(false);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+
+    runThemeScript();
+
+    expect(document.documentElement.dataset.desktopFrame).toBe(frame);
+  });
+
+  it("sets the Windows frame even when localStorage is unavailable", () => {
+    installColorScheme(false);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 OpenDeepTutor/1.7.4 (Windows; x64)",
+    );
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("SecurityError");
+    });
+
+    runThemeScript();
+
+    expect(document.documentElement.dataset.desktopFrame).toBe("windows");
   });
 });
 
