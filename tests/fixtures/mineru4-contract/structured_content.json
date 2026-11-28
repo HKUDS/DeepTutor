@@ -1,0 +1,70 @@
+{
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
+        {
+          "type": "text",
+          "bbox": [
+            0.05,
+            0.1,
+            0.85,
+            0.4
+          ],
+          "content": "Synthetic source evidence."
+        },
+        {
+          "type": "equation",
+          "bbox": [
+            0.05,
+            0.1,
+            0.85,
+            0.4
+          ],
+          "content": "E=mc^2"
+        },
+        {
+          "type": "table",
+          "bbox": [
+            0.05,
+            0.1,
+            0.85,
+            0.4
+          ],
+          "content": "| A | B |\n| --- | --- |",
+          "captions": [],
+          "footnotes": []
+        },
+        {
+          "type": "image",
+          "bbox": [
+            0.05,
+            0.1,
+            0.85,
+            0.4
+          ],
+          "content": "",
+          "captions": [
+            {
+              "content": "Synthetic reference diagram"
+            }
+          ],
+          "footnotes": [],
+          "image_source": "images/figure.png"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "file_suffix": "pdf",
+    "producer": {
+      "name": "synthetic-contract-fixture",
+      "version": "1"
+    },
+    "document": {
+      "page_count": 1
+    }
+  },
+  "is_full_document": true,
+  "extensions": {}
+}
