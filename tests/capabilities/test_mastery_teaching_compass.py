@@ -384,3 +384,11 @@ async def test_tentative_teaching_note_does_not_complete_learner_intake(monkeypa
         status["learner_profile"]["teaching_observations"]["boundary-definition"]["basis"]
         == "tentative"
     )
+
+
+def test_teaching_updates_schema_documents_observation_only_fields():
+    props = MasteryProfileTool().get_definition().parameters
+    items = next(p for p in props if p.name == "teaching_updates").items
+    for field in ("knowledge_point_id", "strategy", "outcome"):
+        description = items["properties"][field].get("description", "")
+        assert "observation" in description, field
