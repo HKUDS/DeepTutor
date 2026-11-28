@@ -826,10 +826,29 @@ async def test_choice_grade_refuses_an_unreadable_answer_instead_of_failing_it(p
     grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="A or B")
     assert grade.success is False
     assert "NOT graded" in grade.content
+    assert "Do NOT call mastery_grade again in this turn" in grade.content
+    assert "learner's own message" in grade.content
+    assert "mastery_skip_question" in grade.content
+    assert "Do not treat this as a wrong answer." in grade.content
+    assert "then call mastery_grade" not in grade.content
     # Nothing was recorded, so the question is still open for a real answer.
     progress = LearningStore().load(path_id)
     assert progress.pending_question is not None
     assert progress.quiz_attempts == []
+
+
+def test_choice_grade_blank_answer_forbids_same_turn_retry():
+    """Blank unreadable choice results must also forbid retrying mastery_grade."""
+    from deeptutor.capabilities.mastery.tools import _unreadable_choice_result
+
+    result = _unreadable_choice_result("", {"A": "alpha", "B": "beta"})
+    assert result.success is False
+    assert "nothing to grade" in result.content
+    assert "Do NOT call mastery_grade again in this turn" in result.content
+    assert "learner's own message" in result.content
+    assert "mastery_skip_question" in result.content
+    assert "Do not treat this as a wrong answer." in result.content
+    assert "then call mastery_grade" not in result.content
 
 
 @pytest.mark.asyncio
