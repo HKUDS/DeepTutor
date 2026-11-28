@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import json
+import math
 import time
 from typing import Any
 
@@ -58,6 +59,9 @@ _truncation_backoff: OrderedDict[tuple[str, str, int], float] = OrderedDict()
 # tokens) before the memory material, and joined text can count a few tokens
 # more than its parts.
 _REQUEST_RESERVE = 64
+
+# Dialogue plus kept runtime snapshots may reach this many times the plan.
+_SNAPSHOT_HEADROOM = 2
 
 
 class MemoryTruncated(ValueError):
@@ -133,11 +137,26 @@ def _memory_material(previous: str, messages: list[dict[str, Any]]) -> str:
 
 
 def _memory_tokens(messages, summary):
-    # Historical runtime snapshots are removed by the tutor projection. The
-    # answer loop will append the current summary, so reserve it separately.
+    # The answer loop will append the current summary, so reserve it separately.
     tokens = _count_model_context_tokens(deduplicate_user_images(messages))
     snapshot = summary_snapshot(summary)
     return tokens + (_count_model_context_tokens(snapshot) if snapshot else 0)
+
+
+def _plan_tokens(replayed, summary, headroom):
+    """Size replayed history against the plan, snapshots discounted by headroom.
+
+    The plan governs the learning history. Runtime snapshots ride along in the
+    request so later turns extend the cached prefix (#2922); counting them in
+    full let one large mastery_status snapshot force a memory rewrite, itself a
+    full cache miss. Leaving them out altogether let many short exchanges pile
+    up snapshots without limit. So dialogue keeps to the plan, and dialogue plus
+    snapshots keep to ``headroom`` times the plan; past either the history is
+    condensed, and archiving an exchange drops its snapshots with it.
+    """
+    dialogue = _memory_tokens(project_mastery_replay(replayed), summary)
+    sent = _memory_tokens(project_mastery_replay(replayed, keep_snapshots=True), summary)
+    return max(dialogue, math.ceil(sent / headroom))
 
 
 class MasteryContextBuilder(ContextBuilder):
@@ -145,6 +164,13 @@ class MasteryContextBuilder(ContextBuilder):
 
     def _history_budget(self, llm_config):
         return min(super()._history_budget(llm_config), 20_000)
+
+    def _headroom(self, llm_config):
+        # Room for kept snapshots comes out of what the model's window allows
+        # beyond the cost-sized plan; a small window has none to give.
+        general = super()._history_budget(llm_config)
+        plan = self._history_budget(llm_config)
+        return min(general, _SNAPSHOT_HEADROOM * plan) / plan
 
     def _summary_budget(self, budget, llm_config=None):
         return min(super()._summary_budget(budget, llm_config), 4096)
@@ -160,9 +186,17 @@ class MasteryContextBuilder(ContextBuilder):
         return summary
 
     def _model_tokens(self, messages, summary="", route=None):
-        return _memory_tokens(
-            project_mastery_replay(replay_history(messages, route=route)), summary
+        return _plan_tokens(
+            replay_history(messages, route=route),
+            summary,
+            getattr(self, "_snapshot_headroom", 1),
         )
+
+    def _recent_history_tokens(self, replayed):
+        # Choose the exact tail with the same measure as the plan; counting
+        # kept snapshots in full here archived exchanges the plan still had
+        # room for, and the rewrite that followed missed the cached prefix.
+        return _plan_tokens(replayed, "", getattr(self, "_snapshot_headroom", 1))
 
     def _select_recent_messages(self, messages, recent_budget, route=None):
         older, recent = super()._select_recent_messages(messages, recent_budget, route=route)
@@ -208,6 +242,7 @@ class MasteryContextBuilder(ContextBuilder):
         # user's side takes effect on the next turn without waiting out the backoff.
         self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
         self._fold_budget = self._history_budget(kwargs.get("llm_config"))
+        self._snapshot_headroom = self._headroom(kwargs.get("llm_config"))
         self._fold_skipped = False
         # The store enforces the active user/session and the selected ancestor
         # chain. No filesystem path, arbitrary session selector, or global search.
@@ -232,8 +267,11 @@ class MasteryContextBuilder(ContextBuilder):
         result = await super().build(
             session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
         )
-        result.model_history = project_mastery_replay(result.model_history or [])
-        result.token_count = _memory_tokens(result.model_history, result.conversation_summary)
+        replayed = result.model_history or []
+        result.model_history = project_mastery_replay(replayed, keep_snapshots=True)
+        result.token_count = _plan_tokens(
+            replayed, result.conversation_summary, self._snapshot_headroom
+        )
         result.history_sources = sources
         if result.token_count > result.budget:
             # One complete historical exchange can itself exceed the plan.

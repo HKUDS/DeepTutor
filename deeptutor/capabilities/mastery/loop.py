@@ -453,14 +453,14 @@ class MasteryLoopCapability:
             or json.loads(result.content).get("path_id") != str(binding[0]).strip()
         ):
             return None
+        from deeptutor.capabilities.mastery.snapshot import SNAPSHOT_HEADER, compact_status
+
+        # How to read the snapshot is stated once in the system prompt; the
+        # message itself carries only this turn's state.
+        state = compact_status(json.loads(result.content))
         block = PromptBlock(
             "mastery_status_snapshot",
-            "[Current-turn mastery_status snapshot]\n"
-            "The runtime has already read mastery_status for this turn and active path. "
-            "Use this result directly; do not call mastery_status again just to begin. "
-            "Refresh with mastery_status after changing the path, mode, outline, or progress "
-            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
-            + result.content,
+            SNAPSHOT_HEADER + json.dumps(state, ensure_ascii=False),
         )
         context.extension("mastery")["status_snapshot"] = block.content
         return block

@@ -251,7 +251,13 @@ async def test_native_snapshot_delivers_preferences_and_only_current_concept(mon
     assert "Outside the layer" in result.content
     assert "Tentative transport difficulty" not in result.content
     assert "unknown" in result.content
-    assert "change" in result.content.lower()
+    # The fixed teaching guidance reaches the model once, through the system prompt.
+    from deeptutor.capabilities.mastery.snapshot import status_guide
+    from deeptutor.learning.teaching import TEACHING_FOCUS_INSTRUCTION, TEACHING_GUIDANCE
+
+    assert TEACHING_GUIDANCE not in result.content
+    assert TEACHING_FOCUS_INSTRUCTION in status_guide("{teaching_focus}")
+    assert "change" in TEACHING_FOCUS_INSTRUCTION.lower()
 
 
 @pytest.mark.asyncio

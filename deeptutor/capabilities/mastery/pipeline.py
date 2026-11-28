@@ -31,6 +31,7 @@ from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, share
 from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG, OUTLINE_TOOL_LOADER
 from deeptutor.capabilities.mastery.memory import MEMORY_NOTICE
 from deeptutor.capabilities.mastery.mode import OUTLINE, normalize_mode
+from deeptutor.capabilities.mastery.snapshot import status_guide
 from deeptutor.core.context import UnifiedContext
 
 #: Runtime snapshot naming the conversation's current mode.
@@ -74,6 +75,7 @@ class MasteryPromptAssembler(LoopPromptAssembler):
             PromptBlock("runtime_policy", self._t("runtime_policy")),
             PromptBlock("mastery_loop", self._t("loop.system")),
             PromptBlock("mastery_playbook", self._t("playbook")),
+            PromptBlock("mastery_status_guide", status_guide(self._t("status_guide"))),
         ]
 
 
