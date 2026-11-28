@@ -21,7 +21,10 @@ arguments, not a human):
 * IP literals and hostnames resolving to **any private / loopback / link-local**
   address are rejected up front. The strict-host check happens both
   pre-flight (against the parsed URL) and post-redirect (against the
-  final resolved URL) so a redirect to ``127.0.0.1`` can't slip past.
+  final resolved URL) so a redirect to ``127.0.0.1`` can't slip past. The one
+  exception is an operator-declared Fake-IP range for a *hostname* answer
+  (:mod:`deeptutor.services.net_policy`); IP literals and loopback stay
+  rejected.
 * Response size is hard-capped at ``MAX_RESPONSE_BYTES``; we stop reading
   once the body grows past this even before the server finishes.
 * Extracted text is truncated to ``max_chars`` (default 50 000 chars,
@@ -40,6 +43,13 @@ from typing import Any
 from urllib.parse import urljoin, urlparse, urlsplit
 
 import httpx
+
+from deeptutor.services.net_policy import (
+    NetPolicy,
+    current_policy,
+    is_always_refused,
+    is_synthetic_answer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -325,11 +335,20 @@ def _is_disallowed_host(host: str) -> bool:
     names. Every resolved address must be public because the HTTP client later
     connects by hostname and may select any answer. DNS failures and malformed
     answer rows are treated as disallowed so validation fails closed.
+
+    Two operator opt-ins relax that, both from
+    :mod:`deeptutor.services.net_policy`: a Fake-IP proxy synthesises private
+    addresses for public hostnames (#2739, #2889), so a *hostname* answer inside
+    a declared range is not counted as private; and
+    ``ssrf_protection_enabled=false`` drops the RFC1918/ULA layer for
+    self-hosted LAN targets. Loopback, link-local and metadata answers stay
+    refused under both.
     """
 
+    policy = current_policy()
     candidate = host.strip("[]")
     try:
-        return _is_disallowed_ip(ipaddress.ip_address(candidate))
+        return _is_disallowed_ip(ipaddress.ip_address(candidate), policy=policy)
     except ValueError:
         pass
     lower = candidate.lower()
@@ -348,20 +367,30 @@ def _is_disallowed_host(host: str) -> bool:
             ip = ipaddress.ip_address(info[4][0])
         except (IndexError, TypeError, ValueError):
             return True
-        if _is_disallowed_ip(ip):
-            return True
+        if not _is_disallowed_ip(ip, policy=policy):
+            continue
+        # A synthetic answer for a hostname is the proxy's own bookmark; every
+        # other disallowed answer for the same name still fails the gate.
+        if is_synthetic_answer(ip, host=candidate, policy=policy):
+            continue
+        return True
     return False
 
 
-def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-    )
+def _is_disallowed_ip(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    *,
+    policy: NetPolicy | None = None,
+) -> bool:
+    # Loopback, link-local, metadata and unassigned space: never allowed, not
+    # even when the private-network layer is switched off.
+    if is_always_refused(ip):
+        return True
+    if ip.is_multicast or ip.is_unspecified:
+        return True
+    if not (policy or current_policy()).protection_enabled:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
 
 
 async def _bounded_read(response: httpx.Response, limit: int) -> str:

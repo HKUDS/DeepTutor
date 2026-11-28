@@ -10,56 +10,24 @@ import {
   SettingsPageHeader,
   inputClass,
 } from "@/components/settings/shared";
+import { Toggle } from "@/components/settings/Toggle";
 import { useSettings } from "@/features/settings/store/SettingsStore";
+import {
+  allowPrivateTargets,
+  isNetworkDraftDirty,
+  networkDraftPayload,
+  normalizeNetworkDraft,
+  splitNetworkList,
+  ssrfProtectionFromToggle,
+  type NetworkSettings,
+  type NetworkSettingsPayload,
+} from "@/features/settings/sections/network-draft";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
   RuntimeHealthCard,
   TurnCoordinationSettings,
   useRuntimeStatus,
 } from "@/features/runtime-status";
-
-type NetworkSettings = {
-  backend_port: number;
-  frontend_port: number;
-  public_api_base: string;
-  cors_origins: string[];
-};
-
-type NetworkSettingsPayload = {
-  settings: NetworkSettings;
-  effective: {
-    backend_url: string;
-    frontend_url: string;
-    browser_api_base: string;
-    api_base_source: string;
-    cors_mode: "explicit" | "permissive";
-    cors_origins: string[];
-    allow_remote_http_origins: boolean;
-  };
-  auth: {
-    enabled: boolean;
-    cookie_secure: boolean;
-    cookie_samesite: string;
-    cross_site_cookie_ready: boolean;
-  };
-  restart_required: boolean;
-};
-
-function splitOrigins(value: string): string[] {
-  return value
-    .split(/[,;\n]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function normalizeDraft(payload: NetworkSettingsPayload): NetworkSettings {
-  return {
-    backend_port: payload.settings.backend_port,
-    frontend_port: payload.settings.frontend_port,
-    public_api_base: payload.settings.public_api_base || "",
-    cors_origins: payload.settings.cors_origins || [],
-  };
-}
 
 function DetailTile({
   label,
@@ -99,9 +67,11 @@ export default function NetworkSettingsPage() {
     useSettings();
   const apiBasePlaceholder = "https://api.example.com";
   const corsPlaceholder = "https://learn.example.com\nhttp://10.0.0.5:3782";
+  const rangesPlaceholder = "198.18.0.0/15\nfd27:712::/32";
   const [payload, setPayload] = useState<NetworkSettingsPayload | null>(null);
   const [draft, setDraft] = useState<NetworkSettings | null>(null);
   const [corsText, setCorsText] = useState("");
+  const [rangesText, setRangesText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,9 +96,10 @@ export default function NetworkSettingsPage() {
         setPayload(next);
         const pending = pendingExtensionPayload("network") as
           NetworkSettings | undefined;
-        const resolved = pending ?? normalizeDraft(next);
+        const resolved = pending ?? normalizeNetworkDraft(next);
         setDraft(resolved);
         setCorsText((resolved.cors_origins || []).join("\n"));
+        setRangesText((resolved.network_synthetic_ranges || []).join("\n"));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -145,15 +116,8 @@ export default function NetworkSettingsPage() {
 
   const dirty = useMemo(() => {
     if (!payload || !draft) return false;
-    const current = normalizeDraft(payload);
-    return (
-      current.backend_port !== draft.backend_port ||
-      current.frontend_port !== draft.frontend_port ||
-      current.public_api_base !== draft.public_api_base ||
-      JSON.stringify(current.cors_origins) !==
-        JSON.stringify(splitOrigins(corsText))
-    );
-  }, [corsText, draft, payload]);
+    return isNetworkDraftDirty(payload, draft, corsText, rangesText);
+  }, [corsText, draft, payload, rangesText]);
 
   // Flush through the global Apply (top toolbar) instead of a local button.
   // Refs keep the registered ``save`` closure reading the latest draft.
@@ -161,6 +125,8 @@ export default function NetworkSettingsPage() {
   draftRef.current = draft;
   const corsRef = useRef(corsText);
   corsRef.current = corsText;
+  const rangesRef = useRef(rangesText);
+  rangesRef.current = rangesText;
   const save = useCallback(async () => {
     const current = draftRef.current;
     if (!current) return;
@@ -169,10 +135,9 @@ export default function NetworkSettingsPage() {
       const response = await apiFetch(apiUrl("/api/settings/network"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...current,
-          cors_origins: splitOrigins(corsRef.current),
-        }),
+        body: JSON.stringify(
+          networkDraftPayload(current, corsRef.current, rangesRef.current),
+        ),
       });
       const data = (await response.json().catch(() => ({}))) as
         NetworkSettingsPayload | { detail?: string };
@@ -185,8 +150,9 @@ export default function NetworkSettingsPage() {
       }
       const next = data as NetworkSettingsPayload;
       setPayload(next);
-      setDraft(normalizeDraft(next));
+      setDraft(normalizeNetworkDraft(next));
       setCorsText((next.settings.cors_origins || []).join("\n"));
+      setRangesText((next.settings.network_synthetic_ranges || []).join("\n"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       throw err;
@@ -198,11 +164,11 @@ export default function NetworkSettingsPage() {
       dirty,
       save,
       payload: draft
-        ? { ...draft, cors_origins: splitOrigins(corsText) }
+        ? networkDraftPayload(draft, corsText, rangesText)
         : null,
     });
     return () => registerExtension("network", null);
-  }, [dirty, draft, corsText, save, registerExtension]);
+  }, [dirty, draft, corsText, rangesText, save, registerExtension]);
 
   return (
     <div data-tour="tour-network">
@@ -387,6 +353,71 @@ export default function NetworkSettingsPage() {
                   "Comma, semicolon, and newline separators are accepted. Bare host:port values are stored as http://host:port.",
                 )}
               </p>
+            </div>
+          </SettingSection>
+
+          <SettingSection
+            title={t("Outbound requests")}
+            description={t(
+              "How the server reaches MCP servers, web pages and channel media. These guards apply immediately, without a restart.",
+            )}
+          >
+            <SettingRow
+              title={t("Allow private network targets")}
+              description={t(
+                "Self-hosted LAN only: reach MCP servers, intranet pages and channel media on RFC1918, CGNAT or ULA addresses. Loopback, link-local and cloud-metadata addresses stay blocked.",
+              )}
+              control={
+                <Toggle
+                  checked={allowPrivateTargets(draft)}
+                  onChange={(allowPrivate) =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            ssrf_protection_enabled:
+                              ssrfProtectionFromToggle(allowPrivate),
+                          }
+                        : current,
+                    )
+                  }
+                />
+              }
+            />
+            <div className="py-4">
+              <label
+                className="mb-1.5 block text-[13px] font-medium"
+                htmlFor="network-synthetic-ranges"
+              >
+                {t("Fake-IP proxy ranges")}
+              </label>
+              <textarea
+                id="network-synthetic-ranges"
+                className={`${inputClass} min-h-24 resize-y font-mono text-[12.5px] leading-relaxed disabled:opacity-50`}
+                placeholder={rangesPlaceholder}
+                value={rangesText}
+                disabled={allowPrivateTargets(draft)}
+                onChange={(event) => setRangesText(event.target.value)}
+              />
+              <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
+                {t(
+                  "Only needed behind a local Clash, Mihomo, Loon or sing-box proxy in Fake-IP mode: one CIDR per line, for example 198.18.0.0/15 or fd27:712::/32. A hostname resolving into one of these ranges is treated as public; IP literal URLs, loopback and metadata answers stay blocked.",
+                )}
+              </p>
+              {allowPrivateTargets(draft) && (
+                <p className="mt-1 text-[11.5px] leading-relaxed text-amber-700 dark:text-amber-300">
+                  {t(
+                    "Ignored while private network targets are allowed above.",
+                  )}
+                </p>
+              )}
+              {payload.effective.ssrf_policy_env_override && (
+                <p className="mt-1 text-[11.5px] leading-relaxed text-amber-700 dark:text-amber-300">
+                  {t(
+                    "A deployment environment variable overrides these values; editing here does not change the running server.",
+                  )}
+                </p>
+              )}
             </div>
           </SettingSection>
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import ipaddress
 import json
 import logging
 import os
@@ -95,6 +96,19 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
         "whitelist": [],
         "blacklist": [],
     },
+    # SSRF policy shared by the MCP, web_fetch and partner guards
+    # (deeptutor/services/net_policy.py, issues #2739 / #2789 / #2889).
+    # ``network_synthetic_ranges`` lists the private CIDRs a local Fake-IP
+    # proxy synthesises for public hostnames (Clash: 198.18.0.0/15, Loon:
+    # fd27:712::/32). A hostname answer inside one is treated as public;
+    # IP-literal URLs, loopback, link-local and cloud-metadata answers stay
+    # refused. ``ssrf_protection_enabled=false`` drops only the
+    # RFC1918/CGNAT/ULA layer, for self-hosted deployments that reach LAN
+    # targets; the always-refused answers above are unaffected.
+    # Deployment overrides: DEEPTUTOR_SSRF_SYNTHETIC_RANGES and
+    # DEEPTUTOR_SSRF_PROTECTION_ENABLED.
+    "ssrf_protection_enabled": True,
+    "network_synthetic_ranges": [],
 }
 
 # Clamp bounds for the chat attachment knobs. The MB ceilings are deliberately
@@ -516,6 +530,33 @@ def _string_or_list(value: Any) -> str | list[str]:
     if isinstance(value, list):
         return [_string(raw) for raw in value if (item := _string(raw))]
     return _string(value)
+
+
+def _network_cidr_list(value: Any) -> list[str]:
+    """Keep only the valid CIDRs, in the operator's order.
+
+    A typo must not break the settings load: the guards read this list on the
+    request path, so an unparsable entry is dropped (and logged once here) and
+    everything else keeps working.
+    """
+    if isinstance(value, (list, tuple)):
+        raw = list(value)
+    else:
+        raw = _string(value).replace(";", ",").replace("\n", ",").split(",")
+    networks: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = _string(item)
+        if not text or text in seen:
+            continue
+        try:
+            ipaddress.ip_network(text, strict=False)
+        except ValueError:
+            logger.warning("Ignoring invalid network_synthetic_ranges entry %r", text)
+            continue
+        seen.add(text)
+        networks.append(text)
+    return networks
 
 
 def _normalize_web_fetch_backend(value: Any) -> str:
@@ -976,6 +1017,15 @@ class RuntimeSettingsService:
             payload["chat_attachment_max_chars_total"] = value
         if value := self._process_env_value("CHAT_PRIOR_IMAGE_REINJECT_MAX"):
             payload["chat_prior_image_reinject_max"] = value
+        if value := self._process_env_value("DEEPTUTOR_SSRF_PROTECTION_ENABLED"):
+            payload["ssrf_protection_enabled"] = value
+        # The MCP-only name from PR #2857 stays honoured so a deployment that
+        # already configured it does not have to migrate.
+        if value := (
+            self._process_env_value("DEEPTUTOR_SSRF_SYNTHETIC_RANGES")
+            or self._process_env_value("DEEPTUTOR_MCP_FAKE_IP_RANGES")
+        ):
+            payload["network_synthetic_ranges"] = value
         guard = dict(payload.get("security_guard") or {})
         for env_name, key in _SECURITY_GUARD_ENV_KEYS:
             if value := self._process_env_value(env_name):
@@ -1474,6 +1524,10 @@ class RuntimeSettingsService:
                 "whitelist": _host_list(guard.get("whitelist")),
                 "blacklist": _host_list(guard.get("blacklist")),
             },
+            "ssrf_protection_enabled": _coerce_bool(settings.get("ssrf_protection_enabled"), True),
+            "network_synthetic_ranges": _network_cidr_list(
+                settings.get("network_synthetic_ranges")
+            ),
         }
 
     def _normalize_auth(self, settings: dict[str, Any]) -> dict[str, Any]:

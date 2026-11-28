@@ -15784,11 +15784,15 @@ export interface components {
       readonly cors_origins?: readonly string[];
       /** Frontend Port */
       readonly frontend_port: number;
+      /** Network Synthetic Ranges */
+      readonly network_synthetic_ranges?: readonly string[] | null;
       /**
        * Public Api Base
        * @default
        */
       readonly public_api_base: string;
+      /** Ssrf Protection Enabled */
+      readonly ssrf_protection_enabled?: boolean | null;
     };
     /** NotebookCaptureRequest */
     readonly NotebookCaptureRequest: {
