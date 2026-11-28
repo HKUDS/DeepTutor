@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "df4dab3a08f48870e7d3c05b1f42cd91920eeca0574b31254080603538f4a271",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -1484,6 +1484,22 @@
       {
         "path": "/progress/{book_id}/generate-from-reading",
         "name": "generate_from_reading",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tutor-tools",
+        "name": "get_tutor_tools",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/tutor",
+        "name": "invoke_tutor_tool",
         "kind": "http",
         "methods": [
           "POST"
