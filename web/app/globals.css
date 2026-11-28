@@ -1402,6 +1402,68 @@ a[href^="#dt-locator-"]:hover {
 .dt-reader-scroll {
   scrollbar-width: thin;
 }
+/* The shared prose defaults use app typography and palette. Inside the
+   text reader, use its article's size, family and ink instead. */
+.prose.dt-reader-markdown {
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.prose.dt-reader-markdown h1 {
+  font-size: 1.5em;
+  line-height: 1.3333;
+}
+.prose.dt-reader-markdown h2 {
+  font-size: 1.25em;
+  line-height: 1.4;
+}
+.prose.dt-reader-markdown h3 {
+  font-size: 1.125em;
+  line-height: 1.5556;
+}
+.prose.dt-reader-markdown h4 {
+  font-size: 1em;
+  line-height: 1.5;
+}
+.prose.dt-reader-markdown :is(h5, h6, figcaption, table, .footnotes, .md-inline-code, kbd) {
+  font-size: 0.875em;
+  line-height: 1.4286;
+}
+/* The syntax highlighter also sets a fixed font size inline on pre. */
+.prose.dt-reader-markdown .md-code-block pre {
+  font-size: inherit !important;
+}
+.prose.dt-reader-markdown .md-code-block__code {
+  font-size: 0.875em !important;
+}
+
+.prose.dt-reader-markdown
+  :is(p, strong, ol, ul, dt, dd, summary, td, th, h1, h2, h3, h4, h5, h6, figcaption, blockquote) {
+  color: inherit;
+}
+
+/* Table and inline surfaces should follow the paper, not the app chrome.
+   Leave syntax-highlighted code blocks on their own dark surface. */
+.prose.dt-reader-markdown :is(thead, .md-inline-code, kbd, details) {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.prose.dt-reader-markdown :is(th, tbody, tbody > tr) {
+  background: transparent;
+}
+.prose.dt-reader-markdown tbody > tr:hover {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.prose.dt-reader-markdown
+  :is(div:has(> table), table, thead, th, td, blockquote, details, kbd, hr) {
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+.prose.dt-reader-markdown :is(tbody, tbody > tr) {
+  border-color: transparent;
+}
+.prose.dt-reader-markdown :is(.md-inline-code, kbd) {
+  color: inherit;
+}
+
 .dt-reader-scroll::-webkit-scrollbar {
   width: 9px;
   height: 9px;
