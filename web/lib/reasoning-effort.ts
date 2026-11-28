@@ -210,6 +210,8 @@ function tableReasoningEffortOptions(
       includesAny(modelName, [
         "deepseek-reasoner",
         "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-flash",
         "qwen3",
         "qwen-3",
         "qwq",
@@ -282,18 +284,109 @@ export function setModelReasoningEffort(
  * The catalog fields reasoning-effort validation needs from a model option.
  * Structural so `LLMOption` satisfies it without lib → features imports.
  */
+export interface BackendReasoningControl {
+  mode: "none" | "toggle" | "levels";
+  levels?: string[];
+  off_value?: string;
+  on_value?: string;
+  default_on?: boolean;
+}
+
 export interface ReasoningEffortModelOption {
   provider?: string | null;
   model?: string | null;
+  reasoning_effort?: string | null;
   supported_reasoning_efforts?: string[] | null;
+  reasoning_control?: BackendReasoningControl | null;
   declared_reasoning?: boolean | null;
 }
 
+const R1_TOKEN_RE = /(?:^|[^a-z0-9])r1(?:$|[^a-z0-9])/;
+
+const BINARY_MINIMAL_OFF_PROVIDERS = new Set([
+  "deepseek",
+  "dashscope",
+  "volcengine",
+  "volcengine_coding_plan",
+  "byteplus",
+  "byteplus_coding_plan",
+  "siliconflow",
+  "zhipu",
+  "moonshot",
+  "minimax",
+]);
+
+function isQwenInstruct(modelName: string): boolean {
+  if (!modelName.includes("qwen")) return false;
+  return modelName.split(/[-_/]/).includes("instruct");
+}
+
+function canonicalProvider(provider: string | null | undefined): string {
+  const canonical = (provider ?? "").trim().toLowerCase().replaceAll("-", "_");
+  return PROVIDER_ALIASES[canonical] ?? canonical;
+}
+
+function deriveToggleDefaultOn(
+  option: ReasoningEffortModelOption,
+  provider: string,
+  modelName: string,
+): boolean {
+  const configured = (option.reasoning_effort ?? "").trim().toLowerCase();
+  if (configured) {
+    return (
+      configured !== "none" &&
+      configured !== "minimal" &&
+      configured !== "minimum"
+    );
+  }
+  if (isQwenInstruct(modelName)) return false;
+  if (provider === "deepseek") {
+    return includesAny(modelName, ["deepseek-v4-pro", "deepseek-reasoner"]);
+  }
+  if (provider === "dashscope") {
+    return includesAny(modelName, ["qwen3", "qwen-3", "qwq", "qwen-plus"]);
+  }
+  if (provider === "custom" || provider === "siliconflow") {
+    return includesAny(modelName, [
+      "qwen3",
+      "qwen-3",
+      "qwq",
+      "qwen-plus",
+      "deepseek-v4-pro",
+      "deepseek-reasoner",
+      "deepseek-r1",
+    ]);
+  }
+  return false;
+}
+
+function tableSupportedReasoningEffortValues(
+  option: ReasoningEffortModelOption,
+): string[] {
+  const offered = Array.isArray(option.supported_reasoning_efforts)
+    ? reasoningEffortOptionsFromSupportedLevels(
+        option.supported_reasoning_efforts,
+      )
+    : reasoningEffortOptions(
+        option.provider,
+        option.model,
+        // Deliberately empty: passing the current override would re-add it
+        // through the tables' reset-recovery path (#641 review blocker).
+        "",
+        option.declared_reasoning,
+      );
+  return offered
+    .map((item) => item.value)
+    .filter((value) => VALID_REASONING_EFFORTS.has(value));
+}
+
 /**
- * The reasoning-effort wire values a selected model supports (#641): the
- * catalog's live `supported_reasoning_efforts` when it publishes one,
- * otherwise the provider/model tables (honouring `declared_reasoning`),
- * narrowed to `VALID_REASONING_EFFORTS`.
+ * The reasoning-effort wire values a selected model supports (#641):
+ * 1. Backend-resolved `reasoning_control` (single source of truth) when present;
+ * 2. Live catalog `supported_reasoning_efforts` when published as an array;
+ * 3. Provider/model tables (honouring `declared_reasoning`), plus binary
+ *    toggle vendors resolved via `resolveReasoningControl`, narrowed to
+ *    `VALID_REASONING_EFFORTS`.
  *
  * Unlike the tables' own retention rule, a stored/stale value is NEVER
  * re-added to this list — an unsupported level must not be offered, let
@@ -302,23 +395,53 @@ export interface ReasoningEffortModelOption {
 export function supportedReasoningEffortValues(
   option: ReasoningEffortModelOption | null | undefined,
 ): string[] {
-  if (!option) return [];
-  const offered =
-    Array.isArray(option.supported_reasoning_efforts)
-      ? reasoningEffortOptionsFromSupportedLevels(
-          option.supported_reasoning_efforts,
-        )
-      : reasoningEffortOptions(
-          option.provider,
-          option.model,
-          // Deliberately empty: passing the current override would re-add it
-          // through the tables' reset-recovery path (#641 review blocker).
-          "",
-          option.declared_reasoning,
-        );
-  return offered
-    .map((item) => item.value)
-    .filter((value) => VALID_REASONING_EFFORTS.has(value));
+  if (!option || option.declared_reasoning === false) return [];
+
+  if (option.reasoning_control) {
+    const ctrl = option.reasoning_control;
+    if (ctrl.mode === "none") return [];
+    if (ctrl.mode === "toggle") {
+      const offValue = normalizeReasoningEffort(ctrl.off_value) ?? "none";
+      const onValue = normalizeReasoningEffort(ctrl.on_value) ?? "high";
+      return [...new Set([offValue, onValue])].filter((value) =>
+        VALID_REASONING_EFFORTS.has(value),
+      );
+    }
+    if (ctrl.mode === "levels") {
+      return [
+        ...new Set(
+          (ctrl.levels ?? [])
+            .map((v) => normalizeReasoningEffort(v))
+            .filter((v): v is string => Boolean(v)),
+        ),
+      ];
+    }
+  }
+
+  if (Array.isArray(option.supported_reasoning_efforts)) {
+    return tableSupportedReasoningEffortValues(option);
+  }
+
+  const modelName = (option.model ?? "").trim().toLowerCase();
+  if (option.declared_reasoning !== true && isQwenInstruct(modelName)) {
+    return [];
+  }
+
+  const fromTables = tableSupportedReasoningEffortValues(option);
+  if (fromTables.length > 0) return fromTables;
+
+  const control = resolveReasoningControl(option);
+  if (control.kind === "toggle") {
+    return [...new Set([control.offValue, control.onValue])].filter((value) =>
+      VALID_REASONING_EFFORTS.has(value),
+    );
+  }
+  if (control.kind === "levels") {
+    return control.options
+      .map((item) => item.value)
+      .filter((value) => VALID_REASONING_EFFORTS.has(value));
+  }
+  return [];
 }
 
 /**
@@ -361,4 +484,156 @@ export function dropUnvalidatedReasoningEffort<
   }
   const { reasoning_effort: _unvalidated, ...rest } = selection;
   return rest as T;
+}
+
+export type ReasoningControlMode =
+  | { kind: "none" }
+  | { kind: "toggle"; offValue: string; onValue: string; defaultOn: boolean }
+  | { kind: "levels"; options: ReasoningEffortOption[] };
+
+const TOGGLE_ONLY_PROVIDERS = new Set([
+  "deepseek",
+  "dashscope",
+  "volcengine",
+  "volcengine_coding_plan",
+  "byteplus",
+  "byteplus_coding_plan",
+  "siliconflow",
+  "zhipu",
+  "moonshot",
+  "custom",
+]);
+
+/**
+ * Auto-detect the chat composer's reasoning control mode for a selected model:
+ * 0. Server-resolved `reasoning_control` (single source of truth).
+ * 1. Live catalog `supported_reasoning_efforts` (e.g. Codex OAuth) -> multi-level menu.
+ * 2. Known multi-level families (OpenAI GPT-5/o-series, Gemini 2.5/3, Claude 3.7/4+,
+ *    GLM-5.3, MiniMax M3.1 Flash) -> multi-level menu.
+ * 3. Binary thinking vendors & general/custom fallback -> simple Thinking on/off toggle.
+ * 4. Models with no reasoning support -> hidden.
+ */
+export function resolveReasoningControl(
+  option: ReasoningEffortModelOption | null | undefined,
+): ReasoningControlMode {
+  if (!option || option.declared_reasoning === false) {
+    return { kind: "none" };
+  }
+
+  const provider = canonicalProvider(option.provider);
+  const modelName = (option.model ?? "").trim().toLowerCase();
+
+  // 0. Server-resolved reasoning_control (single source of truth from /api/settings/llm-options).
+  if (option.reasoning_control) {
+    const ctrl = option.reasoning_control;
+    if (ctrl.mode === "none") return { kind: "none" };
+    if (ctrl.mode === "toggle") {
+      const offValue = normalizeReasoningEffort(ctrl.off_value) ?? "none";
+      const onValue = normalizeReasoningEffort(ctrl.on_value) ?? "high";
+      const defaultOn =
+        typeof ctrl.default_on === "boolean"
+          ? ctrl.default_on
+          : deriveToggleDefaultOn(option, provider, modelName);
+      return { kind: "toggle", offValue, onValue, defaultOn };
+    }
+    if (ctrl.mode === "levels") {
+      const validLevels = (ctrl.levels ?? [])
+        .map((v) => normalizeReasoningEffort(v))
+        .filter((v): v is string => Boolean(v));
+      if (validLevels.length === 0) return { kind: "none" };
+      return {
+        kind: "levels",
+        options: reasoningEffortOptionsFromSupportedLevels(validLevels),
+      };
+    }
+  }
+
+  // 1. Live provider-advertised levels always take precedence (#2732: null means absent).
+  if (Array.isArray(option.supported_reasoning_efforts)) {
+    const valid = tableSupportedReasoningEffortValues(option);
+    if (valid.length === 0) return { kind: "none" };
+    return {
+      kind: "levels",
+      options: reasoningEffortOptionsFromSupportedLevels(valid),
+    };
+  }
+
+  if (option.declared_reasoning !== true && isQwenInstruct(modelName)) {
+    return { kind: "none" };
+  }
+
+  const valid = tableSupportedReasoningEffortValues(option);
+
+  // 2. GLM-5.3 and MiniMax M3.1 Flash explicitly support multi-level effort.
+  const isGlm53 = modelName === "glm-5.3" || modelName.endsWith("/glm-5.3");
+  const isMiniMaxMulti =
+    ["minimax", "minimax_anthropic"].includes(provider) &&
+    modelName === "minimax-m3.1-flash";
+
+  const isMultiLevelProvider =
+    OPENAI_PROVIDERS.has(provider) ||
+    provider === "gemini" ||
+    provider === "anthropic" ||
+    provider === "custom_anthropic" ||
+    modelName.includes("gemini") ||
+    modelName.includes("claude") ||
+    isGlm53 ||
+    isMiniMaxMulti;
+
+  if (isMultiLevelProvider && valid.length > 0) {
+    return {
+      kind: "levels",
+      options: reasoningEffortOptionsFromSupportedLevels(valid),
+    };
+  }
+
+  // 3. Binary thinking vendors & general/custom models default to Thinking on/off toggle.
+  if (
+    TOGGLE_ONLY_PROVIDERS.has(provider) ||
+    provider === "minimax" ||
+    option.declared_reasoning === true
+  ) {
+    const isBinaryDomesticModel =
+      provider === "custom" ||
+      option.declared_reasoning === true ||
+      provider === "minimax" ||
+      valid.length > 0 ||
+      R1_TOKEN_RE.test(modelName) ||
+      includesAny(modelName, [
+        "deepseek",
+        "qwen3",
+        "qwen-3",
+        "qwq",
+        "qwen-plus",
+        "doubao",
+        "thinking",
+        "reasoner",
+        "glm-4",
+        "glm-5",
+        "kimi",
+      ]);
+
+    if (isBinaryDomesticModel) {
+      const offValue = BINARY_MINIMAL_OFF_PROVIDERS.has(provider)
+        ? "minimal"
+        : "none";
+      return {
+        kind: "toggle",
+        offValue,
+        onValue: "high",
+        defaultOn: deriveToggleDefaultOn(option, provider, modelName),
+      };
+    }
+  }
+
+  if (valid.length > 0) {
+    return {
+      kind: "toggle",
+      offValue: "none",
+      onValue: "high",
+      defaultOn: deriveToggleDefaultOn(option, provider, modelName),
+    };
+  }
+
+  return { kind: "none" };
 }

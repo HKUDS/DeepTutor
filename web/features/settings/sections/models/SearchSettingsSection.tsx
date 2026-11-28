@@ -1,6 +1,7 @@
 "use client";
 import { useTranslation } from "react-i18next";
 import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
+import { ModelSectionGuideBanner } from "@/components/settings/ModelSectionGuideBanner";
 import { WebFetchBackendCard } from "@/components/settings/WebFetchBackendCard";
 import { SettingsPageHeader } from "@/components/settings/shared";
 export default function SearchSettingsPage() {
@@ -13,6 +14,7 @@ export default function SearchSettingsPage() {
           "Configure and test search engines using saved providers.",
         )}
       />
+      <ModelSectionGuideBanner kind="search" />
       <ModelsWorkspace page="search" />
       <WebFetchBackendCard />
     </div>

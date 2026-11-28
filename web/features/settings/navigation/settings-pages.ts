@@ -13,7 +13,7 @@ export const SETTINGS_PAGE_GROUPS: { label: string; keys: string[] }[] = [
   { label: 'Personal', keys: ['general', 'workspace', 'data-migration', 'appearance', 'usage'] },
   {
     label: 'Models & services',
-    keys: ['connections', 'llm', 'task-models', 'embedding', 'search', 'voice', 'multimodal'],
+    keys: ['quick-setup', 'connections', 'llm', 'task-models', 'embedding', 'search', 'voice', 'multimodal'],
   },
   {
     label: 'Learning & conversation',
@@ -37,6 +37,7 @@ export const SETTINGS_PAGE_GROUPS: { label: string; keys: string[] }[] = [
  * pixels beside them. Text-only preference pages stay narrow on purpose.
  */
 const WIDE_SETTINGS_PAGES = new Set([
+  'quick-setup',
   'connections',
   'llm',
   'embedding',

@@ -3,6 +3,7 @@
 import { useTranslation } from "react-i18next";
 
 import { ProvidersWorkspace } from "@/components/settings/ProvidersWorkspace";
+import { ModelSectionGuideBanner } from "@/components/settings/ModelSectionGuideBanner";
 import { SettingsPageHeader } from "@/components/settings/shared";
 
 export default function ConnectionsSettingsPage() {
@@ -15,6 +16,7 @@ export default function ConnectionsSettingsPage() {
           "Manage provider names, URLs, and credentials. Configure models on their own pages.",
         )}
       />
+      <ModelSectionGuideBanner kind="connections" />
       <ProvidersWorkspace />
     </div>
   );

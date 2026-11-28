@@ -89,6 +89,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
     options: list[dict[str, Any]] = []
     # Local import: the llm package imports back into this module at load time.
     from deeptutor.services.llm.capabilities import supports_vision_declared
+    from deeptutor.services.llm.reasoning_params import resolve_reasoning_control
 
     for profile in service.get("profiles", []) or []:
         if not isinstance(profile, dict):
@@ -154,6 +155,13 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             # (#2037). Same rule as `lightrag/roles.py` and the save-time gate.
             option["supports_vision"] = supports_vision_declared(
                 declared.get("vision"), model_provider, model_value
+            )
+            option["reasoning_control"] = resolve_reasoning_control(
+                model_provider,
+                model_value,
+                supported_reasoning_efforts=option.get("supported_reasoning_efforts"),
+                declared_reasoning=option.get("declared_reasoning"),
+                configured_effort=option.get("reasoning_effort"),
             )
             options.append(option)
 

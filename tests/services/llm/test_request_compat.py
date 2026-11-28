@@ -128,3 +128,182 @@ def test_response_format_classifier_ignores_unrelated_unsupported_params() -> No
     assert not is_response_format_unsupported(ValueError("stream_options is not supported"))
     assert not is_response_format_unsupported(ValueError("unknown parameter: temperature"))
     assert not is_response_format_unsupported(RuntimeError("rate limit exceeded"))
+
+
+def test_is_reasoning_param_unsupported_matches_only_400_reasoning_rejections():
+    from deeptutor.services.llm import request_compat
+    from deeptutor.services.llm.request_compat import is_reasoning_param_unsupported
+
+    assert "is_reasoning_param_unsupported" in request_compat.__all__
+
+    class FakeBadRequest(Exception):
+        def __init__(self, msg: str, status_code: int = 400):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Unknown parameter: 'reasoning_effort'", 400)
+    )
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Extra inputs are not permitted: enable_thinking", 422)
+    )
+    assert is_reasoning_param_unsupported(FakeBadRequest("Unknown parameter: 'reasoning'", 400))
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Unsupported parameter: extra_body.reasoning", 400)
+    )
+    assert is_reasoning_param_unsupported(
+        FakeBadRequest("Field reasoning is not supported by this model", 400)
+    )
+    assert not is_reasoning_param_unsupported(FakeBadRequest("Incorrect API key provided", 401))
+    assert not is_reasoning_param_unsupported(
+        FakeBadRequest("Rate limit reached for reasoning_effort requests", 429)
+    )
+    assert not is_reasoning_param_unsupported(
+        FakeBadRequest("Unknown parameter: 'max_tokens'", 400)
+    )
+
+
+def test_openai_compat_provider_caches_reasoning_400_fallback_across_turns() -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from deeptutor.services.llm import capabilities as llm_capabilities
+    from deeptutor.services.llm.capabilities import is_reasoning_params_disabled_at_runtime
+    from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
+    from deeptutor.services.provider_registry import find_by_name
+
+    class FakeBadRequest(Exception):
+        def __init__(self, msg: str, status_code: int = 400):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    llm_capabilities._RUNTIME_DISABLED_REASONING_PARAMS.clear()
+    try:
+        provider = OpenAICompatProvider(
+            api_key="test-key",
+            api_base="https://relay.example.com/v1",
+            default_model="custom-chat",
+            spec=find_by_name("custom"),
+            provider_name="custom",
+            configure_env=False,
+        )
+        seen_kwargs: list[dict] = []
+
+        async def fake_create(**kwargs):
+            seen_kwargs.append(dict(kwargs))
+            if "reasoning_effort" in kwargs or "extra_body" in kwargs:
+                raise FakeBadRequest("Unknown parameter: 'reasoning_effort'", 400)
+            if kwargs.get("stream"):
+
+                async def _stream():
+                    yield SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                delta=SimpleNamespace(content="ok", tool_calls=None),
+                                finish_reason="stop",
+                            )
+                        ]
+                    )
+
+                return _stream()
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="ok", tool_calls=None),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=None,
+            )
+
+        provider._client.chat.completions.create = fake_create  # type: ignore[method-assign]
+
+        # First call hits 400 once, retries cleanly without reasoning params, and caches disablement.
+        first = asyncio.run(
+            provider.chat(
+                messages=[{"role": "user", "content": "hi"}],
+                model="custom-chat",
+                reasoning_effort="high",
+            )
+        )
+        assert first.content == "ok"
+        assert len(seen_kwargs) == 2
+        assert seen_kwargs[0].get("reasoning_effort") == "high"
+        assert "reasoning_effort" not in seen_kwargs[1]
+        assert is_reasoning_params_disabled_at_runtime("custom", "custom-chat") is True
+
+        # Second call (streaming) skips reasoning params upfront without another 400 round-trip.
+        second = asyncio.run(
+            provider.chat_stream(
+                messages=[{"role": "user", "content": "next turn"}],
+                model="custom-chat",
+                reasoning_effort="high",
+            )
+        )
+        assert second.content == "ok"
+        assert len(seen_kwargs) == 3
+        assert "reasoning_effort" not in seen_kwargs[2]
+    finally:
+        llm_capabilities._RUNTIME_DISABLED_REASONING_PARAMS.clear()
+
+
+def test_openai_compat_provider_stream_400_fallback_caches_disablement() -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from deeptutor.services.llm import capabilities as llm_capabilities
+    from deeptutor.services.llm.capabilities import is_reasoning_params_disabled_at_runtime
+    from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
+    from deeptutor.services.provider_registry import find_by_name
+
+    class FakeBadRequest(Exception):
+        def __init__(self, msg: str, status_code: int = 400):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    llm_capabilities._RUNTIME_DISABLED_REASONING_PARAMS.clear()
+    try:
+        provider = OpenAICompatProvider(
+            api_key="test-key",
+            api_base="https://api.siliconflow.cn/v1",
+            default_model="vendor/no-thinking-model",
+            spec=find_by_name("siliconflow"),
+            provider_name="siliconflow",
+            configure_env=False,
+        )
+        seen_kwargs: list[dict] = []
+
+        async def fake_create(**kwargs):
+            seen_kwargs.append(dict(kwargs))
+            extra = kwargs.get("extra_body") or {}
+            if "enable_thinking" in extra:
+                raise FakeBadRequest("Extra inputs are not permitted: enable_thinking", 422)
+
+            async def _stream():
+                yield SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content="streamed", tool_calls=None),
+                            finish_reason="stop",
+                        )
+                    ]
+                )
+
+            return _stream()
+
+        provider._client.chat.completions.create = fake_create  # type: ignore[method-assign]
+
+        result = asyncio.run(
+            provider.chat_stream(
+                messages=[{"role": "user", "content": "hi"}],
+                model="vendor/no-thinking-model",
+                reasoning_effort="high",
+            )
+        )
+        assert result.content == "streamed"
+        assert len(seen_kwargs) == 2
+        assert seen_kwargs[0]["extra_body"] == {"enable_thinking": True}
+        assert "extra_body" not in seen_kwargs[1]
+        assert is_reasoning_params_disabled_at_runtime("siliconflow", "vendor/no-thinking-model")
+    finally:
+        llm_capabilities._RUNTIME_DISABLED_REASONING_PARAMS.clear()

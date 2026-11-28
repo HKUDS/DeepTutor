@@ -124,3 +124,72 @@ it("drops a stored value the selected model no longer supports (#641)", () => {
   fireEvent.click(screen.getByRole("button", { name: "Low" }));
   expect(onChange).toHaveBeenLastCalledWith("low");
 });
+
+it("renders a one-click Thinking toggle for binary domestic and custom models", () => {
+  const onChange = vi.fn();
+  const { rerender } = render(
+    <ReasoningEffortSelector
+      option={option({ provider: "deepseek", model: "deepseek-flash" })}
+      value={null}
+      onChange={onChange}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenLastCalledWith("high");
+
+  rerender(
+    <ReasoningEffortSelector
+      option={option({ provider: "deepseek", model: "deepseek-flash" })}
+      value="high"
+      onChange={onChange}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "Reasoning effort" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Reasoning effort" }));
+  expect(onChange).toHaveBeenLastCalledWith("minimal");
+});
+
+it("aligns default-on toggle state so models enabled by default turn off on a single click", () => {
+  const onChange = vi.fn();
+  const { rerender } = render(
+    <ReasoningEffortSelector
+      option={option({
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        reasoning_control: {
+          mode: "toggle",
+          off_value: "minimal",
+          on_value: "high",
+          default_on: true,
+        },
+      })}
+      value={null}
+      onChange={onChange}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenLastCalledWith("minimal");
+
+  // Configured default reasoning_effort="high" also defaults ON when value is null.
+  rerender(
+    <ReasoningEffortSelector
+      option={option({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        reasoning_effort: "high",
+      })}
+      value={null}
+      onChange={onChange}
+    />,
+  );
+  const configuredToggle = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(configuredToggle.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(configuredToggle);
+  expect(onChange).toHaveBeenLastCalledWith("minimal");
+});

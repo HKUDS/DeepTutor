@@ -7,6 +7,7 @@ import {
   normalizeReasoningEffort,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
+  resolveReasoningControl,
   setModelReasoningEffort,
   supportedReasoningEffortValues,
   VALID_REASONING_EFFORTS,
@@ -378,4 +379,149 @@ test("a restored xhigh override never reaches the wire once the model restricts 
   } = { profile_id: "p-alt", model_id: "m-alt" };
   assert.equal(dropUnvalidatedReasoningEffort(plain, null), plain);
   assert.equal(dropUnvalidatedReasoningEffort(null, option), null);
+});
+
+test("deepseek-flash and deepseek-v4-flash expose binary thinking controls in settings and chat", () => {
+  assert.deepEqual(values("deepseek", "deepseek-flash"), ["", "minimal", "high"]);
+  assert.deepEqual(values("deepseek", "deepseek-v4-flash"), ["", "minimal", "high"]);
+
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "deepseek", model: "deepseek-flash" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: false },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "deepseek", model: "deepseek-reasoner" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "dashscope", model: "qwen3-max" }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "deepseek",
+      model: "deepseek-chat",
+      reasoning_effort: "high",
+    }),
+    { kind: "toggle", offValue: "minimal", onValue: "high", defaultOn: true },
+  );
+  assert.deepEqual(
+    resolveReasoningControl({ provider: "custom", model: "gateway/unknown-model" }),
+    { kind: "toggle", offValue: "none", onValue: "high", defaultOn: false },
+  );
+  assert.equal(
+    resolveReasoningControl({ provider: "openai", model: "gpt-5.2" }).kind,
+    "levels",
+  );
+  assert.equal(
+    resolveReasoningControl({
+      provider: "openai_codex",
+      model: "gpt-5.3-codex",
+      supported_reasoning_efforts: ["low", "medium", "high"],
+    }).kind,
+    "levels",
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "openai",
+      model: "gpt-4o",
+      declared_reasoning: false,
+    }),
+    { kind: "none" },
+  );
+  // Backend single-source-of-truth reasoning_control wins over local heuristics.
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "custom",
+      model: "future-vendor-model",
+      reasoning_control: { mode: "levels", levels: ["low", "high"] },
+    }).kind,
+    "levels",
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "openai",
+      model: "gpt-5.2",
+      reasoning_control: {
+        mode: "toggle",
+        off_value: "none",
+        on_value: "high",
+        default_on: true,
+      },
+    }),
+    { kind: "toggle", offValue: "none", onValue: "high", defaultOn: true },
+  );
+});
+
+test("supportedReasoningEffortValues and dropUnvalidatedReasoningEffort align with reasoning_control for domestic toggle vendors", () => {
+  const cases = [
+    { provider: "volcengine", model: "doubao-seed-1-6-250615" },
+    { provider: "siliconflow", model: "deepseek-ai/DeepSeek-R1" },
+    { provider: "zhipu", model: "glm-4-plus" },
+    { provider: "zhipu", model: "glm-5" },
+    { provider: "moonshot", model: "kimi-k2-0711-preview" },
+    { provider: "deepseek", model: "deepseek-chat" },
+  ];
+
+  for (const base of cases) {
+    // Both client fallback (without reasoning_control) and backend SSOT (with reasoning_control)
+    // must validate "high" and "minimal" so ChatComposer does not reset and ChatStateAdapter does not strip them.
+    for (const option of [
+      base,
+      {
+        ...base,
+        supported_reasoning_efforts: null,
+        reasoning_control: {
+          mode: "toggle" as const,
+          off_value: "minimal",
+          on_value: "high",
+          default_on: false,
+        },
+      },
+    ]) {
+      const supported = supportedReasoningEffortValues(option);
+      assert.ok(supported.includes("high"), `${base.provider}/${base.model} should support high`);
+      assert.ok(
+        supported.includes("minimal"),
+        `${base.provider}/${base.model} should support minimal`,
+      );
+      assert.equal(effectiveReasoningEffort(option, "high"), "high");
+      assert.equal(effectiveReasoningEffort(option, "minimal"), "minimal");
+      const selection = { profile_id: "p1", model_id: "m1", reasoning_effort: "high" };
+      assert.equal(dropUnvalidatedReasoningEffort(selection, option)?.reasoning_effort, "high");
+    }
+  }
+
+  // Non-admin null supported_reasoning_efforts must not crash resolveReasoningControl (#2732).
+  assert.equal(
+    resolveReasoningControl({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+      supported_reasoning_efforts: null,
+    }).kind,
+    "levels",
+  );
+
+  // Qwen Instruct variants and non-boundary "r1" substrings expose no toggle.
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "dashscope",
+      model: "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    }),
+    { kind: "none" },
+  );
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "dashscope",
+      model: "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    resolveReasoningControl({
+      provider: "siliconflow",
+      model: "tier1-chat",
+    }),
+    { kind: "none" },
+  );
 });

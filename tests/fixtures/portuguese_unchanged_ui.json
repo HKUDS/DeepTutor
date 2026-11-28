@@ -139,5 +139,18 @@
   "language.korean": "한국어 (일부 번역)",
   "OAuth": "OAuth",
   "language.italian": "Italiano",
-  "language.hungarian": "Magyar"
+  "language.hungarian": "Magyar",
+  "quickSetup.vendor.deepseek.name": "DeepSeek",
+  "quickSetup.vendor.dashscope.name": "Alibaba DashScope (Qwen)",
+  "quickSetup.vendor.siliconflow.name": "SiliconFlow",
+  "quickSetup.vendor.zhipu.name": "Zhipu AI (GLM)",
+  "quickSetup.vendor.moonshot.name": "Moonshot (Kimi)",
+  "quickSetup.vendor.volcengine.name": "VolcEngine (Doubao)",
+  "quickSetup.vendor.minimax.name": "MiniMax",
+  "quickSetup.vendor.qianfan.name": "Baidu Qianfan",
+  "quickSetup.vendor.openai.name": "OpenAI",
+  "quickSetup.vendor.anthropic.name": "Anthropic (Claude)",
+  "quickSetup.vendor.gemini.name": "Google Gemini",
+  "quickSetup.vendor.openrouter.name": "OpenRouter",
+  "quickSetup.region.minimax.cn": "China (api.minimaxi.com)"
 }

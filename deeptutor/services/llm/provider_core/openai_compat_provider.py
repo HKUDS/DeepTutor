@@ -25,8 +25,10 @@ from openai import AsyncOpenAI
 from deeptutor.services.keypool import KeyPool
 from deeptutor.services.llm.capabilities import (
     disable_forced_tool_choice_at_runtime,
+    disable_reasoning_params_at_runtime,
     disable_response_format_at_runtime,
     is_forced_tool_choice_disabled_at_runtime,
+    is_reasoning_params_disabled_at_runtime,
 )
 from deeptutor.services.llm.exceptions import LLMConfigError, LLMOperationPaused
 from deeptutor.services.llm.openai_http_client import openai_sdk_client_kwargs
@@ -46,9 +48,12 @@ from deeptutor.services.llm.provider_core.openai_stream import managed_openai_st
 from deeptutor.services.llm.provider_core.response_recovery import guarded_responses
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
+    has_reasoning_kwargs,
+    strip_reasoning_kwargs,
 )
 from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
+    is_reasoning_param_unsupported,
     is_response_format_unsupported,
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
@@ -581,14 +586,15 @@ class OpenAICompatProvider(LLMProvider):
             else:
                 kwargs[key] = value
 
-        kwargs.update(
-            build_openai_compatible_reasoning_kwargs(
-                spec=spec,
-                binding=getattr(spec, "name", None),
-                model=model_name,
-                reasoning_effort=reasoning_effort,
+        if not is_reasoning_params_disabled_at_runtime(self._binding_name(), model_name):
+            kwargs.update(
+                build_openai_compatible_reasoning_kwargs(
+                    spec=spec,
+                    binding=getattr(spec, "name", None),
+                    model=model_name,
+                    reasoning_effort=reasoning_effort,
+                )
             )
-        )
 
         if tools:
             kwargs["tools"] = tools
@@ -855,7 +861,9 @@ class OpenAICompatProvider(LLMProvider):
         return is_response_format_unsupported(exc)
 
     def _binding_name(self) -> str:
-        return self._provider_name or (self._spec.name if self._spec else "openai")
+        provider_name = getattr(self, "_provider_name", None)
+        spec = getattr(self, "_spec", None)
+        return provider_name or (spec.name if spec else "openai")
 
     def _effective_tool_choice(
         self,
@@ -1232,6 +1240,10 @@ class OpenAICompatProvider(LLMProvider):
                 tool_choice,
             )
             request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
+            if is_reasoning_params_disabled_at_runtime(
+                self._binding_name(), request_kwargs.get("model")
+            ):
+                request_kwargs = strip_reasoning_kwargs(request_kwargs)
             try:
                 return self._parse(
                     await self._create_with_key_rotation(
@@ -1242,10 +1254,25 @@ class OpenAICompatProvider(LLMProvider):
                 if request_kwargs.get(
                     "response_format"
                 ) is not None and self._is_response_format_error(exc):
-                    binding = self._provider_name or (self._spec.name if self._spec else "openai")
+                    binding = self._binding_name()
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
+                    return self._parse(
+                        await self._create_with_key_rotation(
+                            self._client.chat.completions.create, retry_kwargs
+                        )
+                    )
+                if has_reasoning_kwargs(request_kwargs) and is_reasoning_param_unsupported(exc):
+                    disable_reasoning_params_at_runtime(
+                        self._binding_name(), request_kwargs.get("model")
+                    )
+                    logger.warning(
+                        "provider rejected reasoning parameters for model={}; retrying without reasoning params. error={}",
+                        request_kwargs.get("model"),
+                        str(exc)[:200],
+                    )
+                    retry_kwargs = strip_reasoning_kwargs(request_kwargs)
                     return self._parse(
                         await self._create_with_key_rotation(
                             self._client.chat.completions.create, retry_kwargs
@@ -1460,6 +1487,10 @@ class OpenAICompatProvider(LLMProvider):
             request_kwargs["stream"] = True
             if self._spec is None or self._spec.supports_stream_options:
                 request_kwargs["stream_options"] = {"include_usage": True}
+            if is_reasoning_params_disabled_at_runtime(
+                self._binding_name(), request_kwargs.get("model")
+            ):
+                request_kwargs = strip_reasoning_kwargs(request_kwargs)
             try:
                 stream = await self._create_with_key_rotation(
                     self._client.chat.completions.create, request_kwargs
@@ -1468,10 +1499,23 @@ class OpenAICompatProvider(LLMProvider):
                 if request_kwargs.get(
                     "response_format"
                 ) is not None and self._is_response_format_error(exc):
-                    binding = self._provider_name or (self._spec.name if self._spec else "openai")
+                    binding = self._binding_name()
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
+                    stream = await self._create_with_key_rotation(
+                        self._client.chat.completions.create, retry_kwargs
+                    )
+                elif has_reasoning_kwargs(request_kwargs) and is_reasoning_param_unsupported(exc):
+                    disable_reasoning_params_at_runtime(
+                        self._binding_name(), request_kwargs.get("model")
+                    )
+                    logger.warning(
+                        "provider rejected reasoning parameters for streaming model={}; retrying without reasoning params. error={}",
+                        request_kwargs.get("model"),
+                        str(exc)[:200],
+                    )
+                    retry_kwargs = strip_reasoning_kwargs(request_kwargs)
                     stream = await self._create_with_key_rotation(
                         self._client.chat.completions.create, retry_kwargs
                     )

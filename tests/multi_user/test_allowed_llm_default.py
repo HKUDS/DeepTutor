@@ -122,3 +122,56 @@ def test_an_account_without_usable_models_keeps_no_default(tmp_path, monkeypatch
 
     assert allowed["options"] == []
     assert allowed["active"] is None
+
+
+def test_non_admin_allowed_llm_options_includes_reasoning_control(tmp_path, monkeypatch):
+    """Non-admin /api/settings/llm-options options must carry backend reasoning_control too."""
+    catalog = _catalog(
+        active=(SHARED_PROFILE, "m-ds"),
+        profiles=[
+            {
+                "id": SHARED_PROFILE,
+                "name": "DeepSeek",
+                "binding": "deepseek",
+                "models": [
+                    {"id": "m-ds", "name": "DeepSeek Reasoner", "model": "deepseek-reasoner"},
+                    {
+                        "id": "m-chat",
+                        "name": "DeepSeek Chat",
+                        "model": "deepseek-chat",
+                        "reasoning_effort": "high",
+                    },
+                    {
+                        "id": "m-codex",
+                        "name": "Custom Levels",
+                        "model": "gpt-5.3-codex",
+                        "codex_supported_reasoning_levels": ["low", "high"],
+                    },
+                ],
+            }
+        ],
+    )
+    allowed = _run(
+        tmp_path,
+        monkeypatch,
+        catalog,
+        _grant((SHARED_PROFILE, ["m-ds", "m-chat", "m-codex"])),
+    )
+    by_id = {opt["model_id"]: opt for opt in allowed["options"]}
+    assert by_id["m-ds"]["supported_reasoning_efforts"] is None
+    assert by_id["m-ds"]["reasoning_control"] == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+        "default_on": True,
+    }
+    assert by_id["m-chat"]["reasoning_control"] == {
+        "mode": "toggle",
+        "off_value": "minimal",
+        "on_value": "high",
+        "default_on": True,
+    }
+    assert by_id["m-codex"]["reasoning_control"] == {
+        "mode": "levels",
+        "levels": ["low", "high"],
+    }

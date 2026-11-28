@@ -568,6 +568,30 @@ def is_forced_tool_choice_disabled_at_runtime(
     return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_FORCED_TOOL_CHOICE
 
 
+# Runtime cache for providers/models that reject reasoning/thinking parameters
+# (HTTP 400/422). Keyed by (binding_lower, model_lower) so multi-turn / tool-call
+# loops skip reasoning parameters directly after the first rejection instead of
+# paying a 400 round-trip on every turn.
+_RUNTIME_DISABLED_REASONING_PARAMS: set[tuple[str, str]] = set()
+
+
+def disable_reasoning_params_at_runtime(binding: str | None, model: str | None) -> None:
+    """Mark a (binding, model) pair as rejecting reasoning/thinking parameters."""
+    if not binding or not model:
+        return
+    _RUNTIME_DISABLED_REASONING_PARAMS.add((binding.lower(), model.lower()))
+
+
+def is_reasoning_params_disabled_at_runtime(
+    binding: str | None,
+    model: str | None,
+) -> bool:
+    """Whether this pair was recorded by :func:`disable_reasoning_params_at_runtime`."""
+    if not binding or not model:
+        return False
+    return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_REASONING_PARAMS
+
+
 def supports_response_format(binding: str, model: str | None = None) -> bool:
     """
     Check if the provider/model supports response_format parameter.
@@ -768,4 +792,6 @@ __all__ = [
     "is_response_format_disabled_at_runtime",
     "disable_forced_tool_choice_at_runtime",
     "is_forced_tool_choice_disabled_at_runtime",
+    "disable_reasoning_params_at_runtime",
+    "is_reasoning_params_disabled_at_runtime",
 ]

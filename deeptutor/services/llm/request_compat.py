@@ -114,6 +114,66 @@ def is_response_format_unsupported(exc: Exception) -> bool:
     )
 
 
+def is_reasoning_param_unsupported(exc: Exception) -> bool:
+    """Whether a provider rejected reasoning/thinking request parameters (HTTP 400/422).
+
+    Gated strictly behind both a reasoning parameter mention and an
+    unsupported/unknown/invalid parameter marker so auth, quota, or unrelated
+    validation errors are never silently retried without thinking.
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status is not None and status not in {400, 422}:
+        return False
+
+    text = error_text(exc)
+    mentions_reasoning = any(
+        field in text
+        for field in (
+            "reasoning_effort",
+            "reasoning effort",
+            "enable_thinking",
+            "reasoning_split",
+            "extra_body.thinking",
+            "extra_body.reasoning",
+            "'thinking'",
+            '"thinking"',
+            "'reasoning'",
+            '"reasoning"',
+            "parameter: reasoning",
+            "parameter reasoning",
+            "argument: reasoning",
+            "argument reasoning",
+            "field: reasoning",
+            "field reasoning",
+            "reasoning is not supported",
+            "reasoning is unsupported",
+            "does not support reasoning",
+            "thinking is not supported",
+            "does not support thinking",
+        )
+    )
+    if not mentions_reasoning:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "unknown parameter",
+            "unrecognized request argument",
+            "unsupported parameter",
+            "not supported",
+            "unsupported",
+            "extra inputs are not permitted",
+            "unexpected keyword",
+            "invalid value",
+            "not valid",
+            "does not support",
+        )
+    )
+
+
 def is_forced_tool_choice_unsupported(exc: Exception) -> bool:
     """Whether a provider rejected *naming* the tool it must call.
 
@@ -266,6 +326,7 @@ def is_transient_transport_error(exc: Exception) -> bool:
 __all__ = [
     "error_text",
     "is_image_input_unsupported",
+    "is_reasoning_param_unsupported",
     "is_response_format_unsupported",
     "is_stream_options_unsupported",
     "is_transient_transport_error",

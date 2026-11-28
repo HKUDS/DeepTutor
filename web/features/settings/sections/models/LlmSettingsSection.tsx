@@ -1,6 +1,7 @@
 "use client";
 import { useTranslation } from "react-i18next";
 import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
+import { ModelSectionGuideBanner } from "@/components/settings/ModelSectionGuideBanner";
 import { SettingsPageHeader } from "@/components/settings/shared";
 export default function LlmSettingsPage() {
   const { t } = useTranslation();
@@ -12,6 +13,7 @@ export default function LlmSettingsPage() {
           "Manage language models and their context, capabilities, and connection tests.",
         )}
       />
+      <ModelSectionGuideBanner kind="llm" />
       <ModelsWorkspace page="llm" />
     </div>
   );

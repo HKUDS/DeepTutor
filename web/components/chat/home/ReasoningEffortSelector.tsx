@@ -8,22 +8,19 @@ import Tooltip from "@/shared/ui/Tooltip";
 import type { LLMOption } from "@/lib/llm-options";
 import {
   effectiveReasoningEffort,
-  reasoningEffortOptionsFromSupportedLevels,
-  supportedReasoningEffortValues,
-  type ReasoningEffortOption,
+  resolveReasoningControl,
+  type ReasoningControlMode,
 } from "@/lib/reasoning-effort";
 
 /**
- * Per-conversation reasoning-effort override (#641), rendered beside the
- * model selector in the composer.
- *
- * The offered levels come from `supportedReasoningEffortValues`: the model's
- * live `supported_reasoning_efforts` list when the catalog publishes one,
- * otherwise the provider/model tables in `lib/reasoning-effort.ts`. Both
- * are narrowed to `VALID_REASONING_EFFORTS` — the wire vocabulary the turn
- * contract accepts — and a stored value the model does not support is never
- * re-listed; the selector shows Auto instead and the composer resets the
- * persisted override. A model with no selectable level hides the control.
+ * Per-conversation reasoning control rendered beside the model selector in the
+ * composer. Automatically adapts to provider capabilities:
+ * - Multi-level menu when the provider/model advertises distinct effort tiers
+ *   (e.g. Codex OAuth, GPT-5, Gemini 2.5/3, Claude 3.7/4+, GLM-5.3).
+ * - Simple one-click "Thinking" on/off toggle for binary-thinking providers
+ *   (DeepSeek, DashScope, VolcEngine, SiliconFlow, etc.) and generic/custom
+ *   endpoints.
+ * - Hidden when the selected model does not support reasoning controls.
  */
 export default function ReasoningEffortSelector({
   option,
@@ -42,15 +39,60 @@ export default function ReasoningEffortSelector({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const options = useMemo<ReasoningEffortOption[]>(
-    () => computeReasoningOptions(option),
+  const control = useMemo<ReasoningControlMode>(
+    () => resolveReasoningControl(option),
     [option],
   );
 
   useOutsideClick(rootRef, open, () => setOpen(false));
 
-  // Nothing to choose (only the implicit provider default): hide, per #641.
-  if (!option || !options.some((item) => item.value)) return null;
+  if (!option || control.kind === "none") return null;
+
+  if (control.kind === "toggle") {
+    const normalized = (value ?? "").trim().toLowerCase();
+    const isThinkingOn =
+      normalized === ""
+        ? control.defaultOn
+        : normalized !== "none" &&
+          normalized !== "minimal" &&
+          normalized !== "minimum";
+
+    return (
+      <Tooltip
+        label={
+          isThinkingOn
+            ? t("reasoning.toggle.onHint")
+            : t("reasoning.toggle.offHint")
+        }
+        side="top"
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={isThinkingOn}
+          aria-label={t("Reasoning effort")}
+          onClick={() =>
+            onChange(isThinkingOn ? control.offValue : control.onValue)
+          }
+          className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-[background-color,color,border-color,transform] duration-150 active:scale-[0.97] ${
+            disabled
+              ? "cursor-not-allowed border-transparent text-[var(--border)]"
+              : isThinkingOn
+                ? "border-[var(--primary)]/35 bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/15"
+                : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+          }`}
+        >
+          <Brain size={15} strokeWidth={1.8} className="shrink-0" />
+          <span className="min-w-0 whitespace-nowrap">
+            {t("reasoning.toggle.label")}
+          </span>
+        </button>
+      </Tooltip>
+    );
+  }
+
+  const options = control.options;
+  if (!options.some((item) => item.value)) return null;
 
   // A stored override the selected model does not support is not a
   // selectable level: render Auto as selected instead (#641). The composer
@@ -123,15 +165,5 @@ export default function ReasoningEffortSelector({
         </div>
       )}
     </div>
-  );
-}
-
-function computeReasoningOptions(
-  option: LLMOption | null,
-): ReasoningEffortOption[] {
-  // Only levels the selected model supports, narrowed to the wire
-  // vocabulary — the stored override is never re-added (#641).
-  return reasoningEffortOptionsFromSupportedLevels(
-    supportedReasoningEffortValues(option),
   );
 }
