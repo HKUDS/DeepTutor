@@ -599,6 +599,10 @@ async def create_topic(body: ConfirmTopicRequest):
                 _module_payloads(body.modules),
                 strict=True,
                 module_limit=MAX_MODULE_LIMIT,
+                # A confirm payload is caller-authored: the model's draft
+                # happened at the draft step, so the generation-time waypoint
+                # cap must not reject externally-authored curricula (#2636).
+                objective_cap=None,
             )
         except TopicGenerationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

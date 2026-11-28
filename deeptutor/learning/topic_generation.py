@@ -315,6 +315,7 @@ def materialize_modules(
     existing_objective_counts: dict[str, int] | None = None,
     discarded_modules: list[dict[str, Any]] | None = None,
     module_limit: int = DEFAULT_MODULE_LIMIT,
+    objective_cap: int | None = _MAX_OBJECTIVES_PER_MODULE,
 ) -> list[LearningModule]:
     """Validate and normalize a route while keeping existing entity identity.
 
@@ -334,6 +335,13 @@ def materialize_modules(
 
     An existing region may retain its stored waypoint count when that exceeds
     the generation limit. This edit budget does not apply to new regions.
+
+    ``objective_cap=None`` lifts the per-region waypoint cap entirely. Confirm
+    callers pass it: a confirm payload is caller-authored — the model's draft
+    happened at the draft step, and the user confirms the shape they see — so
+    the navigability limit that constrains model output would otherwise reject
+    externally-authored curricula (#2636). Strictness itself is unchanged:
+    with the cap lifted nothing is dropped, silently or otherwise.
     """
     cap = max(1, min(int(module_limit or DEFAULT_MODULE_LIMIT), MAX_MODULE_LIMIT))
     if strict and len(raw_modules) > cap:
@@ -388,15 +396,20 @@ def materialize_modules(
             raise TopicGenerationError(
                 f"Route region {module_index + 1} needs at least one waypoint"
             )
-        objective_limit = _MAX_OBJECTIVES_PER_MODULE
-        if module_id in allowed_modules and existing_objective_counts is not None:
+        objective_limit = objective_cap
+        if (
+            objective_limit is not None
+            and module_id in allowed_modules
+            and existing_objective_counts is not None
+        ):
             objective_limit = max(objective_limit, existing_objective_counts.get(module_id, 0))
-        if strict and len(raw_kps) > objective_limit:
+        if strict and objective_limit is not None and len(raw_kps) > objective_limit:
             raise TopicGenerationError(
                 f"Route region {module_index + 1} may have at most "
                 f"{objective_limit} waypoints; it has {len(raw_kps)}"
             )
-        for kp_index, raw_kp in enumerate(raw_kps[:objective_limit]):
+        bounded_kps = raw_kps if objective_limit is None else raw_kps[:objective_limit]
+        for kp_index, raw_kp in enumerate(bounded_kps):
             if not isinstance(raw_kp, dict):
                 if strict:
                     raise TopicGenerationError(
