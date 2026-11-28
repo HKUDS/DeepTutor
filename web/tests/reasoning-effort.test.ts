@@ -36,6 +36,16 @@ test("Gemini 3 and 2.5 Pro do not list the invalid none effort", () => {
   assert.equal(values("gemini", "gemini-2.5-pro").includes("none"), false);
 });
 
+test("Gemini 3.8 lists none and not the rejected minimal effort (#2702)", () => {
+  assert.deepEqual(values("gemini", "models/gemini-3.8-flash"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
+});
+
 test("a stored value this table excludes stays visible so it can be reset", () => {
   // The recovery path for a profile already sending a rejected value: it has
   // to be selectable to be switched back to Auto.

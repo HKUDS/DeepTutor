@@ -47,6 +47,13 @@ _PROVIDER_DEFAULT_OFF_PATTERNS: dict[str, tuple[str, ...]] = {
 _MINIMAL_NOT_OFF_PATTERNS: dict[str, tuple[str, ...]] = {
     "gemini": ("gemini-3", "gemini-2.5-pro"),
 }
+# Exceptions to :data:`_MINIMAL_NOT_OFF_PATTERNS`: models that share a matched
+# prefix but invert its rule. They accept ``reasoning_effort="none"`` and
+# reject ``"minimal"`` with "Thinking level MINIMAL is not supported for this
+# model" (#2702), so "none" is their off value and "minimal" is never sent.
+_NONE_OFF_MINIMAL_REJECTED_PATTERNS: dict[str, tuple[str, ...]] = {
+    "gemini": ("gemini-3.8",),
+}
 _CUSTOM_MODEL_THINKING_STYLES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("qwen3", "qwen-3", "qwq", "qwen-plus"), "enable_thinking"),
     (("deepseek-v4-pro", "deepseek-reasoner", "deepseek-r1"), "thinking_type"),
@@ -133,6 +140,16 @@ def _disable_thinking_by_default(provider_name: str, model_name: str) -> bool:
     )
 
 
+def _rejects_minimal(provider_name: str, model: str | None) -> bool:
+    return _matches(model or "", _NONE_OFF_MINIMAL_REJECTED_PATTERNS.get(provider_name, ()))
+
+
+def _minimal_is_off(provider_name: str, model: str | None) -> bool:
+    if _rejects_minimal(provider_name, model):
+        return False
+    return _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ()))
+
+
 def default_reasoning_effort_for(provider: str | None, model: str | None) -> str | None:
     """Return the implicit ``reasoning_effort`` for ``provider``/``model``, if any.
 
@@ -146,7 +163,7 @@ def default_reasoning_effort_for(provider: str | None, model: str | None) -> str
     provider_name = (provider or "").strip().lower()
     off_patterns = _PROVIDER_DEFAULT_OFF_PATTERNS.get(provider_name)
     if off_patterns and _matches(model or "", off_patterns):
-        if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
+        if _minimal_is_off(provider_name, model):
             return "minimal"
         return "none"
     return None
@@ -165,7 +182,7 @@ def thinking_off_effort_for(provider: str | None, model: str | None) -> str:
     still an obvious prompt to check this one.
     """
     provider_name = (provider or "").strip().lower()
-    if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
+    if _minimal_is_off(provider_name, model):
         return "minimal"
     return "none"
 
@@ -232,6 +249,12 @@ def build_openai_compatible_reasoning_kwargs(
         # An explicit "off" is subject to the same vendor limit as an inferred
         # one — see ``thinking_off_effort_for``.
         resolved_effort = thinking_off_effort_for(provider_name, model_name)
+    elif str(resolved_effort).strip().lower() in {"minimal", "minimum"} and _rejects_minimal(
+        provider_name, model_name
+    ):
+        # A saved "minimal" (offered before #2702) would 400 on these models;
+        # send their accepted off value instead.
+        resolved_effort = "none"
 
     semantic_effort: str | None = None
     if isinstance(resolved_effort, str):
