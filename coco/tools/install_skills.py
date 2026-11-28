@@ -1,8 +1,10 @@
-"""Install the CoCo skills (coco/skills/*) into DeepTutor's account skill folder.
+"""Install CoCo skills and personas into DeepTutor's admin workspace.
 
-DeepTutor reads user skills from the current content workspace
-(``data/user/workspaces/<id>/skills``); the id differs per installation, so
-ask DeepTutor for the folder instead of hard-coding it.
+- ``coco/skills/<name>/SKILL.md``: DeepTutor reads user skills from the current
+  content workspace (``data/user/workspaces/<id>/skills``); the id differs per
+  installation, so ask DeepTutor for the folder instead of hard-coding it.
+- ``coco/personas/<name>/PERSONA.md``: copied into the admin personas root;
+  admin personas are a read-only overlay visible to every account.
 
 Usage (from the DeepTutor-CoCo root, deeptutor conda env)::
 
@@ -18,6 +20,7 @@ import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE = REPO_ROOT / "coco" / "skills"
+PERSONA_SOURCE = REPO_ROOT / "coco" / "personas"
 
 
 def target_root() -> Path:
@@ -27,30 +30,42 @@ def target_root() -> Path:
     return Path(get_skill_service().root)
 
 
-def install(source: Path, target: Path) -> list[str]:
-    """Copy every ``<name>/SKILL.md`` package, replacing older copies."""
+def persona_root() -> Path:
+    os.environ.setdefault("DEEPTUTOR_HOME", str(REPO_ROOT))
+    from deeptutor.multi_user.paths import get_admin_path_service
+
+    return get_admin_path_service().get_workspace_dir() / "personas"
+
+
+def install(source: Path, target: Path, marker: str = "SKILL.md") -> list[str]:
+    """Copy every ``<name>/<marker>`` package, replacing older copies."""
     installed = []
-    for skill_dir in sorted(p for p in source.iterdir() if (p / "SKILL.md").is_file()):
-        dest = target / skill_dir.name
+    for package in sorted(p for p in source.iterdir() if (p / marker).is_file()):
+        dest = target / package.name
         if dest.exists():
             shutil.rmtree(dest)
-        shutil.copytree(skill_dir, dest)
-        installed.append(skill_dir.name)
+        shutil.copytree(package, dest)
+        installed.append(package.name)
     return installed
 
 
-def main() -> int:
-    if not SOURCE.is_dir():
-        print(f"找不到技能源目录：{SOURCE}", file=sys.stderr)
-        return 2
-    target = target_root()
+def _install_kind(source: Path, target: Path, marker: str, label: str) -> bool:
+    if not source.is_dir():
+        print(f"找不到{label}源目录：{source}", file=sys.stderr)
+        return False
     target.mkdir(parents=True, exist_ok=True)
-    names = install(SOURCE, target)
+    names = install(source, target, marker)
     if not names:
-        print(f"{SOURCE} 里没有技能（<名称>/SKILL.md）", file=sys.stderr)
-        return 2
-    print(f"已安装 {len(names)} 个技能到 {target}：{', '.join(names)}")
-    return 0
+        print(f"{source} 里没有{label}（<名称>/{marker}）", file=sys.stderr)
+        return False
+    print(f"已安装 {len(names)} 个{label}到 {target}：{', '.join(names)}")
+    return True
+
+
+def main() -> int:
+    ok = _install_kind(SOURCE, target_root(), "SKILL.md", "技能")
+    ok = _install_kind(PERSONA_SOURCE, persona_root(), "PERSONA.md", "人设") and ok
+    return 0 if ok else 2
 
 
 if __name__ == "__main__":

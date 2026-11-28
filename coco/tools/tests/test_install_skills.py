@@ -31,3 +31,25 @@ def test_repo_skills_have_frontmatter() -> None:
         text = skill.read_text(encoding="utf-8")
         assert text.startswith("---\n"), skill
         assert f"name: {skill.parent.name}\n" in text, skill
+
+
+def test_install_handles_persona_packages(tmp_path: Path) -> None:
+    source, target = tmp_path / "src", tmp_path / "dst"
+    (source / "coco-tutor").mkdir(parents=True)
+    (source / "coco-tutor" / "PERSONA.md").write_text("p", encoding="utf-8")
+    _skill(source, "not-a-persona", "s")  # SKILL.md only -> ignored for personas
+
+    assert install_skills.install(source, target, "PERSONA.md") == ["coco-tutor"]
+    assert not (target / "not-a-persona").exists()
+
+
+def test_repo_personas_have_valid_names_and_frontmatter() -> None:
+    import re
+
+    personas = list(install_skills.PERSONA_SOURCE.glob("*/PERSONA.md"))
+    assert personas
+    for persona in personas:
+        name = persona.parent.name
+        assert re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name), name
+        text = persona.read_text(encoding="utf-8")
+        assert text.startswith("---\n") and f"name: {name}\n" in text, persona
