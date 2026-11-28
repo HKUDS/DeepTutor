@@ -11,6 +11,7 @@ from deeptutor.book import storage as storage_module
 from deeptutor.book.engine import BookEngine
 from deeptutor.book.models import Block, BlockStatus, BlockType, Book, Page
 from deeptutor.services.path_service import PathService
+from tests.api.test_book_chapter_crud import _client, _seed
 
 
 def test_markdown_download_preserves_code_and_following_prose(tmp_path, monkeypatch) -> None:
@@ -55,3 +56,37 @@ def test_markdown_download_preserves_code_and_following_prose(tmp_path, monkeypa
     assert fences[0].content == code + "\n"
     assert any(token.type == "inline" and token.content == "After the sample." for token in tokens)
     assert storage.load_page(book.id, page.id).blocks[0].payload["code"] == code
+
+
+def test_markdown_download_matches_the_reordered_reader_outline(tmp_path, monkeypatch) -> None:
+    client, storage = _client(tmp_path, monkeypatch)
+    _seed(storage)
+    # Insert a newly authored section before the older page in the same chapter.
+    preview = client.post(
+        "/api/books/bk/edits/preview",
+        json={
+            "action": "add_page",
+            "chapter_id": "ch_0",
+            "position": 0,
+            "title": "Read this first",
+            "body": "Start here.",
+        },
+    )
+    assert preview.status_code == 200
+    edit_id = preview.json()["id"]
+    applied = client.post(f"/api/books/bk/edits/{edit_id}/apply", json={"expected_revision": 1})
+    assert applied.status_code == 200
+    reader = client.get("/api/books/bk")
+    assert reader.status_code == 200
+    titles = [page["title"] for page in reader.json()["pages"]]
+    assert titles == ["Read this first", "Page 0", "Page 1"]
+
+    download = client.get("/api/books/bk/export")
+    assert download.status_code == 200
+    tokens = MarkdownIt().parse(download.text)
+    titles_in_export = [
+        tokens[index + 1].content
+        for index, token in enumerate(tokens)
+        if token.type == "heading_open" and token.tag == "h2"
+    ]
+    assert titles_in_export == titles

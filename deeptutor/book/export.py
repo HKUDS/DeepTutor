@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .models import Block, BlockStatus, BlockType, Book, Page, Spine
+from .models import Block, BlockStatus, BlockType, Book, Page, Spine, pages_in_reading_order
 
 _SAFE_FILENAME = re.compile(r"[^\w.-]+")
 
@@ -358,7 +358,7 @@ def render_book_markdown(book: Book, spine: Spine | None, pages: list[Page]) -> 
 
     out.append("---")
 
-    for page in sorted(pages, key=lambda p: (p.order, p.created_at)):
+    for page in pages_in_reading_order(pages, spine):
         out.append(f"## {page.title or labels['untitled_chapter']}")
 
         if page.learning_objectives:
