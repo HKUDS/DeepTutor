@@ -26,6 +26,7 @@ text keeps an unnumbered note so their existence is not silently erased.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 import io
 import logging
@@ -428,8 +429,13 @@ def _render_omml(node: Any) -> str:
     return f"[unsupported equation: {flattened}]"
 
 
-def render_docx_text(node: Any) -> str:
-    """Render text below one DOCX node without flattening OMML structure."""
+def render_docx_text(node: Any, *, nested_paragraphs: bool = True) -> str:
+    """Render text below one DOCX node without flattening OMML structure.
+
+    The subtrees in ``_DOCX_SKIPPED_SUBTREES`` are not read. With
+    ``nested_paragraphs=False`` a paragraph inside ``node``, such as a text
+    box's, is left out: the caller reads it as a paragraph of its own.
+    """
     name = _local_name(node.tag)
     namespace = _namespace(node.tag)
     if namespace == MATH_NS:
@@ -440,7 +446,12 @@ def render_docx_text(node: Any) -> str:
         return "\t"
     if name in {"br", "cr"}:
         return "\n"
-    return "".join(render_docx_text(child) for child in node)
+    return "".join(
+        render_docx_text(child, nested_paragraphs=nested_paragraphs)
+        for child in node
+        if _local_name(child.tag) not in _DOCX_SKIPPED_SUBTREES
+        and (nested_paragraphs or _local_name(child.tag) != "p")
+    )
 
 
 def fit_inline_image(ext: str, data: bytes, *, max_edge: int) -> tuple[str, bytes]:
@@ -532,12 +543,12 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         root = _parse_xml(zf.read("word/document.xml"))
 
         paragraphs: list[str] = []
-        for node in root.iter():
+        for node in _docx_walk(root, into_paragraphs=True):
             if _local_name(node.tag) != "p":
                 continue
             markers: list[str] = []
             seen_rids: set[str] = set()
-            for child in node.iter():
+            for child in _docx_walk(node, into_paragraphs=False):
                 name = _local_name(child.tag)
                 if name == "blip":
                     rid = _blip_embed_rid(child)
@@ -553,7 +564,7 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
                             by_target[target] = image
                     if image is not None:
                         markers.append(build_marker(image))
-            paragraph = render_docx_text(node).strip()
+            paragraph = render_docx_text(node, nested_paragraphs=False).strip()
             if markers:
                 paragraph = (paragraph + "\n" if paragraph else "") + "\n".join(markers)
             if paragraph:
@@ -563,6 +574,31 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         paragraphs=tuple(paragraphs),
         collection=_collection_from(budget, images),
     )
+
+
+# A text box's ``mc:Fallback`` is a VML copy of the ``mc:Choice`` drawing
+# beside it, and ``w:moveFrom`` is the old place of tracked moved text whose
+# new place is in ``w:moveTo``. Reading them repeats text the document shows
+# once. Skipping the fallback assumes the choice holds the same text, as Word
+# writes it: a legacy file whose choice has no text but whose VML fallback has
+# some would lose that text.
+_DOCX_SKIPPED_SUBTREES = frozenset({"Fallback", "moveFrom"})
+
+
+def _docx_walk(node: Any, *, into_paragraphs: bool) -> Iterator[Any]:
+    """Yield ``node`` and its descendants in document order.
+
+    Skips the subtrees in ``_DOCX_SKIPPED_SUBTREES``. With
+    ``into_paragraphs=False`` the walk does not enter a paragraph nested
+    inside ``node``: a text box's paragraphs sit inside the body paragraph
+    that anchors the box, and are emitted as paragraphs of their own.
+    """
+    yield node
+    for child in node:
+        name = _local_name(child.tag)
+        if name in _DOCX_SKIPPED_SUBTREES or (name == "p" and not into_paragraphs):
+            continue
+        yield from _docx_walk(child, into_paragraphs=into_paragraphs)
 
 
 def _blip_embed_rid(blip: Any) -> str:
