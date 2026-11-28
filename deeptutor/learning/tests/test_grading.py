@@ -6,7 +6,12 @@ those through the full record -> mastery -> spaced-repetition pipeline and is
 fail-closed: with no stored expected answer the attempt is recorded wrong.
 """
 
-from deeptutor.learning.grading import classify_error, grade_answer
+import json
+from pathlib import Path
+
+import pytest
+
+from deeptutor.learning.grading import classify_error, grade_answer, numeric_equivalent
 from deeptutor.learning.models import (
     ErrorType,
     KnowledgePoint,
@@ -43,6 +48,40 @@ class TestShortGrading:
 
     def test_short_fuzzy_fail(self):
         assert grade_answer("completely different", "photosynthesis", "short") is False
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [("1250.60", "1250.50"), ("-200", "200"), ("x=3, y=4", "x=3, y=5"), ("125000", "125.000")],
+    )
+    def test_numeric_key_is_never_fuzzy_matched(self, user, expected):
+        assert grade_answer(user, expected, "short") is False
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [("1.250,50", "1250.50"), ("1250,50 €", "1250.50"), ("1/8", "0.125"), ("12.5%", "0.125")],
+    )
+    def test_numeric_formats_are_accepted(self, user, expected):
+        assert grade_answer(user, expected, "short") is True
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [
+            ("1.240,-", "1.250,-"),
+            ("EUR 1.240,-", "EUR 1.250,-"),
+            ("(1.240)", "(1.250)"),
+            ("31.12.2025", "31.12.2026"),
+            ("1.000-1.240", "1.000-1.250"),
+            ("1.250 €/Stk.", "1.260 €/Stk."),
+            ("IFRS 11", "IFRS 10"),
+        ],
+    )
+    def test_keys_with_other_digits_are_never_fuzzy_matched(self, user, expected):
+        # The parser rejects these keys, but a digit change is never a typo.
+        assert grade_answer(user, expected, "short") is False
+
+    def test_fuzzy_match_still_tolerates_typos_around_the_same_digits(self):
+        assert grade_answer("ifrs 10 consolidaton", "IFRS 10 consolidation", "short") is True
+        assert grade_answer("1.250,--", "1.250,-", "short") is True
 
     def test_short_long_expected_no_fuzzy(self):
         long_expected = "a" * 31  # >30 chars, no fuzzy
@@ -83,6 +122,32 @@ class TestEdgeCases:
 
     def test_unknown_type_returns_false(self):
         assert grade_answer("a", "a", "unknown") is False
+
+
+_VECTORS = json.loads(
+    (Path(__file__).parents[3] / "tests/fixtures/numeric_answers.json").read_text("utf-8")
+)["vectors"]
+
+
+@pytest.mark.parametrize("vector", _VECTORS, ids=lambda v: f"{v['user']!r}~{v['expected']!r}")
+def test_numeric_equivalent_shared_vectors(vector):
+    """The web port consumes the same file, so both implementations agree."""
+    result = numeric_equivalent(vector["user"], vector["expected"])
+    assert result.comparable is vector["comparable"]
+    assert result.correct is vector["correct"]
+    assert result.ambiguous is vector.get("ambiguous", False)
+
+
+class TestNumericEquivalent:
+    def test_parts_report_each_comparison(self):
+        result = numeric_equivalent("b) 3,6; a) 12", "a) 12; b) 3,5")
+        assert [(p.label, p.correct) for p in result.parts] == [("a", True), ("b", False)]
+        assert (result.comparable, result.correct) == (True, False)
+
+    def test_ambiguous_numbers_fail_closed_without_a_verdict(self):
+        # grade_answer is the no-verdict fallback; it never fuzzy-matches numbers.
+        assert grade_answer("12500", "12.500", "short") is False
+        assert grade_answer("12.5", "12.500 €", "short") is False
 
 
 class TestClassifyError:
@@ -248,3 +313,89 @@ class TestGradeAndRecordFailClosed:
         assert progress.review_queue[0].knowledge_point_id == "kp1"
         assert len(progress.learning_evidence) == 1
         assert progress.learning_evidence[0].result == "correct"
+
+
+class TestExactVerdictNumeric:
+    """Mastery's deterministic pre-check before any LLM verdict."""
+
+    @staticmethod
+    def _question(expected, question_type="short", accepted=()):
+        from deeptutor.learning.models import PendingQuestion
+
+        return PendingQuestion(
+            question_id="q1",
+            knowledge_point_id="kp1",
+            prompt="Compute the expected cost.",
+            question_type=question_type,
+            expected_answer=expected,
+            accepted_answers=list(accepted),
+        )
+
+    def _verdict(self, answer, expected, **kwargs):
+        from deeptutor.learning.semantic_assessment import exact_verdict
+
+        return exact_verdict(self._question(expected, **kwargs), answer)
+
+    def test_numeric_match_is_correct_without_llm(self):
+        assert self._verdict("1234,57 €", "1.234,57").result == "correct"
+        assert self._verdict("0.125", "x", accepted=["1/8"]).result == "correct"
+        assert self._verdict("3,48", "3.48", question_type="open").result == "correct"
+
+    def test_numeric_mismatch_on_short_key_is_incorrect(self):
+        verdict = self._verdict("1250.60", "1250.50")
+        assert (verdict.result, verdict.confidence) == ("incorrect", 1)
+        assert verdict.receipt()["final"] is True
+
+    def test_uncertain_cases_still_reach_the_llm(self):
+        # Open answers may explain a number; an ambiguous separator has two readings.
+        assert self._verdict("200", "-200", question_type="open") is None
+        assert self._verdict("125000", "125.000") is None
+        assert self._verdict("about 1250", "1250.50") is None
+        assert self._verdict("1300", "1250.50", accepted=["ca. 1300"]).result == "correct"
+
+    def test_ambiguous_key_is_never_read_in_the_answers_notation(self):
+        # "12.500 €" is 12 500 in German notation; a dot answer must not settle it.
+        assert self._verdict("12.5", "12.500 €") is None
+        assert self._verdict("12.5 TEUR", "12.500 TEUR") is None
+        assert self._verdict("12500", "12.500,00 €").result == "correct"
+
+    def test_key_more_precise_than_the_rounding_reaches_the_llm(self):
+        assert self._verdict("3,48", "3,4833") is None
+        assert self._verdict("1234,6", "1234,57") is None
+        assert self._verdict("3,49", "3,4833").result == "incorrect"
+
+    def test_fraction_key_rounds_half_away_from_zero(self):
+        assert self._verdict("0,13", "1/8").result == "correct"
+        assert self._verdict("0,12", "1/8").result == "incorrect"
+        assert self._verdict("-0,12", "-1/8").result == "incorrect"
+
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [
+            ("2,49", "2,5"),  # a one-place key cannot settle a finer answer
+            ("416,67", "≈ 417"),  # nor can an integer key
+            ("1.249,60 €", "1.250 €"),
+            ("1.250", "-1.250"),  # sign only
+            ("42", "0,42"),  # percent points for a fraction key
+        ],
+    )
+    def test_unsettled_rounding_sign_or_rate_reaches_the_llm(self, answer, expected):
+        assert self._verdict(answer, expected) is None
+
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [("1.250.000", "1.250"), ("2.500.000 €", "2,5"), ("1.250", "1.250.000")],
+    )
+    def test_unit_scale_stated_only_in_the_question_reaches_the_llm(self, answer, expected):
+        # "Angaben in TEUR" lives in the question, not in the stored key.
+        assert self._verdict(answer, expected) is None
+        assert self._verdict("1.251.000", "1.250").result == "incorrect"
+
+    def test_ambiguous_accepted_answer_keeps_the_mismatch_open(self):
+        assert self._verdict("416,67", "417,00", accepted=["≈ 417"]) is None
+        assert self._verdict("415,20", "417,00", accepted=["≈ 417"]).result == "incorrect"
+
+    def test_multi_part_mismatch_keeps_partial_credit_open(self):
+        assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
+        assert self._verdict("1250", "Goodwill = 1.250; NCI = 300") is None
+        assert self._verdict("a) 1.000; b) 250", "a) 1.000; b) 250").result == "correct"

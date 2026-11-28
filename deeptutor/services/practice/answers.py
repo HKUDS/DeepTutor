@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 
+from deeptutor.learning.grading import numeric_equivalent
+
 
 def _true_false(value: object) -> bool | None:
     text = str(value).strip().casefold()
@@ -24,6 +26,10 @@ def check_answer(entry: dict, answer: str) -> bool | None:
             return None
         return _true_false(answer) is expected_bool
     expected = str(entry.get("correct_answer") or "").strip()
+    if not options and kind in {"fill_blank", "fill_in_blank", "short_answer"}:
+        numeric = numeric_equivalent(answer, expected)
+        # Only an unambiguous numeric pair is objective; text stays self-assessed.
+        return numeric.correct if numeric.comparable and not numeric.ambiguous else None
     if (
         not options
         or not expected

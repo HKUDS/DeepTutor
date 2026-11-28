@@ -15,6 +15,8 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from deeptutor.learning.grading import numeric_equivalent
+
 # Only strip known table layout tags. A generic <...> pattern also consumes
 # mathematical inequalities, and Markdown characters may be math operators.
 _TABLE_MARKUP = re.compile(
@@ -103,14 +105,25 @@ def exact_verdict(question, answer):
                 feedback=question.explanation or "Checked against the stored answer key.",
             )
         return Verdict(result="ungraded", confidence=0, feedback="Choose one unambiguous option.")
+    keys = [question.expected_answer, *question.accepted_answers]
     normalized = answer.strip().casefold()
-    if normalized and normalized in {
-        v.strip().casefold() for v in [question.expected_answer, *question.accepted_answers]
-    }:
+    numeric = [numeric_equivalent(answer, key) for key in keys]
+    if normalized in {v.strip().casefold() for v in keys} or any(n.correct for n in numeric):
         return Verdict(
             result="correct",
             confidence=1,
             feedback=question.explanation or "Matches the stored answer.",
+        )
+    # Only a single short number is final: open answers may explain one, an
+    # ambiguous reading may still be right, and multi-part answers may earn
+    # partial credit, so all of those stay semantic.
+    first = numeric[0]
+    settled = len(first.parts) == 1 and not any(n.ambiguous for n in numeric)
+    if question.question_type == "short" and settled:
+        return Verdict(
+            result="incorrect",
+            confidence=1,
+            feedback=question.explanation or "Does not match the stored numeric answer.",
         )
     return None
 
