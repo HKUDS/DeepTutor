@@ -172,6 +172,11 @@
       "sha256": "c2b68886b5e696508b40203a6779bb01d0709d225b4bfbe933714f2d6bd00578",
       "source": "Official website asset"
     },
+    "webrouter.png": {
+      "url": "https://docs.webrouter.net/logo/favicon.png",
+      "sha256": "53270f6873b1cc1f46467e0f744542a28bc8b90a0cc3d93d168c725678a4758c",
+      "source": "Official website asset"
+    },
     "searchapi.svg": {
       "url": "https://www.searchapi.io/favicon.svg",
       "sha256": "5ef13fedc55abb407621cb0219a563ab400735b8ba6228b52d0629990d922ca0",

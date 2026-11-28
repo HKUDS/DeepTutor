@@ -70,6 +70,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   volcengine: { file: "volcengine-color.svg" },
   volcengine_coding_plan: { file: "volcengine-color.svg" },
   volcengine_speech: { file: "volcengine-color.svg" },
+  webrouter: { file: "webrouter.png" },
   xiaomi_mimo: { file: "xiaomimimo.svg", mono: true },
   zhipu: { file: "zhipu-color.svg" },
 };

@@ -262,6 +262,12 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="You.com Search API key",
     ),
     SearchProviderSpec(
+        name="webrouter",
+        label="WebRouter",
+        requires_api_key=False,
+        hint="no API key needed · falls back across backends",
+    ),
+    SearchProviderSpec(
         name="searxng",
         label="SearXNG",
         requires_api_key=False,

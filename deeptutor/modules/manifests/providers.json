@@ -16,6 +16,7 @@
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
+    "webrouter>=0.16",
     "oauth-cli-kit>=0.1.1"
   ],
   "executables": []

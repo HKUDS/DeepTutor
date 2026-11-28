@@ -96,6 +96,7 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     ),
     "duckduckgo": SearchProviderSpec(label="DuckDuckGo"),
     "you": SearchProviderSpec(label="You.com", requires_api_key=True),
+    "webrouter": SearchProviderSpec(label="WebRouter"),
     "perplexity": SearchProviderSpec(
         label="Perplexity",
         requires_api_key=True,
