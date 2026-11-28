@@ -65,13 +65,29 @@ def _storage_path_from_version_entry(entry: dict[str, Any]) -> Path | None:
     return path
 
 
+_EMPTY_VERSION_MARKERS = frozenset({"meta.json", ".building.json"})
+_EMBEDDING_CHECKPOINT_FILENAME = ".embedding-checkpoint.json"
+
+
 def cleanup_failed_version_dir(storage_dir: Path) -> bool:
-    """Remove an empty flat version dir created by a failed indexing attempt."""
+    """Remove an unpublished flat version dir created by a failed indexing attempt.
+
+    Publication-guarded candidates start with ``.building.json`` before any
+    index files are written. Removing an unpublished directory that has no
+    resumable embedding checkpoint keeps a failed first upload from leaving
+    behind an unusable ``version-1`` that blocks subsequent uploads.
+    """
     if not storage_dir.is_dir() or not storage_dir.name.startswith("version-"):
         return False
-    storage_empty = not any(child for child in storage_dir.iterdir() if child.name != "meta.json")
-    meta_path = storage_dir / "meta.json"
-    if storage_empty and not meta_path.exists():
+    if (storage_dir / "meta.json").exists():
+        return False
+    if (storage_dir / _EMBEDDING_CHECKPOINT_FILENAME).exists():
+        return False
+    has_building_guard = (storage_dir / ".building.json").exists()
+    storage_empty = not any(
+        child for child in storage_dir.iterdir() if child.name not in _EMPTY_VERSION_MARKERS
+    )
+    if has_building_guard or storage_empty:
         shutil.rmtree(storage_dir, ignore_errors=True)
         return True
     return False

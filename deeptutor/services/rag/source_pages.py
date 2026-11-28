@@ -305,8 +305,9 @@ def legacy_page_index(
         return target
     if not build:
         raise SourcePageError("The original-page lookup needs preparation. Retry the lesson.")
-    from llama_index.core.node_parser import SentenceSplitter
     from llama_index.core.storage.docstore import SimpleDocumentStore
+
+    from deeptutor.services.rag.pipelines.llamaindex.ingestion import build_sentence_splitter
 
     documents = []
     for path, _, hit in inventory:
@@ -319,7 +320,7 @@ def legacy_page_index(
             parser_signature=signature if hit else "native-pdf-page-v1",
         )
         documents.extend(build_pdf_documents(path, parsed, kb_dir))
-    nodes = SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents(
+    nodes = build_sentence_splitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents(
         [d for d in documents if d.metadata.get("page_status") == "searchable"]
     )
     if not nodes:

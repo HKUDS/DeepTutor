@@ -92,3 +92,96 @@ def test_documents_to_nodes_resolves_progress_at_call_time(monkeypatch) -> None:
     monkeypatch.setattr("sys.stdout", _Stream(tty=True))
     ingestion.documents_to_nodes([Document(text="x")])
     assert captured["show_progress"] is True
+
+
+def test_sentence_splitter_ignores_nltk_redos_process_cpu_timeout(monkeypatch) -> None:
+    """Issue #3030: NLTK 3.10.4's regex timeout must not abort large-document splitting.
+
+    NLTK 3.10.4 routes Punkt's built-in patterns through ``nltk.redos``, whose
+    ``regex`` timeout counts whole-process CPU time. Stock LlamaIndex
+    ``SentenceSplitter`` hits ``TimeoutError`` on a large single-block document
+    when the timeout budget is tight; DeepTutor's splitter must succeed with
+    identical chunks and without mutating global ``nltk.redos.DEFAULT_TIMEOUT``.
+    """
+    import pytest
+
+    redos = pytest.importorskip("nltk.redos")
+    from llama_index.core import Settings
+    from llama_index.core.embeddings import MockEmbedding
+    from llama_index.core.node_parser import SentenceSplitter
+
+    from deeptutor.services.rag.pipelines.llamaindex import ingestion
+
+    text = "Dr. Smith analyzed the 3.14 benchmark results carefully! Next sentence follows. " * 4000
+    doc = Document(text=text)
+
+    # Capture reference chunks from stock LlamaIndex with no timeout limit.
+    with monkeypatch.context() as ref_ctx:
+        ref_ctx.setattr(redos, "DEFAULT_TIMEOUT", None)
+        expected_texts = [
+            node.text
+            for node in SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents(
+                [doc]
+            )
+        ]
+
+    tight_timeout = 0.005
+    monkeypatch.setattr(redos, "DEFAULT_TIMEOUT", tight_timeout)
+    monkeypatch.setattr(Settings, "_embed_model", MockEmbedding(embed_dim=4))
+    monkeypatch.setattr(Settings, "chunk_size", 512)
+    monkeypatch.setattr(Settings, "chunk_overlap", 50)
+
+    # Confirm the failure mode reproduces on stock LlamaIndex SentenceSplitter.
+    with pytest.raises(TimeoutError, match="time limit"):
+        SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents([doc])
+
+    nodes = ingestion.documents_to_nodes([doc], show_progress=False)
+
+    assert [node.text for node in nodes] == expected_texts
+    assert redos.DEFAULT_TIMEOUT == tight_timeout
+
+
+def test_sentence_splitter_succeeds_under_concurrent_cpu_load(monkeypatch) -> None:
+    """Concurrent busy threads must not trip NLTK's process-CPU regex timeout."""
+    import hashlib
+    import threading
+
+    import pytest
+
+    redos = pytest.importorskip("nltk.redos")
+    from deeptutor.services.rag.pipelines.llamaindex import ingestion
+
+    tight_timeout = 0.05
+    monkeypatch.setattr(redos, "DEFAULT_TIMEOUT", tight_timeout)
+    text = "Sentence one explains the algorithm. Sentence two verifies the bound! " * 3000
+    doc = Document(text=text)
+
+    stop = threading.Event()
+
+    def burn_cpu() -> None:
+        block = b"x" * (1 << 16)
+        while not stop.is_set():
+            hashlib.sha256(block).digest()
+
+    workers = [threading.Thread(target=burn_cpu, daemon=True) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    try:
+        splitter = ingestion.build_sentence_splitter(chunk_size=512, chunk_overlap=50)
+        nodes = splitter.get_nodes_from_documents([doc])
+    finally:
+        stop.set()
+        for worker in workers:
+            worker.join(timeout=2)
+
+    assert len(nodes) > 1
+    assert redos.DEFAULT_TIMEOUT == tight_timeout
+
+
+def test_disable_redos_timeout_is_noop_for_plain_regex() -> None:
+    import re
+
+    from deeptutor.services.rag.pipelines.llamaindex import ingestion
+
+    plain = re.compile(r"\w+")
+    assert ingestion._disable_redos_timeout(plain) is plain
