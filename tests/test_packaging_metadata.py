@@ -4,6 +4,8 @@ from pathlib import Path
 import tomllib
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 import pytest
 
 from build_metadata import optional_dependencies, project_version, source_optional_dependencies
@@ -96,15 +98,24 @@ def test_python_314_rag_guards_are_preserved():
         ]
         assert len(faiss) == 1
         assert minimum in faiss[0].specifier
-    bm25 = next(r for r in dependencies if r.name == "llama-index-retrievers-bm25")
-    assert not bm25.marker.evaluate({"python_version": "3.14"})
+        assert any(
+            bound.operator == ">=" and Version(bound.version) == Version(minimum)
+            for bound in faiss[0].specifier
+        ), f"Python {version} must preserve the explicit faiss-cpu >= {minimum} floor"
+    bm25 = [r for r in dependencies if canonicalize_name(r.name) == "llama-index-retrievers-bm25"]
+    assert bm25
+    assert all(
+        r.marker is not None and not r.marker.evaluate({"python_version": "3.14"}) for r in bm25
+    )
     lexical = next(r for r in dependencies if r.name == "bm25s")
     assert lexical.marker is None or lexical.marker.evaluate({"python_version": "3.14"})
 
 
 def test_windows_parser_worker_dependency_is_scoped():
     win32 = next(
-        Requirement(r) for r in manifests()["parsing"]["requirements"] if r.startswith("pywin32")
+        Requirement(r)
+        for r in manifests()["parsing"]["requirements"]
+        if canonicalize_name(Requirement(r).name) == "pywin32"
     )
     assert win32.marker.evaluate({"sys_platform": "win32"})
     assert not win32.marker.evaluate({"sys_platform": "darwin"})
