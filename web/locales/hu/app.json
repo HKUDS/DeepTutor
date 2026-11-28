@@ -3955,7 +3955,7 @@
   "All Trends": "Minden trend",
   "First Attempt": "Első próbálkozás",
   "Improved": "Javított",
-  "Declined": "Elutasítva",
+  "Declined": "Romlott",
   "Unchanged": "Változatlan",
   "Resolved": "Megoldva",
   "Mark Resolved": "Megoldottnak jelölés",
@@ -6666,5 +6666,6 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "partners.invocationDeclined": "Elutasítva"
 }

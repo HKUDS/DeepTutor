@@ -3878,7 +3878,7 @@
   "Not now": "Pas maintenant",
   "Waiting for {{name}}": "En attente de {{name}}",
   "Discussed": "Discuté",
-  "Declined": "Refusé",
+  "Declined": "En baisse",
   "Unrecognized: {{names}}": "Non reconnu : {{names}}",
   "Following up on {{name}}": "Suite à {{name}}",
   "{{done}} of {{total}} answered": "{{done}} sur {{total}} ont répondu",
@@ -7571,5 +7571,6 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "partners.invocationDeclined": "Refusé"
 }
