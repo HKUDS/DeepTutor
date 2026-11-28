@@ -1,0 +1,37 @@
+# Short setup texts that travel with a turn rather than in the protocol
+# (system.md). Used by SetupCapability.turn_note (end of the user message, when
+# tools can be deferred) and by the legacy system block (when they cannot).
+# Placeholders: {tools} — the setup tool names, back-quoted, comma-separated.
+# Overridable from a prompt pack under setup.notes.<key>.
+
+# First line of the per-turn note.
+header: "[Setup]"
+
+# Heading of the gap list; the gaps themselves come from the install check.
+gaps_heading: "## What this install is currently missing"
+gaps_none: "- Nothing."
+
+# First conversation on an install with a blocking gap. The user did not raise
+# the subject, so the opening has to earn its place: name the one thing that is
+# missing, offer to fix it, and drop it if they would rather do something else.
+intro: |-
+  ## This is the user's first conversation
+  They have not asked about configuration. Answer whatever they actually said first. Then, in one or two sentences at the end, mention the single most important gap above and offer to set it up. Do not list every gap, do not open with it, and do not raise it again if they move on.
+
+# Appended to the intro section in the per-turn note.
+intro_load: >-
+  If they accept, load the setup tools ({tools}) with `load_tools` first; its
+  result includes the rules for using them.
+
+# The user opened setup mode; the tools were recorded as loaded.
+explicit: >-
+  The user opened setup mode; the setup tools are loaded. Follow the rules for
+  using them given when they were loaded.
+
+# The message looks like a configuration request (message heuristic).
+intent: >-
+  This message looks like a request to change DeepTutor's own configuration.
+  The setup tools ({tools}) are listed under Extended Tools: load the ones you
+  need with `load_tools` first — its result includes the rules for using them,
+  follow them. If the message is not actually about DeepTutor's configuration,
+  ignore this note.
