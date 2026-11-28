@@ -27,7 +27,7 @@ python scripts/install_extras.py all            # 全部依赖（含开发工具
 ```
 
 源码 CLI 用户可跳过前端；需要 Web UI 时，安装 Node.js 22 LTS，在 `web/`
-执行 `npm ci --legacy-peer-deps`，回到项目根目录执行 `deeptutor init` 和
+执行 `npm ci`，回到项目根目录执行 `deeptutor init` 和
 `deeptutor start`。使用 Python 3.11–3.14；复用已有 checkout 时先检查分支和本地改动。
 
 1.7.0 发布后，也可在独立环境中直接安装 wheel，以下命令与上面的源码流程二选一：
